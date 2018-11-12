@@ -1,9 +1,13 @@
 # mixer
 
-node.js と http 周りの勉強でちまちま作ってます。
+Minimal & asynchronous web module.
+
+デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
+仕様は気紛れに変わります。
 
 ## Usage
-基本はhttpモジュールと同じように使える
+基本は標準の ```http``` モジュールを参考に、コンストラクタへリクエストを受け取った時に実行する関数を入れることが出来る。
+
 ```js
 const mixer = require('mixer')
 const app = new mixer((req, res) => {
@@ -15,7 +19,7 @@ app.listen(3000)
 
 ### mix()
 
-mix()で、リクエスト時の処理を足す。
+```mix()```で、リクエストを受け取った時に実行する関数を足すことが出来る。
 ```js
 const mixer = require('mixer')
 const app = new mixer()
@@ -27,17 +31,28 @@ app.mix((req, res) => {
 app.listen(3000)
 ```
 
-繋げてもいいし
+関数は個別に ```mix()``` で繋げてもいいし、
 ```js
 app.mix(fn).mix(fn).mix(fn).listen(3000)
 ```
-一つのmixに複数の関数を入れてもいい
+一つの ```mix()``` に複数の関数を入れてもいい
 ```js
 app.mix(fn, fn, fn).listen(3000)
 ```
+先に ```mix()``` した関数順に処理されるので順番は大事。
+
+### res.post()
+リクエストに対してレスポンスを返すときは ```res.post()``` を使用する。
+```js
+res.post(200, 'Hello Mixer')
+```
+ほんとは ```res.send()``` にしたかったんだけど、これだと Nuxt.js とバッティングして Nuxt.js が上手く動かなかったので、今の所泣く泣く ```res.post()``` にしている。悔しいのでなんか考える。
+
+
+# Examples
 
 ### async/await
-async/awaitを使って3秒後にレスポンスを返す。
+```async``` / ```await``` を使って3秒後にレスポンスを返す。
 
 ```js
 const mixer = require('mixer')
@@ -46,13 +61,15 @@ const sleep = (msec) => new Promise(resolve => setTimeout(resolve, msec))
 
 const app = new mixer(async (req, res) => {
   await sleep(3000)
-  res.post(200, 'Hello Mixer')
+  res.post(200, 'Good Morning Mixer')
 })
 
 app.listen(3000)
 ```
 
 ### Nuxt.js
+
+```Nuxt.js``` を動かしてみる。
 
 ```js
 const mixer = require('mixer')
@@ -73,3 +90,17 @@ app.listen(3000)
 
 ```
 
+## ToDo
+勉強中
+- エラーハンドリング
+- 適切なヘッダ情報の添付
+- テスト
+
+
+## mix modules
+
+- [mix-router](https://github.com/imatomix/mix-router) : ルーティング機能
+- [mix-static](https://github.com/imatomix/mix-static) : 静的ファイルのサーブ
+- [mix-favicon](https://github.com/imatomix/mix-favicon) : faviconのサーブ
+- mix-cors : cors処理（作ろうかな）
+- mix-csrf : csrf処理（作ろうかな）
