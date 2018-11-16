@@ -11,7 +11,7 @@ Minimal & asynchronous web module.
 ```js
 const mixer = require('mixer')
 const app = new mixer((req, res) => {
-  res.post(200, 'Hello Mixer')
+  res.send(200, 'Hello Mixer')
 })
 
 app.listen(3000)
@@ -48,12 +48,12 @@ app.mix(fn, fn, fn).listen(3000)
 ```
 先に ```mix()``` した関数順に処理されるので順番は大事。
 
-### res.post()
-リクエストに対してレスポンスを返すときは ```res.post()``` を使用する。
+### res.send()
+リクエストに対してレスポンスを返すときは ```res.send()``` を使用する。
 ```js
-res.post(200, 'Hello Mixer')
+res.send(200, 'Hello Mixer')
 ```
-ほんとは ```res.send()``` にしたかったんだけど、これだと Nuxt.js とバッティングして Nuxt.js が上手く動かなかったので、今の所泣く泣く ```res.post()``` にしている。悔しいのでなんか考える。
+後述するが、 ```res.send()``` は Nuxt.js とバッティングして Nuxt.js が上手く動かなくなる。よってNuxt.js の前に ```delete res.send``` をしておく必要がある。なんかいい方法考える。
 
 
 # Examples
@@ -68,7 +68,7 @@ const sleep = (msec) => new Promise(resolve => setTimeout(resolve, msec))
 
 const app = new mixer(async (req, res) => {
   await sleep(3000)
-  res.post(200, 'Good Morning Mixer')
+  res.send(200, 'Good Morning Mixer')
 })
 
 app.listen(3000)
@@ -85,12 +85,12 @@ const { Nuxt, Builder } = require('nuxt')
 // Create nuxt instance with nuxt config
 const config = require('../nuxt.config.js')
 const nuxt = new Nuxt(config)
-
 // Enable live build & reloading on dev
 if (nuxt.options.dev) {
   new Builder(nuxt).build()
 }
 
+delete res.send
 const app = new mixer(nuxt.render)
 
 app.listen(3000)
