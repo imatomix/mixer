@@ -17,6 +17,15 @@ const app = new mixer((req, res) => {
 app.listen(3000)
 ```
 
+値を返したいだけならこれでもいい。
+
+```js
+const mixer = require('mixer')
+const app = new mixer(() => 'Hello Mixer'))
+
+app.listen(3000)
+```
+
 ### mix()
 
 ```mix()```で、リクエストを受け取った時に実行する関数を足すことが出来る。
@@ -24,9 +33,7 @@ app.listen(3000)
 const mixer = require('mixer')
 const app = new mixer()
 
-app.mix((req, res) => {
-  res.post(200, 'Hello Mixer')
-})
+app.mix(() => 'Hello Mixer'))
 
 app.listen(3000)
 ```
@@ -101,6 +108,7 @@ app.listen(3000)
 
 - [mix-router](https://github.com/imatomix/mix-router) : ルーティング機能
 - [mix-static](https://github.com/imatomix/mix-static) : 静的ファイルのサーブ
+- [mix-logger](https://github.com/imatomix/mix-logger) : logger
 - [mix-favicon](https://github.com/imatomix/mix-favicon) : faviconのサーブ
-- mix-cors : cors処理（作ろうかな）
+- [mix-cors](https://github.com/imatomix/mix-cors) : cors処理
 - mix-csrf : csrf処理（作ろうかな）
