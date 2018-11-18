@@ -82,16 +82,16 @@ app.listen(3000)
 const mixer = require('mixer')
 const { Nuxt, Builder } = require('nuxt')
 
-// Create nuxt instance with nuxt config
 const config = require('../nuxt.config.js')
 const nuxt = new Nuxt(config)
-// Enable live build & reloading on dev
 if (nuxt.options.dev) {
   new Builder(nuxt).build()
 }
 
-delete res.send
-const app = new mixer(nuxt.render)
+const app = new mixer((req, res) => {
+  delete res.send // Nuxt.jsでは邪魔になるので消しておく
+  nuxt.render
+})
 
 app.listen(3000)
 
