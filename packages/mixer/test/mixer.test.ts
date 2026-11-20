@@ -362,3 +362,84 @@ describe('サーバ', () => {
     }
   })
 })
+
+describe('onBeforeSend', () => {
+  it('応答の直前に登録順で実行し、ヘッダを追加できる', async () => {
+    const url = await serve((app) =>
+      app
+        .mix((ctx) => {
+          ctx.onBeforeSend(() => {
+            ctx.res.appendHeader('x-order', 'first')
+          })
+          ctx.onBeforeSend(async () => {
+            await Promise.resolve()
+            ctx.res.appendHeader('x-order', 'second')
+          })
+        })
+        .mix(() => 'ok'),
+    )
+    const res = await fetch(url)
+    expect(res.headers.get('x-order')).toBe('first, second')
+    expect(await res.text()).toBe('ok')
+  })
+
+  it('後続のコンポーネントが変えた状態をフックで参照できる', async () => {
+    const url = await serve<{ visits?: number }>((app) =>
+      app
+        .mix((ctx) => {
+          ctx.onBeforeSend(() => {
+            ctx.res.setHeader('x-visits', String(ctx.state.visits))
+          })
+        })
+        .mix((ctx) => {
+          ctx.state.visits = 3
+          return 'ok'
+        }),
+    )
+    expect((await fetch(url)).headers.get('x-visits')).toBe('3')
+  })
+
+  it('フックで ctx.status を変更できる', async () => {
+    const url = await serve((app) =>
+      app.mix((ctx) => {
+        ctx.onBeforeSend(() => {
+          ctx.status = 202
+        })
+        return 'ok'
+      }),
+    )
+    expect((await fetch(url)).status).toBe(202)
+  })
+
+  it('エラー応答の前にも実行する', async () => {
+    const url = await serve((app) =>
+      app.mix((ctx) => {
+        ctx.onBeforeSend(() => {
+          ctx.res.setHeader('x-hooked', 'yes')
+        })
+        throw new HttpError(400)
+      }),
+    )
+    const res = await fetch(url)
+    expect(res.status).toBe(400)
+    expect(res.headers.get('x-hooked')).toBe('yes')
+  })
+
+  it('フックが失敗したら 500 を返し、フックを再実行しない', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let calls = 0
+    const url = await serve((app) =>
+      app.mix((ctx) => {
+        ctx.onBeforeSend(() => {
+          calls++
+          throw new Error('hook failed')
+        })
+        return 'ok'
+      }),
+    )
+    const res = await fetch(url)
+    expect(res.status).toBe(500)
+    expect(calls).toBe(1)
+    consoleError.mockRestore()
+  })
+})

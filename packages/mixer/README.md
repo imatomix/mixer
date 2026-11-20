@@ -53,6 +53,7 @@ app.mix(fn, fn, fn)
 | `await ctx.body()` | Content-Type に応じて解析したボディ |
 | `await ctx.text()` / `await ctx.buffer()` | ボディを文字列 / Buffer で取得 |
 | `ctx.send(status, body?)` | その場でレスポンスを返す |
+| `ctx.onBeforeSend(fn)` | 応答の直前に実行する処理を登録する（後述） |
 
 ### レスポンス
 
@@ -73,6 +74,34 @@ app.mix((ctx) => {
   return { created: true }
 })
 ```
+
+### ctx.onBeforeSend()
+
+応答を送る直前に実行する処理を登録する。登録した順に実行され、ヘッダや `ctx.status` を変更できる。
+後続のコンポーネントが変えた状態を、応答直前にまとめて反映したいとき（セッションの Cookie など）に使う。
+
+```ts
+app
+  .mix((ctx) => {
+    ctx.onBeforeSend(() => {
+      ctx.res.setHeader('Set-Cookie', serialize(ctx.state.session))
+    })
+  })
+  .mix((ctx) => {
+    ctx.state.session = { user: 'imatomix' }
+    return 'ok'
+  })
+```
+
+- 戻り値による応答、`ctx.send()`、エラー応答のいずれでも実行される
+- フックが例外を投げると 500 になる（フックは再実行されない）
+- `ctx.res` に直接書き込んで応答した場合は実行されない
+
+### ctx.res を直接使う
+
+`ctx.res` に直接書き込んでヘッダを送った時点で、mixer は応答済みとみなし、後続のコンポーネントを実行しない。
+Server-Sent Events のように書き続けるケースがあるため、mixer は `end()` を代わりに呼ばない。
+自分で書き始めたら、自分で `end()` すること。
 
 ### リクエストボディ
 
@@ -108,7 +137,7 @@ app
 
 ### エラー処理
 
-`HttpError` を投げるとそのステータスで `{ "error": message }` を返す。
+`HttpError` を投げるとそのステータスで `{ "error": message }` を返す（status は 400〜599）。
 それ以外の例外は `500` になり、詳細はクライアントに見せずに `console.error` に出す。
 
 ```ts
@@ -119,7 +148,7 @@ app.mix((ctx) => {
 })
 ```
 
-`onError` でエラーレスポンスを差し替えられる。
+`onError` でエラーレスポンスを差し替えられる。`onError` が応答しなかった場合は既定のレスポンスになる。
 
 ```ts
 const app = new Mixer({

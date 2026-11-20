@@ -1,5 +1,5 @@
 export type { FormBody } from './body.js'
-export { Context, type State } from './context.js'
+export { type BeforeSendHook, Context, type State } from './context.js'
 export { HttpError } from './errors.js'
 export {
   type Component,

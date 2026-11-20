@@ -4,6 +4,8 @@ import { sendResponse } from './send.js'
 
 export type State = Record<string, unknown>
 
+export type BeforeSendHook = () => void | Promise<void>
+
 export class Context<S extends State = State> {
   readonly req: IncomingMessage
   readonly res: ServerResponse
@@ -14,6 +16,7 @@ export class Context<S extends State = State> {
 
   #bodyLimit: number
   #buffer: Promise<Buffer> | undefined
+  #beforeSendHooks: BeforeSendHook[] = []
 
   constructor(req: IncomingMessage, res: ServerResponse, bodyLimit: number) {
     this.req = req
@@ -42,8 +45,21 @@ export class Context<S extends State = State> {
     return parseBody(await this.buffer(), this.req.headers['content-type']) as T
   }
 
-  send(status: number, body?: unknown): Promise<void> {
+  /**
+   * `send()` で応答する直前に実行する処理を登録する（Cookie の付与など）。
+   * `ctx.res` に直接書き込んで応答した場合は実行されない
+   */
+  onBeforeSend(hook: BeforeSendHook): void {
+    this.#beforeSendHooks.push(hook)
+  }
+
+  async send(status: number, body?: unknown): Promise<void> {
     this.status = status
-    return sendResponse(this.res, status, body)
+    // 先に取り出しておくことで、フックが失敗してエラー応答になったときに再実行されない
+    const hooks = this.#beforeSendHooks.splice(0)
+    for (const hook of hooks) {
+      await hook()
+    }
+    await sendResponse(this.res, this.status, body)
   }
 }
