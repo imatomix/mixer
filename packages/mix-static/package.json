@@ -1,8 +1,29 @@
 {
   "name": "@imatomix/mix-static",
-  "version": "0.0.1",
-  "description": "Serve static files",
-  "main": "./lib/index.js",
+  "version": "0.1.0",
+  "description": "Serve static files for mixer",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+  },
   "keywords": [
     "mixer",
     "serve",
@@ -15,5 +36,15 @@
     "type": "git",
     "url": "git+https://github.com/imatomix/mixer.git",
     "directory": "packages/mix-static"
+  },
+  "peerDependencies": {
+    "@imatomix/mixer": "^0.1.0"
+  },
+  "devDependencies": {
+    "@imatomix/mixer": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
