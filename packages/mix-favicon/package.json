@@ -1,0 +1,20 @@
+{
+  "name": "mix-favicon",
+  "version": "0.0.1",
+  "description": "serve favicon",
+  "main": "./lib/index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mixer",
+    "favicon",
+    "serve",
+    "mix"
+  ],
+  "author": "Keita Imatomi",
+  "license": "MIT"
+}
