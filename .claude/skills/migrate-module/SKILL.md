@@ -27,7 +27,8 @@ description: packages/mix-* の古い JS モジュール（(req, res) 形式の 
   - `peerDependencies: { "@imatomix/mixer": "^0.1.0" }`
   - `devDependencies`: `"@imatomix/mixer": "workspace:*"` と、`catalog:` 指定の `@types/node` / `tsup` / `typescript` / `vitest`
   - version は `0.1.0`
-- `tsconfig.json`（`../../tsconfig.base.json` を extends）、`tsconfig.build.json`、`tsup.config.ts` を mixer からコピーする
+- `tsconfig.json`（`../../tsconfig.base.json` を extends）、`tsconfig.build.json`、`tsup.config.ts`、`vitest.config.ts` を mixer からコピーする
+  - `vitest.config.ts` は monorepo 内で mixer を `src` から解決するために必要（`@imatomix/source` condition）
 - `pnpm install` を実行する
 
 ## 3. テストを書いてから実装する
@@ -43,7 +44,8 @@ description: packages/mix-* の古い JS モジュール（(req, res) 形式の 
 
 ## 5. 確認とコミット
 
-- `pnpm check` と `pnpm --filter @imatomix/<name> build` を通す
+- `pnpm format` と `pnpm check`、`pnpm --filter @imatomix/<name> build` を通す
+- `dist/index.js` が mixer の公開 API 以外を import していないことを確認する
 - コミットを分ける（例）:
   1. `build(<name>): TypeScript の開発環境を追加`
   2. `feat(<name>)!: ctx 形式の TypeScript に移行する`（直したバグを本文に列挙する）

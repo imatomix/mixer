@@ -17,18 +17,24 @@ pnpm --filter @imatomix/<name> test  # 特定パッケージのみ
 pnpm format                          # biome で自動整形
 ```
 
+コミットの前に `pnpm format` と `pnpm check` を必ず通す。
+
 ## 設計原則
 
 既存の `lib/*.js` は作者が昔、学習目的で書いたもので、設計の誤りも含みうる。**旧 API の再現を目標にしない**。拡張性・保守性・セキュリティの観点から、より良い設計があれば積極的に提案する。選択肢を挙げるときは、理由付きで推奨を 1 つ示す。
 
 ユーザーが「必要なものだけ選べる」「別の実装に差し替えられる」ことを最優先にする。
 
-- mix-* は mixer に `peerDependencies` で依存し、原則 `import type` のみ使う（実行時に mixer のコードを読み込まない）
+- mix-* は mixer に `peerDependencies` で依存する（アプリ内の mixer の実体を 1 つに保ち、`instanceof HttpError` などが正しく働くようにする）
   - `devDependencies` には `"@imatomix/mixer": "workspace:*"` を入れる
+  - peer の版範囲は、実際に使っている mixer の API が入った版以上にする（例: `onBeforeSend` を使うならそれが入った版）
+- mixer の**公開 API**（`src/index.ts` から export されているもの）は実行時にも使ってよい（`HttpError` など）。内部実装には依存しない
+- エラーで応答するときは `ctx.send()` で直接返さず `HttpError` を投げる。ユーザーが `onError` でまとめて差し替えられるようにするため
 - mix-* 同士は依存しない。他のモジュールの存在を前提にしない
 - 各モジュールは「オプションを受け取り `Component` を返す関数」を named export する（例: `cors(options)`）。default export は使わない
 - `ctx.req` / `ctx.res` に独自プロパティを足さない。後続に値を渡すときは `ctx.state` を使い、その型を export する
 - 応答するなら値を return するか `ctx.send()`、次のコンポーネントに進むなら `undefined` を返す
+- 応答直前に処理が必要なら `ctx.onBeforeSend()`、応答後の観測（ログなど）は `ctx.res` の `finish` / `close` イベントを使う
 
 ## mixer の API を変えたくなったら
 
