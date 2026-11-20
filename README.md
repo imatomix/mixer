@@ -7,6 +7,7 @@ Minimal & asynchronous web module と、その周辺モジュールの monorepo�
 | パッケージ | 説明 |
 | --- | --- |
 | [@imatomix/mixer](packages/mixer) | 本体 |
+| [@imatomix/mix-router](packages/mix-router) | 型安全なルーター |
 
 ## Development
 

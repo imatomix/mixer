@@ -1,119 +1,133 @@
-# mix-router
+# @imatomix/mix-router
 
-Simple router for [mixer](https://github.com/imatomix/mixer)
+Type-safe router for [mixer](../mixer).
 
 デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
 仕様は気紛れに変わります。
 
+## Install
+
+```sh
+npm install @imatomix/mixer @imatomix/mix-router
+```
+
 ## Usage
 
-ルーティングの定義
+```ts
+import { Mixer } from '@imatomix/mixer'
+import { all, get } from '@imatomix/mix-router'
 
-```js
-const mixer = require('mixer')
-const { get } = require('mix-router')
-
-const app = new mixer()
-const juice = (req, res) => res.post(200, `${req.params.fruit} juice`)
-const notfound = (req, res) => res.post(404, 'Not found route')
+const app = new Mixer()
 
 app.mix(
-  get('/mix/:fruit', juice),
-  get('/*', notfound)
-).listen(3000)
+  get('/mix/:fruit', (ctx, { fruit }) => `${fruit} juice`),
+  all('/*', (ctx) => ctx.send(404, 'Not found route')),
+)
+
+await app.listen(3000)
 ```
 
-### methods
-```http.METHODS``` 分あるけど、代表的なのは以下の通り。ただし、```get()``` は自動的に ```HEAD``` も受け取るようにしている。
+ルートは mixer の Component なので、そのまま `mix()` に渡せる。
+パスとメソッドが一致しなければ何もせず、次のコンポーネントへ進む。
 
-```js
-get('/route', (req, res) => {})
-```
-```js
-post('/route', (req, res) => {})
-```
-```js
-put('/route', (req, res) => {})
-```
-```js
-patch('/route', (req, res) => {})
-```
-```js
-del('/route', (req, res) => {})
-```
-```js
-head('/route', (req, res) => {})
-```
-```js
-options('/route', (req, res) => {})
+## メソッド
+
+```ts
+get('/route', handler) // GET と HEAD
+post('/route', handler)
+put('/route', handler)
+patch('/route', handler)
+del('/route', handler) // DELETE
+head('/route', handler)
+options('/route', handler)
+all('/route', handler) // すべてのメソッド
+route(['PROPFIND', 'MKCOL'], '/route', handler) // 任意のメソッド
 ```
 
-### namespace
+## パスパターン
 
-ルーティングを階層化して管理する
+| パターン | マッチ例 | params |
+| --- | --- | --- |
+| `/users` | `/users`, `/users/` | `{}` |
+| `/users/:id` | `/users/42` | `{ id: '42' }` |
+| `/files/*` | `/files`, `/files/a/b.txt` | `{ '*': 'a/b.txt' }` |
 
-```js
-const mixer = require('mixer')
-const {namespace, get} = require('mix-router')
+- `*` はパスの末尾にだけ置ける
+- params の各値は URL デコード済み（`/mix/%E3%82%8A%E3%82%93%E3%81%94` → `{ fruit: 'りんご' }`）
+- クエリは mixer の `ctx.url.searchParams` で読む
 
-const app = new mixer()
-const apiV1 = namespace('/api/v1')
-const apiV2 = namespace('/api/v2')
+### 型推論
 
-const notfound = (req, res) => res.post(404, 'Not found route')
+params の型はパスの文字列から推論される。存在しないパラメータを参照すると型エラーになる。
+
+```ts
+get('/users/:userId/posts/:postId', (ctx, params) => {
+  params.userId // string
+  params.name // 型エラー
+})
+```
+
+### 安全性
+
+次のようなパスは、どのルートにもマッチしない（最終的に mixer の 404 になる）。
+
+- 不正な URL エンコーディング
+- デコードすると `/` や NUL 文字になるセグメント（`/files/..%2F..%2Fetc` など）
+
+`..` などのドットセグメントは、URL の解析時に正規化されている。
+params はプロトタイプを持たないオブジェクト。
+
+## ハンドラを複数並べる
+
+ハンドラは `(ctx, params)` を受け取り、mixer と同じく**値を返したところで止まる**。
+`undefined` を返すと次のハンドラへ進む。普通の Component もそのまま並べられる。
+
+```ts
+const requireAuth = (ctx) => {
+  if (!ctx.req.headers.authorization) return ctx.send(401, 'Unauthorized')
+}
+
+get('/admin/users/:id', requireAuth, (ctx, { id }) => findUser(id))
+```
+
+## namespace
+
+ルートの先頭に共通のパスを付ける。入れ子にもできる。
+
+```ts
+import { get, namespace } from '@imatomix/mix-router'
+
+const api = namespace('/api')
+const v1 = namespace('/v1')
 
 app.mix(
-  apiV1(get('/', (req, res) => { res.post(200, 'API V1') })),
-  apiV2(get('/', (req, res) => { res.post(200, 'API V2') })),
-  ('/*', notfound)
-).listen(3000)
-```
-
-## req.params
-
-ルートティング内に```:```で始まるワードを用いた場合は、そのワードをキーとして、リクエスト時のワードを値に、 ```req.params``` に追加される。
-
-```js
-const mixer = require('mixer')
-const { get } = require('mix-router')
-
-const app = new mixer(
-  get('/mix/:fruit', (req, res) => res.post(200, req.params))
+  api(
+    v1(get('/', () => 'API V1')), // GET /api/v1
+    get('/health', () => 'ok'), // GET /api/health
+  ),
 )
-  
-app.listen(3000)
-
-// GET: http://localhost:3000/mix/apple へのレスポンス
-// {"fruit":"apple"}
 ```
 
-## req.query
-クエリは ```req.query``` に追加される
+namespace のパスに `:param` や `*` は使えない。
+ハンドラの params の型にその値が現れず、型と実際の値がずれてしまうため。
 
-```js
-const mixer = require('mixer')
-const { get } = require('mix-router')
+## 独自の State を使う
 
-const app = new mixer(
-  get('/mix', (req, res) => res.post(200, req.query))
-)
-  
-app.listen(3000)
+```ts
+type AppState = { user?: string }
 
-// GET: http://localhost:3000/mix?fruit=apple へのレスポンス
-// {"fruit":"apple"}
+const app = new Mixer<AppState>()
+app.mix(get<'/me', AppState>('/me', (ctx) => ctx.state.user))
 ```
 
-## ToDo
-勉強中
-- 足りない部分を探すところから
-- 冗長な箇所の改善
-- テスト
+## v0.0.x からの移行
 
-## mix modules
-
-- [mixer](https://github.com/imatomix/mixer) : サーバー処理
-- [mix-static](https://github.com/imatomix/mix-static) : 静的ファイルのサーブ
-- [mix-favicon](https://github.com/imatomix/mix-favicon) : faviconのサーブ
-- mix-cors : cors処理（作ろうかな）
-- mix-csrf : csrf処理（作ろうかな）
+| v0.0.x | v0.1 |
+| --- | --- |
+| `const { get } = require('mix-router')` | `import { get } from '@imatomix/mix-router'` |
+| `get(path, (req, res) => {})` | `get(path, (ctx, params) => {})` |
+| `req.params.fruit` | 第2引数の `params.fruit` |
+| `req.query.q` | `ctx.url.searchParams.get('q')` |
+| `namespace(prefix)(...routes)` | 同じ（入れ子でもパスが正しく連結されるようになった） |
+| `mkcalendar()` などのその他のメソッド | `route('MKCALENDAR', path, handler)` |
+| `res.post(200, x)` | `return x` または `ctx.send(200, x)` |
