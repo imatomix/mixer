@@ -248,6 +248,28 @@ describe('リクエストボディ', () => {
     expect(await res.json()).toEqual({ body: { a: '1', b: ['2', '3'] } })
   })
 
+  it('__proto__ や constructor もただのキーとして扱う', async () => {
+    const url = await serve((app) =>
+      app.mix(async (ctx) => {
+        const body = (await ctx.body()) as Record<string, unknown>
+        return {
+          keys: Object.keys(body),
+          proto: Object.getPrototypeOf(body),
+          body,
+        }
+      }),
+    )
+    const res = await fetch(url, {
+      method: 'POST',
+      body: new URLSearchParams('__proto__=x&constructor=y&constructor=z'),
+    })
+    expect(await res.json()).toEqual({
+      keys: ['__proto__', 'constructor'],
+      proto: null,
+      body: { ['__proto__']: 'x', constructor: ['y', 'z'] },
+    })
+  })
+
   it('text/* は文字列として扱う', async () => {
     const url = await serve(echoBody)
     const res = await fetch(url, { method: 'POST', body: 'plain text' })

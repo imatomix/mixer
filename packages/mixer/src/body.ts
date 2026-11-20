@@ -79,7 +79,8 @@ export function parseBody(
 }
 
 function parseForm(text: string): FormBody {
-  const form: FormBody = {}
+  // 通常のオブジェクトだと __proto__ でプロトタイプが書き換わり、constructor などの継承値と混ざる
+  const form: FormBody = Object.create(null)
   for (const [key, value] of new URLSearchParams(text)) {
     const existing = form[key]
     if (existing === undefined) {
