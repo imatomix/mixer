@@ -59,6 +59,8 @@ importers:
 
   packages/mix-session: {}
 
+  packages/mix-static: {}
+
   packages/mixer:
     devDependencies:
       '@types/node':
