@@ -2,6 +2,7 @@ import type { Context, State } from '@imatomix/mixer'
 import type { Params } from './params.js'
 import {
   compilePattern,
+  decodePath,
   hasDynamicSegment,
   matchPattern,
   type Pattern,
@@ -71,7 +72,9 @@ function createMatcher<Path extends string, S extends State>(
       pattern = compilePattern(prefix + path)
       patterns.set(prefix, pattern)
     }
-    const params = matchPattern(pattern, splitPath(ctx.url.pathname))
+    const segments = decodePath(ctx.url.pathname)
+    if (!segments) return undefined
+    const params = matchPattern(pattern, segments)
     if (!params) return undefined
 
     for (const handler of handlers) {
@@ -120,4 +123,35 @@ export function namespace(prefix: string) {
       }
       return undefined
     })
+}
+
+type MethodRouteOf<S extends State> = <Path extends string>(
+  path: Path,
+  ...handlers: RouteHandler<Params<Path>, S>[]
+) => Route<S>
+
+/** State の型を固定したルート関数一式 */
+export interface Router<S extends State> {
+  get: MethodRouteOf<S>
+  post: MethodRouteOf<S>
+  put: MethodRouteOf<S>
+  patch: MethodRouteOf<S>
+  del: MethodRouteOf<S>
+  head: MethodRouteOf<S>
+  options: MethodRouteOf<S>
+  all: MethodRouteOf<S>
+  route: <Path extends string>(
+    methods: string | readonly string[],
+    path: Path,
+    ...handlers: RouteHandler<Params<Path>, S>[]
+  ) => Route<S>
+  namespace: (prefix: string) => (...routes: Route<S>[]) => Route<S>
+}
+
+/**
+ * `const { get } = createRouter<AppState>()` のように使うと、
+ * ハンドラの `ctx.state` に型が付く（`get<'/path', AppState>(...)` と書かずに済む）
+ */
+export function createRouter<S extends State = State>(): Router<S> {
+  return { get, post, put, patch, del, head, options, all, route, namespace }
 }

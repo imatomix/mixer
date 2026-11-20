@@ -117,6 +117,20 @@ describe('パスパターン', () => {
     expect(() => get('/a/*/b', () => null)).toThrow()
   })
 
+  it.each(['/users/:', '/a/:id/b/:id', '/a/:user-id', '/a/:1st'])(
+    '不正なパラメータ名（%s）は定義時にエラーになる',
+    (path) => {
+      expect(() => get(path, () => null)).toThrow()
+    },
+  )
+
+  it('パーセントエンコードされた固定パスも同じパスとして扱う', async () => {
+    const url = await serve(
+      get(`/${encodeURIComponent('ジュース')}`, () => 'encoded'),
+    )
+    expect(await (await fetch(`${url}/ジュース`)).text()).toBe('encoded')
+  })
+
   it('クエリは ctx.url.searchParams で読める', async () => {
     const url = await serve(
       get('/search', (ctx) => ctx.url.searchParams.get('q')),
@@ -140,9 +154,9 @@ describe('安全性', () => {
     expect((await fetch(`${url}/files/a%00b`)).status).toBe(404)
   })
 
-  it('不正なエンコーディングはマッチしない扱いにする', async () => {
+  it('不正なエンコーディングには 400 を返す', async () => {
     const url = await serve(get('/files/:name', (_ctx, { name }) => name))
-    expect((await fetch(`${url}/files/%E3%81`)).status).toBe(404)
+    expect((await fetch(`${url}/files/%E3%81`)).status).toBe(400)
   })
 
   it('params はプロトタイプを持たない', async () => {

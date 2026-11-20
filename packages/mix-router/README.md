@@ -53,6 +53,8 @@ route(['PROPFIND', 'MKCOL'], '/route', handler) // 任意のメソッド
 | `/files/*` | `/files`, `/files/a/b.txt` | `{ '*': 'a/b.txt' }` |
 
 - `*` はパスの末尾にだけ置ける
+- パラメータ名は JavaScript の識別子として使える名前（`:userId` など）で、1 つのパスの中で重複できない。違反すると定義時にエラーになる
+- 固定部分もデコードしてから比べるので、`/ジュース` と `/%E3%82%B8%E3%83%A5%E3%83%BC%E3%82%B9` は同じパス
 - params の各値は URL デコード済み（`/mix/%E3%82%8A%E3%82%93%E3%81%94` → `{ fruit: 'りんご' }`）
 - クエリは mixer の `ctx.url.searchParams` で読む
 
@@ -69,10 +71,8 @@ get('/users/:userId/posts/:postId', (ctx, params) => {
 
 ### 安全性
 
-次のようなパスは、どのルートにもマッチしない（最終的に mixer の 404 になる）。
-
-- 不正な URL エンコーディング
-- デコードすると `/` や NUL 文字になるセグメント（`/files/..%2F..%2Fetc` など）
+- 不正な URL エンコーディング（`/files/%E3%81` など）は `400 Bad Request` になる（mixer の `HttpError` を投げるので、`onError` で差し替えられる）
+- デコードすると `/` や NUL 文字になるセグメント（`/files/..%2F..%2Fetc` など）は、どのルートにもマッチしない（最終的に mixer の 404 になる）
 
 `..` などのドットセグメントは、URL の解析時に正規化されている。
 params はプロトタイプを持たないオブジェクト。
@@ -113,11 +113,17 @@ namespace のパスに `:param` や `*` は使えない。
 
 ## 独自の State を使う
 
+`createRouter<State>()` で、`ctx.state` に型が付いたルート関数一式を作れる。
+
 ```ts
+import { createRouter } from '@imatomix/mix-router'
+
 type AppState = { user?: string }
 
+const { get, post, namespace } = createRouter<AppState>()
+
 const app = new Mixer<AppState>()
-app.mix(get<'/me', AppState>('/me', (ctx) => ctx.state.user))
+app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined
 ```
 
 ## v0.0.x からの移行

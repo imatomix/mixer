@@ -1,13 +1,28 @@
 import { Mixer } from '@imatomix/mixer'
 import { expect, it } from 'vitest'
-import { get, namespace } from '../src/index.js'
+import { createRouter } from '../src/index.js'
+import { serve } from './helpers.js'
 
-it('独自の State を持つ Mixer にもルートを mix できる', () => {
-  type AppState = { user?: string }
+type AppState = { user?: string }
+
+it('createRouter で State の型を指定したルートを作れる', async () => {
+  const { get, namespace } = createRouter<AppState>()
   const app = new Mixer<AppState>()
   app.mix(
-    get<'/me', AppState>('/me', (ctx) => ctx.state.user),
-    namespace('/api')(get('/ping', () => 'pong')),
+    (ctx) => {
+      ctx.state.user = 'imatomix'
+    },
+    namespace('/api')(get('/me', (ctx) => ctx.state.user)),
   )
   expect(app).toBeDefined()
+
+  const url = await serve(
+    (ctx) => {
+      ctx.state.user = 'imatomix'
+    },
+    namespace('/api')(
+      get('/users/:id', (ctx, { id }) => `${ctx.state.user}:${id}`),
+    ),
+  )
+  expect(await (await fetch(`${url}/api/users/1`)).text()).toBe('imatomix:1')
 })
