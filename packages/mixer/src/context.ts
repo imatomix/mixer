@@ -21,8 +21,7 @@ export class Context<S extends State = State> {
   constructor(req: IncomingMessage, res: ServerResponse, bodyLimit: number) {
     this.req = req
     this.res = res
-    // ホスト名は信頼できないので、パスとクエリを取り出すためだけに固定のベースを使う
-    this.url = new URL(req.url ?? '/', 'http://localhost')
+    this.url = parseRequestUrl(req.url ?? '/')
     this.method = req.method ?? 'GET'
     this.#bodyLimit = bodyLimit
   }
@@ -62,4 +61,15 @@ export class Context<S extends State = State> {
     }
     await sendResponse(this.res, this.status, body)
   }
+}
+
+/**
+ * ホスト名は信頼できないので、パスとクエリを取り出すためだけに固定のホストを使う。
+ * `new URL(target, base)` だと `//admin/x` がプロトコル相対 URL（host=admin）と解釈されるため、
+ * `/` で始まるものは文字列として連結してから解析する
+ */
+export function parseRequestUrl(target: string): URL {
+  if (target.startsWith('/')) return new URL(`http://localhost${target}`)
+  const url = new URL(target, 'http://localhost')
+  return new URL(`http://localhost${url.pathname}${url.search}`)
 }

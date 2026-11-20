@@ -1,3 +1,4 @@
+import { connect } from 'node:net'
 import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { HttpError, Mixer } from '../src/index.js'
@@ -441,5 +442,65 @@ describe('onBeforeSend', () => {
     expect(res.status).toBe(500)
     expect(calls).toBe(1)
     consoleError.mockRestore()
+  })
+})
+
+describe('ctx.url', () => {
+  it('// で始まるパスをホスト名として解釈しない', async () => {
+    const url = await serve((app) =>
+      app.mix((ctx) => ({ host: ctx.url.host, pathname: ctx.url.pathname })),
+    )
+    const res = await fetch(`${url}//admin/secret?x=1`)
+    expect(await res.json()).toEqual({
+      host: 'localhost',
+      pathname: '//admin/secret',
+    })
+  })
+  it('解析できないリクエストターゲットには 400 を返す', async () => {
+    const url = new URL(await serve((app) => app.mix(() => 'ok')))
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = connect(Number(url.port), url.hostname, () => {
+        socket.end(
+          'GET http://[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n',
+        )
+      })
+      let data = ''
+      socket.on('data', (chunk) => {
+        data += chunk
+      })
+      socket.on('end', () => resolve(data))
+      socket.on('error', reject)
+    })
+    expect(response).toMatch(/^HTTP\/1\.1 400/)
+  })
+})
+
+describe('HEAD', () => {
+  it('ストリームの body を読まずに破棄し、ヘッダだけを返す', async () => {
+    let read = false
+    let destroyed = false
+    const url = await serve((app) =>
+      app.mix((ctx) => {
+        ctx.res.setHeader('Content-Length', '5')
+        const stream = new Readable({
+          read() {
+            read = true
+            this.push('hello')
+            this.push(null)
+          },
+        })
+        stream.on('close', () => {
+          destroyed = true
+        })
+        return stream
+      }),
+    )
+    const res = await fetch(url, { method: 'HEAD' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-length')).toBe('5')
+    expect(await res.text()).toBe('')
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(read).toBe(false)
+    expect(destroyed).toBe(true)
   })
 })

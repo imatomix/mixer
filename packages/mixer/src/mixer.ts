@@ -44,7 +44,15 @@ export class Mixer<S extends State = State> {
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> => {
-    const ctx = new Context<S>(req, res, this.#bodyLimit)
+    let ctx: Context<S>
+    try {
+      ctx = new Context<S>(req, res, this.#bodyLimit)
+    } catch {
+      // 解析できないリクエストターゲット。ctx を作れないので onError は通さずに直接返す
+      res.statusCode = 400
+      res.end()
+      return
+    }
     try {
       await this.#run(ctx)
     } catch (error) {

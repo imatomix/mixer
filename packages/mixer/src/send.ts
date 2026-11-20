@@ -17,6 +17,12 @@ export async function sendResponse(
 
   if (body instanceof Readable) {
     setDefaultContentType(res, 'application/octet-stream')
+    // HEAD では body を送らないので、ファイルなどを無駄に最後まで読まない
+    if (res.req?.method === 'HEAD') {
+      body.destroy()
+      res.end()
+      return
+    }
     await pipeline(body, res)
     return
   }
