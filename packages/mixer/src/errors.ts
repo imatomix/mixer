@@ -3,6 +3,11 @@ export class HttpError extends Error {
   readonly expose: boolean
 
   constructor(status: number, message?: string, options?: ErrorOptions) {
+    if (!Number.isInteger(status) || status < 400 || status > 599) {
+      throw new RangeError(
+        `HttpError の status は 400〜599 の整数で指定してください: ${status}`,
+      )
+    }
     super(message ?? defaultMessage(status), options)
     this.name = 'HttpError'
     this.status = status

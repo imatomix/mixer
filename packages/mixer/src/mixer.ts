@@ -74,8 +74,9 @@ export class Mixer<S extends State = State> {
       await this.#onError(error, ctx)
     } catch (handlerError) {
       console.error(handlerError)
-      if (!ctx.sent) await defaultErrorHandler(handlerError, ctx)
     }
+    // onError が応答し忘れたり失敗したりしても、リクエストを宙ぶらりんにしない
+    if (!ctx.sent) await defaultErrorHandler(error, ctx)
   }
 
   listen(port = 0, hostname?: string): Promise<Server> {

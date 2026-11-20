@@ -202,6 +202,26 @@ describe('エラー処理', () => {
     expect(res.status).toBe(503)
     expect(await res.json()).toEqual({ message: 'boom' })
   })
+  it('onError が応答しなければ既定のエラーレスポンスを返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const url = await serve(
+      (app) =>
+        app.mix(() => {
+          throw new Error('boom')
+        }),
+      { onError: () => {} },
+    )
+    const res = await fetch(url)
+    expect(res.status).toBe(500)
+    consoleError.mockRestore()
+  })
+
+  it.each([200, 302, 99, 600, 404.5])(
+    'HttpError は 4xx・5xx 以外のステータス（%s）を受け付けない',
+    (status) => {
+      expect(() => new HttpError(status)).toThrow(RangeError)
+    },
+  )
 })
 
 describe('リクエストボディ', () => {
