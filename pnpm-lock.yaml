@@ -27,6 +27,16 @@ importers:
         specifier: ^2.6.8
         version: 2.6.8
 
+  packages/mix-cors: {}
+
+  packages/mix-favicon: {}
+
+  packages/mix-logger: {}
+
+  packages/mix-router: {}
+
+  packages/mix-session: {}
+
   packages/mixer:
     devDependencies:
       '@types/node':
