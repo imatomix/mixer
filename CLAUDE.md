@@ -15,9 +15,10 @@ pnpm check                           # lint + typecheck + test（全パッケー
 pnpm build
 pnpm --filter @imatomix/<name> test  # 特定パッケージのみ
 pnpm format                          # biome で自動整形
+pnpm verify:pack                     # npm pack した公開物を利用側としてインストールし、型と import を検証
 ```
 
-コミットの前に `pnpm format` と `pnpm check` を必ず通す。
+コミットの前に `pnpm format` と `pnpm check` を必ず通す。package.json の `exports` / `files` / 依存を変えたときは `pnpm verify:pack` も通す（monorepo 内のテストは src を参照するので、dist の不備に気づけない）。
 
 ## 設計原則
 
