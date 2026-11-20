@@ -47,6 +47,7 @@ description: packages/mix-* の古い JS モジュール（(req, res) 形式の 
 - `pnpm format` と `pnpm check`、`pnpm --filter @imatomix/<name> build` を通す
 - `dist/index.js` が mixer の公開 API 以外を import していないことを確認する
 - `pnpm verify:pack` を通す（移行したパッケージは自動で検証対象になる。mix-router のような組み合わせの動作確認が必要なら `scripts/verify-pack.mjs` に足す）
+- 削除済みの `lib/` を含めてステージするときは `git add -A <dir>` を使う（`git add <削除済みのパス>` は pathspec エラーになり、後続のコミットに削除が紛れ込む）。コミット後は `git show --stat` で中身を確かめる
 - コミットを分ける（例）:
   1. `build(<name>): TypeScript の開発環境を追加`
   2. `feat(<name>)!: ctx 形式の TypeScript に移行する`（直したバグを本文に列挙する）
