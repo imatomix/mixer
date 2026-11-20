@@ -1,65 +1,81 @@
-# mix-cors
+# @imatomix/mix-cors
 
-cors for [mixer](https://github.com/imatomix/mixer)
+CORS for [mixer](../mixer).
 
 デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
 仕様は気紛れに変わります。
 
+## Install
+
+```sh
+npm install @imatomix/mixer @imatomix/mix-cors
+```
+
 ## Usage
 
-```js
-const mixer = require('mixer')
-const cors = require('mix-cors')
+```ts
+import { Mixer } from '@imatomix/mixer'
+import { cors } from '@imatomix/mix-cors'
 
-const app = new mixer(cors())
+const app = new Mixer()
 
-app.mix(() => 'cors is mixed!').listen(3000)
+app.mix(cors(), () => 'cors is mixed!')
+
+await app.listen(3000)
 ```
 
-- option設定時
+ルーターなどより**前に** mix する。
 
-```js
-const mixer = require('mixer')
-const cors = require('mix-cors')
+## Options
 
-const app = new mixer(cors({
-  allowMethods: ['GET', 'POST', 'PUT']
-}))
-
-app.mix(() => 'cors is mixed!').listen(3000)
+```ts
+cors({
+  origin: ['https://example.com', /^https:\/\/[a-z]+\.example\.com$/],
+  credentials: true,
+  exposeHeaders: ['X-Total-Count'],
+})
 ```
 
-### Options
+| オプション | 初期値 | 説明 |
+| --- | --- | --- |
+| `origin` | `'*'` | 許可する Origin。文字列・正規表現・それらの配列・関数 `(origin, ctx) => boolean \| Promise<boolean>` |
+| `credentials` | `false` | Cookie などの資格情報付きリクエストを許可する |
+| `methods` | `['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']` | preflight で許可するメソッド |
+| `allowHeaders` | リクエストされたヘッダをそのまま許可 | preflight で許可するリクエストヘッダ |
+| `exposeHeaders` | なし | ブラウザの JavaScript から読めるようにするレスポンスヘッダ |
+| `maxAge` | `600` | preflight の結果をブラウザがキャッシュする秒数（Chrome は 7200 秒が上限） |
 
-#### allowMethods
-default: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']
+### origin の注意
 
-#### allowHeaders
-default: ['Accept','Content-Type']
+- 文字列は完全一致で比べる。`'https://example.com'` は `https://example.com.evil` に一致しない
+- 正規表現は `^` と `$` で両端を固定すること。`/example\.com/` は `https://example.com.evil` にも一致してしまう
+- `'*'` 以外を指定すると、一致した Origin をそのまま返し、`Vary: Origin` を付ける（キャッシュが別の Origin に使い回さないように）
 
-#### allowCredentials
-default: true
+### `origin: '*'` と `credentials: true` は併用できない
 
-#### exposeHeaders
-default: null
+ブラウザはこの組み合わせを拒否する。送られてきた Origin をそのまま返して回避すると、どのサイトからでも資格情報付きでレスポンスを読めてしまう。
+そのため `cors()` を呼んだ時点でエラーにしている。資格情報を使うときは許可する Origin を明示する。
 
-#### maxAge
-default: 86400 // 24hours 
+## 振る舞い
 
-#### origin
-default: *
+| リクエスト | 動作 |
+| --- | --- |
+| `Origin` ヘッダなし（同一オリジンなど） | 何もせず次へ進む |
+| preflight（`OPTIONS` + `Origin` + `Access-Control-Request-Method`） | その場で `204` を返して完結する。許可しない Origin には CORS ヘッダを付けない |
+| それ以外 | 許可した Origin なら CORS ヘッダを付けて次へ進む |
 
-## ToDo
-勉強中
-- エラーハンドリング
-- README書く
-- テスト
+- preflight は後続のコンポーネントに流れないので、アプリ側で OPTIONS を意識しなくてよい
+- preflight ではない `OPTIONS` は横取りしない（mix-router の `options()` などがそのまま動く）
+- 付けたヘッダは、後続で `HttpError` になったときのエラー応答にも残る（ブラウザからエラー内容を読める）
 
-## mix modules
+## v0.0.x からの移行
 
-- [mixer](https://github.com/imatomix/mixer) : サーバー処理
-- [mix-router](https://github.com/imatomix/mix-router) : ルーティング機能
-- [mix-static](https://github.com/imatomix/mix-static) : 静的ファイルのサーブ
-- [mix-favicon](https://github.com/imatomix/mix-favicon) : faviconのサーブ
-- [mix-logger](https://github.com/imatomix/mix-logger) : logger
-- mix-csrf : csrf処理（作ろうかな）
+| v0.0.x | v0.1 |
+| --- | --- |
+| `const cors = require('mix-cors')` | `import { cors } from '@imatomix/mix-cors'` |
+| `allowCredentials`（初期値 `true`） | `credentials`（初期値 `false`） |
+| `allowMethods` | `methods`（`OPTIONS` は不要になったので初期値から外した） |
+| `allowHeaders`（初期値 `['Accept', 'Content-Type']`） | 初期値はリクエストされたヘッダをそのまま許可 |
+| `maxAge`（初期値 86400） | 初期値 600 |
+| `origin` は文字列のみ | 文字列・正規表現・配列・関数 |
+| すべての OPTIONS を preflight 扱い（応答はしない） | 本物の preflight だけを 204 で完結させる |
