@@ -15,11 +15,15 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "verify:pack": "node scripts/verify-pack.mjs",
     "check:pr-title": "node scripts/check-pr-title.mjs",
-    "verify:pack:bun": "node scripts/verify-pack.mjs --runtime=bun"
+    "verify:pack:bun": "node scripts/verify-pack.mjs --runtime=bun",
+    "verify:pack:workers": "node scripts/verify-pack.mjs --runtime=workers"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
-    "vitest": "catalog:",
-    "typescript": "catalog:"
+    "@cloudflare/workers-types": "^5.20261121.1",
+    "esbuild": "^0.28.2",
+    "miniflare": "^4.20260730.0",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
