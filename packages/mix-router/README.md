@@ -16,20 +16,22 @@ npm install @imatomix/mixer @imatomix/mix-router
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { all, get } from '@imatomix/mix-router'
 
 const app = new Mixer()
 
 app.mix(
   get('/mix/:fruit', (ctx, { fruit }) => `${fruit} juice`),
-  all('/*', (ctx) => ctx.send(404, 'Not found route')),
+  all('/*', () => new Response('Not found route', { status: 404 })),
 )
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 A route is a mixer Component, so it can be passed to `mix()` as is.
 When the path or method does not match, it does nothing and hands over to the next component.
+Routes match mixer's `ctx.path`, so with `new Mixer({ basePath: '/api' })` you write the paths below `/api`.
 
 ## Methods
 
@@ -88,7 +90,7 @@ Returning `undefined` hands over to the next handler. Plain Components can be us
 import { HttpError } from '@imatomix/mixer'
 
 const requireAuth = (ctx) => {
-  if (!ctx.req.headers.authorization) throw new HttpError(401, 'Unauthorized')
+  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
 }
 
 get('/admin/users/:id', requireAuth, (ctx, { id }) => findUser(id))
@@ -130,6 +132,14 @@ const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined
 ```
 
+## Migrating from v0.1
+
+The router API is unchanged. Follow [mixer's migration table](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#migrating-from-v01) for the handlers:
+
+- Routes match `ctx.path` instead of `ctx.url.pathname`, so they work under `basePath`
+- Instead of `ctx.send(status, body)`, return a value (after setting `ctx.status`) or a `Response`
+- The request path is decoded once per request, however many routes there are
+
 ## Migrating from v0.0.x
 
 | v0.0.x | v0.1 |
@@ -140,4 +150,4 @@ app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefin
 | `req.query.q` | `ctx.url.searchParams.get('q')` |
 | `namespace(prefix)(...routes)` | Same (paths are now joined correctly when nested) |
 | Other methods such as `mkcalendar()` | `route('MKCALENDAR', path, handler)` |
-| `res.post(200, x)` | `return x` or `ctx.send(200, x)` |
+| `res.post(200, x)` | `return x` |

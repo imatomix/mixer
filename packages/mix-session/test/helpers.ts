@@ -1,15 +1,16 @@
 import { type Component, Mixer } from '@imatomix/mixer'
-import { afterEach } from 'vitest'
 
-const running: Mixer[] = []
+export type App = Mixer
 
-afterEach(async () => {
-  await Promise.all(running.splice(0).map((app) => app.close()))
-})
+export function app(...components: Component[]): App {
+  return new Mixer().mix(...components)
+}
 
-export async function serve(...components: Component[]): Promise<string> {
-  const app = new Mixer().mix(...components)
-  await app.listen(0, '127.0.0.1')
-  running.push(app)
-  return `http://127.0.0.1:${app.address?.port}`
+/** Calls the app without starting a server */
+export function call(
+  target: App,
+  path = '/',
+  init?: RequestInit,
+): Promise<Response> {
+  return target.fetch(new Request(new URL(path, 'http://localhost'), init))
 }

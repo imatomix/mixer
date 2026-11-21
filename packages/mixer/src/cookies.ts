@@ -1,5 +1,3 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-
 export interface CookieOptions {
   /** In seconds. Zero or less expires the cookie immediately */
   maxAge?: number
@@ -32,16 +30,24 @@ const PRIORITY = new Set(['Low', 'Medium', 'High'])
 const EPOCH = new Date(0)
 
 export class Cookies {
-  readonly #req: IncomingMessage
-  readonly #res: ServerResponse
+  readonly #requestHeaders: Headers
+  // A getter, not the Headers object: error responses replace the draft, and a handle captured
+  // earlier (for example, inside an onBeforeSend hook) must keep writing to the current one
+  readonly #draftHeaders: () => Headers
+  readonly #isLocked: () => boolean
   #parsed: Map<string, string[]> | undefined
   /** Remembers the cookies set here so that setting the same name, Path, and Domain again replaces them */
   readonly #pending = new Map<string, string>()
   #written = new Set<string>()
 
-  constructor(req: IncomingMessage, res: ServerResponse) {
-    this.#req = req
-    this.#res = res
+  constructor(
+    requestHeaders: Headers,
+    draftHeaders: () => Headers,
+    isLocked: () => boolean,
+  ) {
+    this.#requestHeaders = requestHeaders
+    this.#draftHeaders = draftHeaders
+    this.#isLocked = isLocked
   }
 
   /** The first value when the name appears more than once (browsers send the most specific Path first) */
@@ -50,7 +56,9 @@ export class Cookies {
   }
 
   getAll(name: string): string[] {
-    this.#parsed ??= parseCookieHeader(this.#req.headers.cookie)
+    this.#parsed ??= parseCookieHeader(
+      this.#requestHeaders.get('cookie') ?? undefined,
+    )
     return [...(this.#parsed.get(name) ?? [])]
   }
 
@@ -71,21 +79,23 @@ export class Cookies {
   }
 
   #queue(name: string, options: ResolvedOptions, header: string): void {
-    if (this.#res.headersSent) {
-      throw new Error(
-        `Cannot set cookies after the response has been sent: ${name}`,
-      )
+    if (this.#isLocked()) {
+      throw new Error(`Cannot set cookies after the response is final: ${name}`)
     }
     this.#pending.set(
       `${name}\n${options.path}\n${options.domain ?? ''}`,
       header,
     )
-    const others = toArray(this.#res.getHeader('Set-Cookie')).filter(
-      (existing) => !this.#written.has(existing),
-    )
+    const draft = this.#draftHeaders()
+    const others = draft
+      .getSetCookie()
+      .filter((existing) => !this.#written.has(existing))
     const ours = [...this.#pending.values()]
     this.#written = new Set(ours)
-    this.#res.setHeader('Set-Cookie', [...others, ...ours])
+    draft.delete('Set-Cookie')
+    for (const cookie of [...others, ...ours]) {
+      draft.append('Set-Cookie', cookie)
+    }
   }
 }
 
@@ -193,9 +203,4 @@ function decodeOrRaw(value: string): string {
   } catch {
     return value
   }
-}
-
-function toArray(header: ReturnType<ServerResponse['getHeader']>): string[] {
-  if (header === undefined) return []
-  return Array.isArray(header) ? header : [String(header)]
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MemoryStore,
   type SessionData,
@@ -6,7 +6,7 @@ import {
   type SessionStore,
   session,
 } from '../src/index.js'
-import { serve } from './helpers.js'
+import { app, call } from './helpers.js'
 
 const SID = /^sid=([A-Za-z0-9_-]{43});/
 
@@ -39,14 +39,18 @@ class RecordingStore extends MemoryStore {
 
 type State = SessionState
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('creating and loading', () => {
   it('creates nothing in the store or cookies until something is written', async () => {
     const store = new MemoryStore()
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       const { session } = ctx.state as State
       return { id: session.id ?? null, user: session.get('user') ?? null }
     })
-    const res = await fetch(url)
+    const res = await call(target)
     expect(await res.json()).toEqual({ id: null, user: null })
     expect(res.headers.getSetCookie()).toEqual([])
     expect(store.size).toBe(0)
@@ -54,15 +58,15 @@ describe('creating and loading', () => {
 
   it('puts a random ID in a cookie on write and reads it back on the next request', async () => {
     const store = new MemoryStore()
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       const { session } = ctx.state as State
-      if (ctx.url.pathname === '/login') {
+      if (ctx.path === '/login') {
         session.set('user', 'imatomix')
         return 'ok'
       }
       return { id: session.id, user: session.get('user') }
     })
-    const login = await fetch(`${url}/login`)
+    const login = await call(target, `/login`)
     const sid = sidFrom(login)
     expect(sid).toBeDefined()
     expect(login.headers.getSetCookie()[0]).toBe(
@@ -70,18 +74,18 @@ describe('creating and loading', () => {
     )
     expect(login.headers.get('cache-control')).toBe('private, no-store')
 
-    const me = await fetch(`${url}/me`, { headers: cookieHeader(sid ?? '') })
+    const me = await call(target, `/me`, { headers: cookieHeader(sid ?? '') })
     expect(await me.json()).toEqual({ id: sid, user: 'imatomix' })
     expect(me.headers.getSetCookie()).toEqual([])
   })
 
   it('issues a different ID every time', async () => {
-    const url = await serve(session(), (ctx) => {
+    const target = app(session(), (ctx) => {
       ;(ctx.state as State).session.set('v', 1)
       return 'ok'
     })
     const ids = new Set<string | undefined>()
-    for (let i = 0; i < 5; i++) ids.add(sidFrom(await fetch(url)))
+    for (let i = 0; i < 5; i++) ids.add(sidFrom(await call(target)))
     expect(ids.size).toBe(5)
   })
 })
@@ -91,13 +95,13 @@ describe('invalid IDs', () => {
 
   it('does not adopt an ID missing from the store and issues a new one on write', async () => {
     const store = new MemoryStore()
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       const { session } = ctx.state as State
       const before = session.id ?? null
       session.set('v', 1)
       return { before }
     })
-    const res = await fetch(url, { headers: cookieHeader(forged) })
+    const res = await call(target, '/', { headers: cookieHeader(forged) })
     expect(await res.json()).toEqual({ before: null })
     const sid = sidFrom(res)
     expect(sid).toBeDefined()
@@ -112,10 +116,10 @@ describe('invalid IDs', () => {
     const store = new MemoryStore()
     const valid = 'B'.repeat(43)
     await store.set(valid, { user: 'victim' }, 60)
-    const url = await serve(session({ store }), (ctx) => ({
+    const target = app(session({ store }), (ctx) => ({
       user: (ctx.state as State).session.get('user') ?? null,
     }))
-    const res = await fetch(url, {
+    const res = await call(target, '/', {
       headers: { cookie: cookie.replaceAll('VALID', valid) },
     })
     expect(await res.json()).toEqual({ user: null })
@@ -132,13 +136,13 @@ describe('regenerate and destroy', () => {
   it('regenerate issues a new ID, keeps the data, and deletes the old ID', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       const { session } = ctx.state as State
       session.regenerate()
       session.set('user', 'imatomix')
       return 'ok'
     })
-    const res = await fetch(url, { headers: cookieHeader(old) })
+    const res = await call(target, '/', { headers: cookieHeader(old) })
     const sid = sidFrom(res)
     expect(sid).toBeDefined()
     expect(sid).not.toBe(old)
@@ -152,11 +156,11 @@ describe('regenerate and destroy', () => {
   it('destroy deletes the session from the store and removes the cookie', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       ;(ctx.state as State).session.destroy()
       return 'ok'
     })
-    const res = await fetch(url, { headers: cookieHeader(old) })
+    const res = await call(target, '/', { headers: cookieHeader(old) })
     expect(await store.get(old)).toBeUndefined()
     expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
   })
@@ -164,11 +168,11 @@ describe('regenerate and destroy', () => {
   it('deleting every key is the same as destroy', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
-    const url = await serve(session({ store }), (ctx) => {
+    const target = app(session({ store }), (ctx) => {
       ;(ctx.state as State).session.delete('cart')
       return 'ok'
     })
-    const res = await fetch(url, { headers: cookieHeader(old) })
+    const res = await call(target, '/', { headers: cookieHeader(old) })
     expect(await store.get(old)).toBeUndefined()
     expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
   })
@@ -180,9 +184,9 @@ describe('regenerate and destroy', () => {
     const slowGate = new Promise<void>((resolve) => {
       releaseSlow = resolve
     })
-    const url = await serve(session({ store }), async (ctx) => {
+    const target = app(session({ store }), async (ctx) => {
       const { session } = ctx.state as State
-      if (ctx.url.pathname === '/logout') {
+      if (ctx.path === '/logout') {
         session.destroy()
         return 'logged out'
       }
@@ -190,9 +194,9 @@ describe('regenerate and destroy', () => {
       session.set('cart', ['apple', 'banana'])
       return 'updated'
     })
-    const slow = fetch(`${url}/cart`, { headers: cookieHeader(sid) })
+    const slow = call(target, `/cart`, { headers: cookieHeader(sid) })
     await new Promise((resolve) => setTimeout(resolve, 50))
-    await fetch(`${url}/logout`, { headers: cookieHeader(sid) })
+    await call(target, `/logout`, { headers: cookieHeader(sid) })
     releaseSlow()
     const res = await slow
     expect(await store.get(sid)).toBeUndefined()
@@ -203,11 +207,11 @@ describe('regenerate and destroy', () => {
 describe('expiry', () => {
   it('uses ttl for the cookie Max-Age and the store expiry', async () => {
     const store = new RecordingStore()
-    const url = await serve(session({ store, ttl: 600 }), (ctx) => {
+    const target = app(session({ store, ttl: 600 }), (ctx) => {
       ;(ctx.state as State).session.set('v', 1)
       return 'ok'
     })
-    const res = await fetch(url)
+    const res = await call(target)
     expect(res.headers.getSetCookie()[0]).toMatch(/Max-Age=600;/)
     expect(store.calls).toEqual(['set:600'])
   })
@@ -217,11 +221,10 @@ describe('expiry', () => {
     const sid = 'D'.repeat(43)
     await store.set(sid, { v: 1 }, 600)
     store.calls = []
-    const url = await serve(
-      session({ store, ttl: 600, rolling: true }),
-      (ctx) => (ctx.state as State).session.get('v'),
+    const target = app(session({ store, ttl: 600, rolling: true }), (ctx) =>
+      (ctx.state as State).session.get('v'),
     )
-    const res = await fetch(url, { headers: cookieHeader(sid) })
+    const res = await call(target, '/', { headers: cookieHeader(sid) })
     expect(store.calls).toEqual(['update:600'])
     expect(sidFrom(res)).toBe(sid)
   })
@@ -231,10 +234,10 @@ describe('expiry', () => {
     const sid = 'E'.repeat(43)
     await store.set(sid, { v: 1 }, 600)
     store.calls = []
-    const url = await serve(session({ store }), (ctx) =>
+    const target = app(session({ store }), (ctx) =>
       (ctx.state as State).session.get('v'),
     )
-    const res = await fetch(url, { headers: cookieHeader(sid) })
+    const res = await call(target, '/', { headers: cookieHeader(sid) })
     expect(store.calls).toEqual([])
     expect(res.headers.getSetCookie()).toEqual([])
   })
@@ -242,7 +245,7 @@ describe('expiry', () => {
 
 describe('options', () => {
   it('accepts a custom cookie name and attributes', async () => {
-    const url = await serve(
+    const target = app(
       session({
         name: 'app.sid',
         cookie: { secure: false, sameSite: 'Strict' },
@@ -252,7 +255,7 @@ describe('options', () => {
         return 'ok'
       },
     )
-    expect((await fetch(url)).headers.getSetCookie()[0]).toMatch(
+    expect((await call(target)).headers.getSetCookie()[0]).toMatch(
       /^app\.sid=[A-Za-z0-9_-]{43}; Max-Age=86400; Path=\/; HttpOnly; SameSite=Strict$/,
     )
   })
@@ -269,11 +272,11 @@ describe('options', () => {
     const original = console.error
     console.error = () => {}
     try {
-      const url = await serve(session({ store: failing }), (ctx) => {
+      const target = app(session({ store: failing }), (ctx) => {
         ;(ctx.state as State).session.set('v', 1)
         return 'ok'
       })
-      expect((await fetch(url)).status).toBe(500)
+      expect((await call(target)).status).toBe(500)
     } finally {
       console.error = original
     }
@@ -281,5 +284,29 @@ describe('options', () => {
 
   it.each([0, -1, 1.5])('rejects an invalid ttl (%s)', (ttl) => {
     expect(() => session({ ttl })).toThrow()
+  })
+})
+
+describe('runtime independence', () => {
+  it('generates IDs with Web Crypto', async () => {
+    const random = vi.spyOn(globalThis.crypto, 'getRandomValues')
+    const target = app(session(), (ctx) => {
+      ;(ctx.state as State).session.set('v', 1)
+      return 'ok'
+    })
+    expect(sidFrom(await call(target))).toBeDefined()
+    expect(random).toHaveBeenCalled()
+  })
+
+  it('keeps a response with the session cookie out of shared caches when a later component returns a Response', async () => {
+    const target = app(session(), (ctx) => {
+      ;(ctx.state as State).session.set('v', 1)
+      return new Response('raw', {
+        headers: { 'Cache-Control': 'public, max-age=60' },
+      })
+    })
+    const res = await call(target)
+    expect(sidFrom(res)).toBeDefined()
+    expect(res.headers.get('cache-control')).not.toMatch(/public/)
   })
 })

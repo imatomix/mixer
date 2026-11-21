@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-Minimal & asynchronous web module と、その周辺モジュールの monorepo。
+Web 標準の `Request` / `Response` で動く Minimal & asynchronous web module と、その周辺モジュールの monorepo。
 
 各パッケージは npm に個別に公開されるので、必要なものだけ選んで導入できる。
 
@@ -26,4 +26,4 @@ pnpm build
 pnpm --filter @imatomix/mixer test   # 特定のパッケージだけ
 ```
 
-対応環境は Node.js 24 以上と Bun 1.4.4 以上。開発に参加するときは [CONTRIBUTING.md](CONTRIBUTING.md)（英語）を参照。
+対応環境は Node.js 24 以上と Bun 1.4.4 以上。`app.fetch` で Next.js・Nuxt・SvelteKit・React Router のアプリの一部を受け持つこともできる。開発に参加するときは [CONTRIBUTING.md](CONTRIBUTING.md)（英語）を参照。

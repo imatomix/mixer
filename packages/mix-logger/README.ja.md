@@ -17,13 +17,14 @@ npm install @imatomix/mixer @imatomix/mix-logger
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { logger } from '@imatomix/mix-logger'
 
 const app = new Mixer()
 
 app.mix(logger(), () => 'Hello Mixer')
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 ```
@@ -31,7 +32,7 @@ await app.listen(3000)
 ```
 
 処理時間は logger が実行された時点から計るので、**できるだけ前に** mix する。
-記録は応答を送り終えたとき（または接続が切れたとき）に 1 回だけ行う。
+記録は最終的な `Response` ができたとき（`ctx.onResponse`）に 1 回だけ行う。
 
 ## 出力先を変える
 
@@ -41,7 +42,7 @@ await app.listen(3000)
 app.mix(
   logger({
     write: (entry) => {
-      process.stdout.write(`${JSON.stringify(entry)}\n`)
+      console.log(JSON.stringify(entry))
     },
   }),
 )
@@ -51,19 +52,28 @@ app.mix(
 | --- | --- |
 | `time` | リクエストを受け取った時刻（`Date`） |
 | `method` | HTTP メソッド |
-| `path` | パス（**クエリは含めない**） |
+| `path` | `basePath` を含むパス（**クエリは含めない**） |
 | `status` | ステータスコード |
-| `durationMs` | 処理時間（ミリ秒） |
-| `contentLength` | 応答の `Content-Length` ヘッダの値。ストリームなどで未設定なら `undefined` |
-| `aborted` | 応答を送り終える前に接続が切れた |
+| `responseDurationMs` | logger が動いてから `Response` ができるまでのミリ秒。**本文を送る時間は含まない** |
+| `contentLength` | 応答の `Content-Length` ヘッダの値。ストリームなどで長さが分からなければ `undefined` |
 
-`formatLogEntry(entry)` で、既定の 1 行の形式に変換できる。
+`formatLogEntry(entry)` で、既定の 1 行の形式に変換できる。既定では `console.log` で出力する。
+
+`write` が Promise を返しても、応答はそれを待たない。`ctx.waitUntil` に渡す。応答のあとで止まりうる環境では、書き込みが打ち切られないよう、その環境の応答後の処理を登録する API を `app.fetch` に渡す（[mixer の `ctx.waitUntil()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#ctxwaituntil) を参照）。
 
 ## 安全性
 
 - クエリはキーにも値にもトークンやメールアドレスが入りうるので、記録しない
 - 既定の形式では改行やエスケープシーケンスなどの制御文字をエスケープし、偽の行や色付けをログに差し込ませない（`write` で独自に出力する場合は各自で扱うこと）
 - `write` が例外を投げたり Promise が失敗したりしても、`console.error` に出すだけで応答やサーバには影響しない
+
+## v0.1 からの移行
+
+| v0.1 | v0.2 |
+| --- | --- |
+| `durationMs`（応答を送り終えるまで） | `responseDurationMs`（`Response` ができるまで。送信の時間は含まない） |
+| `aborted` | 削除。Web 標準のハンドラからは、本文を送っている途中でクライアントが切断したかを知る手段がない |
+| `process.stdout.write` で出力 | `console.log` で出力（出力される行は同じ） |
 
 ## v0.0.x からの移行
 

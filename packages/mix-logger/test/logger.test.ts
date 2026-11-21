@@ -1,34 +1,22 @@
-import { request } from 'node:http'
-import { Readable } from 'node:stream'
-import { HttpError } from '@imatomix/mixer'
-import { describe, expect, it, vi } from 'vitest'
+import { HttpError, Mixer } from '@imatomix/mixer'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatLogEntry, type LogEntry, logger } from '../src/index.js'
-import { serve } from './helpers.js'
+import { app, call } from './helpers.js'
 
-/** Entries are recorded after the response finishes, so wait for them */
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 function collect() {
   const entries: LogEntry[] = []
-  let notify: () => void = () => {}
-  return {
-    entries,
-    write: (entry: LogEntry) => {
-      entries.push(entry)
-      notify()
-    },
-    next: () =>
-      new Promise<void>((resolve) => {
-        notify = resolve
-      }),
-  }
+  return { entries, write: (entry: LogEntry) => void entries.push(entry) }
 }
 
 describe('recording', () => {
-  it('records the method, path, status, duration, and Content-Length', async () => {
+  it('records the method, path, status, duration, and Content-Length once the Response is ready', async () => {
     const log = collect()
-    const url = await serve(logger({ write: log.write }), () => 'hello')
-    const recorded = log.next()
-    await (await fetch(`${url}/greet`, { method: 'POST' })).text()
-    await recorded
+    const target = app(logger({ write: log.write }), () => 'hello')
+    await call(target, '/greet', { method: 'POST' })
     expect(log.entries).toHaveLength(1)
     const [entry] = log.entries
     expect(entry).toMatchObject({
@@ -36,140 +24,125 @@ describe('recording', () => {
       path: '/greet',
       status: 200,
       contentLength: 5,
-      aborted: false,
     })
-    expect(entry?.durationMs).toBeGreaterThanOrEqual(0)
+    expect(entry).not.toHaveProperty('aborted')
+    expect(entry?.responseDurationMs).toBeGreaterThanOrEqual(0)
     expect(entry?.time).toBeInstanceOf(Date)
+  })
+
+  it('leaves contentLength out when the length is unknown', async () => {
+    const log = collect()
+    const target = app(
+      logger({ write: log.write }),
+      () => new ReadableStream({ start: (controller) => controller.close() }),
+    )
+    await call(target)
+    expect(log.entries[0]).not.toHaveProperty('contentLength')
   })
 
   it('does not record the query', async () => {
     const log = collect()
-    const url = await serve(logger({ write: log.write }), () => 'ok')
-    const recorded = log.next()
-    await (await fetch(`${url}/reset?token=abc&email=a@example.com`)).text()
-    await recorded
+    const target = app(logger({ write: log.write }), () => 'ok')
+    await call(target, '/reset?token=abc&email=a@example.com')
     expect(log.entries[0]?.path).toBe('/reset')
   })
 
-  it('records the status of error responses', async () => {
+  it('records the full path including basePath', async () => {
     const log = collect()
-    const url = await serve(logger({ write: log.write }), () => {
-      throw new HttpError(403)
-    })
-    const recorded = log.next()
-    await (await fetch(url)).text()
-    await recorded
-    expect(log.entries[0]?.status).toBe(403)
+    const target = new Mixer({ basePath: '/api' }).mix(
+      logger({ write: log.write }),
+      () => 'ok',
+    )
+    await call(target, '/api/users')
+    expect(log.entries[0]?.path).toBe('/api/users')
+  })
+
+  it.each([
+    [
+      'an HttpError',
+      () => {
+        throw new HttpError(403)
+      },
+      403,
+    ],
+    ['no response', () => undefined, 404],
+  ])('records the status for %s', async (_label, component, status) => {
+    const log = collect()
+    await call(app(logger({ write: log.write }), component))
+    expect(log.entries.map((entry) => entry.status)).toEqual([status])
   })
 
   it('does not mix up durations of concurrent requests', async () => {
     const log = collect()
-    const url = await serve(logger({ write: log.write }), async (ctx) => {
-      if (ctx.url.pathname === '/slow') {
+    const target = app(logger({ write: log.write }), async (ctx) => {
+      if (ctx.path === '/slow') {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
       return 'ok'
     })
-    const slow = fetch(`${url}/slow`).then((res) => res.text())
+    const slow = call(target, '/slow')
     await new Promise((resolve) => setTimeout(resolve, 20))
-    await (await fetch(`${url}/fast`)).text()
+    await call(target, '/fast')
     await slow
-    await new Promise((resolve) => setTimeout(resolve, 20))
     const byPath = Object.fromEntries(
-      log.entries.map((e) => [e.path, e.durationMs]),
+      log.entries.map((e) => [e.path, e.responseDurationMs]),
     )
     expect(byPath['/slow']).toBeGreaterThanOrEqual(90)
     expect(byPath['/fast']).toBeLessThan(50)
   })
-
-  it('records an interrupted response once, as aborted', async () => {
-    const log = collect()
-    const url = new URL(
-      await serve(logger({ write: log.write }), () =>
-        Readable.from(
-          (async function* () {
-            yield 'first'
-            await new Promise((resolve) => setTimeout(resolve, 200))
-            yield 'second'
-          })(),
-        ),
-      ),
-    )
-    const recorded = log.next()
-    const req = request(
-      { hostname: url.hostname, port: url.port, path: '/stream' },
-      (res) => {
-        res.once('data', () => req.destroy())
-      },
-    )
-    req.on('error', () => {})
-    req.end()
-    await recorded
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    expect(log.entries).toHaveLength(1)
-    expect(log.entries[0]?.aborted).toBe(true)
-  })
 })
 
 describe('output', () => {
-  it('writes one line of text to standard output by default', async () => {
-    const written: string[] = []
-    const spy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation((chunk) => {
-        written.push(String(chunk))
-        return true
-      })
-    try {
-      const url = await serve(logger(), () => 'hello')
-      await (await fetch(`${url}/greet`)).text()
-      await new Promise((resolve) => setTimeout(resolve, 20))
-    } finally {
-      spy.mockRestore()
-    }
-    const line = written.find((chunk) => chunk.includes('/greet'))
-    expect(line).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\S+Z GET \/greet 200 \d+\.\dms 5B\n$/,
+  it('writes one line through console.log by default', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await call(
+      app(logger(), () => 'hello'),
+      '/greet',
+    )
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0]?.[0]).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\S+Z GET \/greet 200 \d+\.\dms 5B$/,
     )
   })
 
-  it('does not affect the response or the server when write throws', async () => {
+  it('does not affect the response when write throws', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const url = await serve(
-        logger({
-          write: () => {
-            throw new Error('disk full')
-          },
-        }),
-        () => 'ok',
-      )
-      expect(await (await fetch(url)).text()).toBe('ok')
-      expect(await (await fetch(url)).text()).toBe('ok')
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(consoleError).toHaveBeenCalled()
-    } finally {
-      consoleError.mockRestore()
-    }
+    const target = app(
+      logger({
+        write: () => {
+          throw new Error('disk full')
+        },
+      }),
+      () => 'ok',
+    )
+    expect(await (await call(target)).text()).toBe('ok')
+    expect(await (await call(target)).text()).toBe('ok')
+    expect(consoleError).toHaveBeenCalled()
   })
 
-  it('catches asynchronous failures of write', async () => {
+  it('does not wait for an asynchronous write, hands it to waitUntil, and catches its failure', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const unhandled = vi.fn()
-    process.on('unhandledRejection', unhandled)
-    try {
-      const url = await serve(
-        logger({ write: () => Promise.reject(new Error('remote down')) }),
-        () => 'ok',
-      )
-      expect(await (await fetch(url)).text()).toBe('ok')
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      expect(consoleError).toHaveBeenCalled()
-      expect(unhandled).not.toHaveBeenCalled()
-    } finally {
-      process.off('unhandledRejection', unhandled)
-      consoleError.mockRestore()
-    }
+    const waitUntil = vi.fn()
+    let finish: () => void = () => {}
+    const target = app(
+      logger({
+        write: () =>
+          new Promise<void>((_resolve, reject) => {
+            finish = () => reject(new Error('remote down'))
+          }),
+      }),
+      () => 'ok',
+    )
+    const res = await target.fetch(
+      new Request('http://localhost/'),
+      undefined,
+      { waitUntil },
+    )
+    expect(await res.text()).toBe('ok')
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    finish()
+    await waitUntil.mock.calls[0]?.[0]
+    expect(consoleError).toHaveBeenCalled()
   })
 })
 
@@ -179,8 +152,7 @@ describe('formatLogEntry', () => {
     method: 'GET',
     path: '/',
     status: 200,
-    durationMs: 1.234,
-    aborted: false,
+    responseDurationMs: 1.234,
   }
 
   it('escapes control characters so that log lines cannot be forged', () => {
@@ -199,9 +171,9 @@ describe('formatLogEntry', () => {
     expect(hasControl).toBe(false)
   })
 
-  it('shows aborted and contentLength', () => {
-    expect(formatLogEntry({ ...base, contentLength: 10, aborted: true })).toBe(
-      '2026-01-01T00:00:00.000Z GET / 200 1.2ms 10B aborted',
+  it('shows contentLength', () => {
+    expect(formatLogEntry({ ...base, contentLength: 10 })).toBe(
+      '2026-01-01T00:00:00.000Z GET / 200 1.2ms 10B',
     )
   })
 })

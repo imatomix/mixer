@@ -16,13 +16,14 @@ npm install @imatomix/mixer @imatomix/mix-cors
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { cors } from '@imatomix/mix-cors'
 
 const app = new Mixer()
 
 app.mix(cors(), () => 'cors is mixed!')
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 Mix it in **before** the router and other components.
@@ -67,7 +68,11 @@ So `cors()` throws as soon as it is called. Specify the allowed origins when you
 
 - Preflights never reach later components, so the application does not need to handle OPTIONS for them
 - `OPTIONS` requests that are not preflights are not intercepted (mix-router's `options()` and similar keep working)
-- The headers are kept on error responses from later `HttpError`s (so browsers can read the error)
+- The headers are kept on error responses from later `HttpError`s (so browsers can read the error), and are added to a `Response` returned by a later component
+
+## Migrating from v0.1
+
+Options and behavior are unchanged. If your own code read the CORS headers through `ctx.res`, read `ctx.headers` instead.
 
 ## Migrating from v0.0.x
 

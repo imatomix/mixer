@@ -1,90 +1,148 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { Readable } from 'node:stream'
-import { parseBody, readBuffer } from './body.js'
+import { parseBody, readBytes } from './body.js'
 import { Cookies } from './cookies.js'
-import { sendResponse } from './send.js'
+import type { Draft } from './finalize.js'
 
 export type State = Record<string, unknown>
 
-export type BeforeSendHook = () => void | Promise<void>
+/** The part of a Cloudflare Workers ExecutionContext that mixer uses */
+export interface ExecutionContextLike {
+  waitUntil(promise: Promise<unknown>): void
+}
 
-export class Context<S extends State = State> {
-  readonly req: IncomingMessage
-  readonly res: ServerResponse
+/** A snapshot of the final response passed to onResponse hooks. Changing it has no effect */
+export interface ResponseInfo {
+  readonly status: number
+  readonly headers: Headers
+}
+
+type BeforeSendHook = () => void | Promise<void>
+type ResponseHook = (info: ResponseInfo) => void | Promise<void>
+
+export interface ContextInit<E> {
+  path: string
+  bodyLimit: number
+  env: E
+  executionContext: ExecutionContextLike | undefined
+}
+
+export class Context<S extends State = State, E = unknown> {
+  readonly request: Request
   readonly url: URL
   readonly method: string
+  /** The request path without basePath. Routing and file serving use this */
+  readonly path: string
+  /** Status of the response draft (default 200) */
   status = 200
   state: S = {} as S
+  /** Bindings passed to fetch(), such as Cloudflare Workers environment variables */
+  readonly env: E
 
-  #bodyLimit: number
-  #buffer: Promise<Buffer> | undefined
-  #beforeSendHooks: BeforeSendHook[] = []
+  #headers = new Headers()
+  readonly #bodyLimit: number
+  readonly #executionContext: ExecutionContextLike | undefined
+  #bytes: Promise<Uint8Array> | undefined
   #cookies: Cookies | undefined
+  #beforeSendHooks: BeforeSendHook[] = []
+  readonly #responseHooks: ResponseHook[] = []
+  #final = false
 
-  constructor(req: IncomingMessage, res: ServerResponse, bodyLimit: number) {
-    this.req = req
-    this.res = res
-    this.url = parseRequestUrl(req.url ?? '/')
-    this.method = req.method ?? 'GET'
-    this.#bodyLimit = bodyLimit
+  constructor(request: Request, init: ContextInit<E>) {
+    this.request = request
+    // The host comes from the client's Host header and cannot be trusted; never use it for security decisions
+    this.url = new URL(request.url)
+    this.method = request.method
+    this.path = init.path
+    this.env = init.env
+    this.#bodyLimit = init.bodyLimit
+    this.#executionContext = init.executionContext
   }
 
-  /** Reads request cookies and sets Set-Cookie headers */
+  /** Headers of the response draft. Changes after the response is final have no effect */
+  get headers(): Headers {
+    return this.#headers
+  }
+
+  /** Reads request cookies and adds Set-Cookie headers to the draft */
   get cookies(): Cookies {
-    this.#cookies ??= new Cookies(this.req, this.res)
+    this.#cookies ??= new Cookies(
+      this.request.headers,
+      () => this.#headers,
+      () => this.#final,
+    )
     return this.#cookies
   }
 
-  get sent(): boolean {
-    return this.res.headersSent || this.res.writableEnded
+  /**
+   * Keeps background work alive after the response. On Cloudflare Workers it is passed to
+   * waitUntil; elsewhere it is not awaited, and a failure is only logged
+   */
+  waitUntil(promise: Promise<unknown>): void {
+    if (this.#executionContext) {
+      this.#executionContext.waitUntil(promise)
+      return
+    }
+    promise.catch((error: unknown) => console.error(error))
   }
 
   /** A stream can be read only once, so the result is cached to allow calling this any number of times */
-  buffer(): Promise<Buffer> {
-    this.#buffer ??= readBuffer(this.req, this.#bodyLimit)
-    return this.#buffer
+  bytes(): Promise<Uint8Array> {
+    this.#bytes ??= readBytes(this.request, this.#bodyLimit)
+    return this.#bytes
   }
 
   async text(): Promise<string> {
-    return (await this.buffer()).toString('utf8')
+    return new TextDecoder().decode(await this.bytes())
   }
 
   async body<T = unknown>(): Promise<T> {
-    return parseBody(await this.buffer(), this.req.headers['content-type']) as T
+    return parseBody(
+      await this.bytes(),
+      this.request.headers.get('content-type'),
+    ) as T
   }
 
-  /**
-   * Registers work to run right before `send()` responds (for example, setting cookies).
-   * It does not run when a component responds by writing to `ctx.res` directly
-   */
-  onBeforeSend(hook: BeforeSendHook): void {
+  /** Registers work to run right before the final Response is built (for example, setting cookies) */
+  onBeforeSend(hook: () => void | Promise<void>): void {
     this.#beforeSendHooks.push(hook)
   }
 
-  async send(status: number, body?: unknown): Promise<void> {
-    this.status = status
-    // Take the hooks out first so that they do not run again when a hook fails and an error response is sent
-    const hooks = this.#beforeSendHooks.splice(0)
-    try {
-      for (const hook of hooks) {
-        await hook()
-      }
-    } catch (error) {
-      // If this fails before sendResponse takes the stream, nothing closes it and file descriptors leak
-      if (body instanceof Readable) body.destroy()
-      throw error
-    }
-    await sendResponse(this.res, this.status, body)
+  /**
+   * Registers work to run once the final Response is ready, before fetch() resolves.
+   * Keep hooks short; pass slow asynchronous work to ctx.waitUntil()
+   */
+  onResponse(hook: (info: ResponseInfo) => void | Promise<void>): void {
+    this.#responseHooks.push(hook)
   }
-}
 
-/**
- * The host name cannot be trusted, so a fixed host is used only to extract the path and query.
- * `new URL(target, base)` would treat `//admin/x` as a protocol-relative URL (host=admin),
- * so targets starting with `/` are concatenated as strings before parsing
- */
-export function parseRequestUrl(target: string): URL {
-  if (target.startsWith('/')) return new URL(`http://localhost${target}`)
-  const url = new URL(target, 'http://localhost')
-  return new URL(`http://localhost${url.pathname}${url.search}`)
+  /** @internal */
+  get draft(): Draft {
+    return { status: this.status, headers: this.#headers }
+  }
+
+  /** @internal Replaces the draft, for error responses */
+  resetDraft(draft: Draft): void {
+    this.status = draft.status
+    this.#headers = draft.headers
+  }
+
+  /** @internal Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
+  async runBeforeSend(): Promise<void> {
+    const hooks = this.#beforeSendHooks.splice(0)
+    for (const hook of hooks) await hook()
+  }
+
+  /** @internal */
+  async runOnResponse(response: Response): Promise<void> {
+    this.#final = true
+    for (const hook of this.#responseHooks) {
+      try {
+        await hook({
+          status: response.status,
+          headers: new Headers(response.headers),
+        })
+      } catch (error) {
+        console.error(error)
+      }
+    }
+  }
 }

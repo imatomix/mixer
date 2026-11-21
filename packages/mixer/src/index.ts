@@ -1,5 +1,10 @@
 export type { FormBody } from './body.js'
-export { type BeforeSendHook, Context, type State } from './context.js'
+export {
+  Context,
+  type ExecutionContextLike,
+  type ResponseInfo,
+  type State,
+} from './context.js'
 export {
   type CookieDeleteOptions,
   type CookieOptions,

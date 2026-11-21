@@ -76,7 +76,7 @@ writeFileSync(
   join(consumer, 'tsconfig.json'),
   JSON.stringify({
     compilerOptions: {
-      target: 'ES2023',
+      target: 'ES2024',
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
@@ -101,6 +101,23 @@ const checks = Object.keys(dependencies)
 
 const smoke = `${imports}
 ${checks}
+import { serve } from '@imatomix/mixer/node'
+
+type FetchApp = { fetch: (request: Request) => Promise<Response> }
+type BunRuntime = {
+  serve(options: { port: number; hostname: string; fetch: FetchApp['fetch'] }): {
+    port: number
+    stop(closeActiveConnections?: boolean): Promise<void>
+  }
+}
+
+// On Bun, serve the app the way Bun users would (Bun.serve with app.fetch); on Node, through the Node adapter
+async function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
+  const bun = (globalThis as { Bun?: BunRuntime }).Bun
+  if (!bun) return serve(app, { hostname: '127.0.0.1' })
+  const server = bun.serve({ port: 0, hostname: '127.0.0.1', fetch: app.fetch })
+  return { port: server.port, close: () => server.stop(true) }
+}
 ${
   dependencies['@imatomix/mix-router']
     ? `
@@ -108,10 +125,10 @@ import { Mixer } from '@imatomix/mixer'
 import { get } from '@imatomix/mix-router'
 
 const app = new Mixer().mix(get('/hello/:name', (_ctx, { name }) => ({ hello: name })))
-await app.listen(0, '127.0.0.1')
-const res = await fetch(\`http://127.0.0.1:\${app.address?.port}/hello/mixer\`)
+const server = await listen(app)
+const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
-await app.close()
+await server.close()
 if (body.hello !== 'mixer') throw new Error('mixer + mix-router smoke test failed')
 `
     : ''
@@ -124,7 +141,7 @@ import { session, type SessionState } from '@imatomix/mix-session'
 
 const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   const current = ctx.state.session
-  if (ctx.url.pathname === '/login') {
+  if (ctx.path === '/login') {
     current.set('user', 'mixer')
     // A second cookie checks that several Set-Cookie headers survive on this runtime
     ctx.cookies.set('theme', 'dark')
@@ -132,13 +149,13 @@ const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   }
   return { user: current.get('user') }
 })
-await sessionApp.listen(0, '127.0.0.1')
-const base = \`http://127.0.0.1:\${sessionApp.address?.port}\`
+const sessionServer = await listen(sessionApp)
+const base = \`http://127.0.0.1:\${sessionServer.port}\`
 const login = await fetch(\`\${base}/login\`)
 const setCookies = login.headers.getSetCookie()
 const sid = setCookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
-await sessionApp.close()
+await sessionServer.close()
 if (me.user !== 'mixer' || setCookies.length !== 2) {
   throw new Error('mixer + mix-session smoke test failed')
 }
@@ -161,8 +178,8 @@ const outsideDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-outside-'))
 writeTempFile(joinPath(outsideDir, 'secret.txt'), 'secret')
 symlinkSync(joinPath(outsideDir, 'secret.txt'), joinPath(publicDir, 'link.txt'))
 const staticApp = new StaticMixer().mix(serveStatic(publicDir))
-await staticApp.listen(0, '127.0.0.1')
-const staticBase = \`http://127.0.0.1:\${staticApp.address?.port}\`
+const staticServer = await listen(staticApp)
+const staticBase = \`http://127.0.0.1:\${staticServer.port}\`
 const file = await fetch(\`\${staticBase}/hello.txt\`)
 const fileText = await file.text()
 const etag = file.headers.get('etag') ?? ''
@@ -172,7 +189,7 @@ const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-n
 await notModified.text()
 const escaped = await fetch(\`\${staticBase}/link.txt\`)
 const escapedText = await escaped.text()
-await staticApp.close()
+await staticServer.close()
 if (
   fileText !== 'hello static' ||
   file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||
@@ -194,8 +211,8 @@ import { Mixer as CorsMixer } from '@imatomix/mixer'
 import { cors } from '@imatomix/mix-cors'
 
 const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
-await corsApp.listen(0, '127.0.0.1')
-const corsBase = \`http://127.0.0.1:\${corsApp.address?.port}\`
+const corsServer = await listen(corsApp)
+const corsBase = \`http://127.0.0.1:\${corsServer.port}\`
 const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })
 await simple.text()
 const preflight = await fetch(corsBase, {
@@ -203,7 +220,7 @@ const preflight = await fetch(corsBase, {
   headers: { origin: 'https://a.example', 'access-control-request-method': 'PUT' },
 })
 await preflight.text()
-await corsApp.close()
+await corsServer.close()
 if (simple.headers.get('access-control-allow-origin') !== '*' || preflight.status !== 204) {
   throw new Error('mixer + mix-cors smoke test failed')
 }
@@ -221,17 +238,17 @@ const logged = new Promise<LogEntry>((resolve) => {
   resolveEntry = resolve
 })
 const loggerApp = new LoggerMixer().mix(logger({ write: (entry) => resolveEntry(entry) }), () => 'logged')
-await loggerApp.listen(0, '127.0.0.1')
-await (await fetch(\`http://127.0.0.1:\${loggerApp.address?.port}/log?secret=1\`)).text()
+const loggerServer = await listen(loggerApp)
+await (await fetch(\`http://127.0.0.1:\${loggerServer.port}/log?secret=1\`)).text()
 const entry = await logged
-await loggerApp.close()
+await loggerServer.close()
 if (entry.method !== 'GET' || entry.path !== '/log' || entry.status !== 200) {
   throw new Error('mixer + mix-logger smoke test failed')
 }
 `
     : ''
 }
-const runtimeName = process.versions.bun ? \`bun \${process.versions.bun}\` : \`node \${process.versions.node}\`
+const runtimeName = process.versions.bun ? \`bun \${process.versions.bun} (Bun.serve)\` : \`node \${process.versions.node} (serve from @imatomix/mixer/node)\`
 console.log(\`ok on \${runtimeName}\`)
 `
 writeFileSync(join(consumer, 'smoke.ts'), smoke)

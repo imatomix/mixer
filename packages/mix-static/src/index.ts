@@ -1,6 +1,7 @@
 import { constants, realpathSync, statSync } from 'node:fs'
 import { type FileHandle, open, realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { Readable } from 'node:stream'
 import { type Component, type Context, HttpError } from '@imatomix/mixer'
 import { contentTypeOf } from './mime.js'
 
@@ -35,7 +36,7 @@ export function serveStatic(
   return async (ctx) => {
     if (ctx.method !== 'GET' && ctx.method !== 'HEAD') return undefined
 
-    const rawSegments = requestSegments(ctx.url.pathname)
+    const rawSegments = requestSegments(ctx.path)
     if (!rawSegments) return undefined
     const segments = decodeSegments(rawSegments)
     if (!segments || !startsWithPrefix(segments, prefix)) return undefined
@@ -53,10 +54,12 @@ export function serveStatic(
 
     if (stats.isDirectory()) {
       if (index === false) return undefined
+      // Check the full pathname: under basePath, ctx.path for `/api` is `/`, but the browser resolves
+      // relative links against `/api`, so it still needs the redirect to `/api/`
       if (!ctx.url.pathname.endsWith('/')) {
         const indexStats = await statOrUndefined(join(filePath, index))
         if (!indexStats?.isFile()) return undefined
-        return redirectToDirectory(ctx, rawSegments)
+        return redirectToDirectory(ctx)
       }
       filePath = join(filePath, index)
       stats = await statOrUndefined(filePath)
@@ -191,11 +194,17 @@ function validateMaxAge(maxAge: number): void {
   }
 }
 
-function redirectToDirectory(ctx: Context, rawSegments: string[]) {
-  // Collapse empty segments so that the location always starts with a single /. `//host` would be a protocol-relative URL to another site
-  const location = `/${rawSegments.map(encodeSafely).join('/')}/${ctx.url.search}`
-  ctx.res.setHeader('Location', location)
-  return ctx.send(301, null)
+function redirectToDirectory(ctx: Context) {
+  // The location is built from the full pathname so that it keeps basePath.
+  // Paths with empty segments are not redirected: `//host` would be a protocol-relative URL to another site
+  const segments = requestSegments(ctx.url.pathname)
+  if (!segments) return undefined
+  ctx.status = 301
+  ctx.headers.set(
+    'Location',
+    `/${segments.map(encodeSafely).join('/')}/${ctx.url.search}`,
+  )
+  return null
 }
 
 // Segments of ctx.url.pathname are already encoded, but characters such as '"' remain as is, so encode anything outside the safe set
@@ -229,21 +238,25 @@ async function sendFile(
     const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`
     const lastModified = new Date(Math.floor(stats.mtimeMs / 1000) * 1000)
 
-    const { res } = ctx
-    res.setHeader('ETag', etag)
-    res.setHeader('Last-Modified', lastModified.toUTCString())
-    res.setHeader('Cache-Control', `public, max-age=${maxAge}`)
-    res.setHeader('X-Content-Type-Options', 'nosniff')
+    const { headers } = ctx
+    headers.set('ETag', etag)
+    headers.set('Last-Modified', lastModified.toUTCString())
+    headers.set('Cache-Control', `public, max-age=${maxAge}`)
 
     if (isNotModified(ctx, etag, lastModified)) {
       await handle.close()
-      return ctx.send(304, null)
+      ctx.status = 304
+      return null
     }
 
-    res.setHeader('Content-Type', contentTypeOf(basename(filePath)))
-    res.setHeader('Content-Length', stats.size)
+    headers.set('Content-Type', contentTypeOf(basename(filePath)))
+    headers.set('Content-Length', String(stats.size))
     ctx.status = 200
-    return handle.createReadStream()
+    // The read stream closes the file when it ends or is destroyed, and cancelling the Web stream
+    // (HEAD, a client that went away) destroys it
+    return Readable.toWeb(
+      handle.createReadStream(),
+    ) as ReadableStream<Uint8Array>
   } catch (error) {
     await handle.close()
     throw error
@@ -255,15 +268,15 @@ function isNotModified(
   etag: string,
   lastModified: Date,
 ): boolean {
-  const ifNoneMatch = ctx.req.headers['if-none-match']
-  if (ifNoneMatch !== undefined) {
+  const ifNoneMatch = ctx.request.headers.get('if-none-match')
+  if (ifNoneMatch !== null) {
     return ifNoneMatch
       .split(',')
       .map((tag) => tag.trim())
       .some((tag) => tag === '*' || weakTag(tag) === weakTag(etag))
   }
-  const ifModifiedSince = ctx.req.headers['if-modified-since']
-  if (ifModifiedSince !== undefined) {
+  const ifModifiedSince = ctx.request.headers.get('if-modified-since')
+  if (ifModifiedSince !== null) {
     const since = Date.parse(ifModifiedSince)
     return !Number.isNaN(since) && lastModified.getTime() <= since
   }

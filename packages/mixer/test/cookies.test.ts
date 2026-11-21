@@ -1,32 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { serve } from './helpers.js'
+import { Mixer } from '../src/index.js'
+import { call } from './helpers.js'
 
 const setCookies = (res: Response) => res.headers.getSetCookie()
 
 describe('ctx.cookies.get', () => {
   it('returns the value of the cookie whose name matches exactly', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => ({
-        sid: ctx.cookies.get('sid') ?? null,
-        other: ctx.cookies.get('other_sid') ?? null,
-        missing: ctx.cookies.get('missing') ?? null,
-      })),
-    )
-    const res = await fetch(url, {
+    const app = new Mixer().mix((ctx) => ({
+      sid: ctx.cookies.get('sid') ?? null,
+      other: ctx.cookies.get('other_sid') ?? null,
+      missing: ctx.cookies.get('missing') ?? null,
+    }))
+    const res = await call(app, '/', {
       headers: { cookie: 'other_sid=x; sid=abc' },
     })
     expect(await res.json()).toEqual({ sid: 'abc', other: 'x', missing: null })
   })
 
   it('URL-decodes values, returns the raw value when decoding fails, and strips quotes', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => [
-        ctx.cookies.get('a'),
-        ctx.cookies.get('b'),
-        ctx.cookies.get('c'),
-      ]),
-    )
-    const res = await fetch(url, {
+    const app = new Mixer().mix((ctx) => [
+      ctx.cookies.get('a'),
+      ctx.cookies.get('b'),
+      ctx.cookies.get('c'),
+    ])
+    const res = await call(app, '/', {
       headers: {
         cookie: `a=${encodeURIComponent('りんご; x')}; b=%E3%81; c="quoted"`,
       },
@@ -35,98 +32,84 @@ describe('ctx.cookies.get', () => {
   })
 
   it('get returns the first value and getAll returns all values for a repeated name', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => ({
-        first: ctx.cookies.get('sid'),
-        all: ctx.cookies.getAll('sid'),
-      })),
-    )
-    const res = await fetch(url, { headers: { cookie: 'sid=1; sid=2' } })
+    const app = new Mixer().mix((ctx) => ({
+      first: ctx.cookies.get('sid'),
+      all: ctx.cookies.getAll('sid'),
+    }))
+    const res = await call(app, '/', { headers: { cookie: 'sid=1; sid=2' } })
     expect(await res.json()).toEqual({ first: '1', all: ['1', '2'] })
   })
 
   it('handles a cookie named __proto__ safely', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => ({
-        value: ctx.cookies.get('__proto__'),
-        x: ctx.cookies.get('toString') ?? null,
-      })),
-    )
-    const res = await fetch(url, { headers: { cookie: '__proto__=p' } })
+    const app = new Mixer().mix((ctx) => ({
+      value: ctx.cookies.get('__proto__'),
+      x: ctx.cookies.get('toString') ?? null,
+    }))
+    const res = await call(app, '/', { headers: { cookie: '__proto__=p' } })
     expect(await res.json()).toEqual({ value: 'p', x: null })
   })
 })
 
 describe('ctx.cookies.set', () => {
   it('sets Set-Cookie with secure defaults', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.cookies.set('theme', 'dark')
-        return 'ok'
-      }),
-    )
-    expect(setCookies(await fetch(url))).toEqual([
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('theme', 'dark')
+      return 'ok'
+    })
+    expect(setCookies(await call(app))).toEqual([
       'theme=dark; Path=/; HttpOnly; Secure; SameSite=Lax',
     ])
   })
 
   it('accepts attributes and encodes the value', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.cookies.set('pref', 'a b;c', {
-          maxAge: 60,
-          expires: new Date('2030-01-01T00:00:00Z'),
-          path: '/app',
-          domain: 'example.com',
-          httpOnly: false,
-          secure: false,
-          sameSite: 'Strict',
-          priority: 'High',
-        })
-        return 'ok'
-      }),
-    )
-    expect(setCookies(await fetch(url))).toEqual([
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('pref', 'a b;c', {
+        maxAge: 60,
+        expires: new Date('2030-01-01T00:00:00Z'),
+        path: '/app',
+        domain: 'example.com',
+        httpOnly: false,
+        secure: false,
+        sameSite: 'Strict',
+        priority: 'High',
+      })
+      return 'ok'
+    })
+    expect(setCookies(await call(app))).toEqual([
       'pref=a%20b%3Bc; Max-Age=60; Expires=Tue, 01 Jan 2030 00:00:00 GMT; Path=/app; Domain=example.com; SameSite=Strict; Priority=High',
     ])
   })
 
   it('adds to existing Set-Cookie headers without removing them', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.res.setHeader('Set-Cookie', 'legacy=1')
-        ctx.cookies.set('a', '1')
-        return 'ok'
-      }),
-    )
-    const cookies = setCookies(await fetch(url))
+    const app = new Mixer().mix((ctx) => {
+      ctx.headers.append('Set-Cookie', 'legacy=1')
+      ctx.cookies.set('a', '1')
+      return 'ok'
+    })
+    const cookies = setCookies(await call(app))
     expect(cookies).toHaveLength(2)
     expect(cookies[0]).toBe('legacy=1')
   })
 
   it('replaces a cookie set again with the same name, Path, and Domain', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.cookies.set('a', '1')
-        ctx.cookies.set('a', '2')
-        ctx.cookies.set('a', '3', { path: '/other' })
-        return 'ok'
-      }),
-    )
-    const cookies = setCookies(await fetch(url))
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('a', '1')
+      ctx.cookies.set('a', '2')
+      ctx.cookies.set('a', '3', { path: '/other' })
+      return 'ok'
+    })
+    const cookies = setCookies(await call(app))
     expect(cookies).toHaveLength(2)
     expect(cookies[0]).toMatch(/^a=2; Path=\/;/)
     expect(cookies[1]).toMatch(/^a=3; Path=\/other;/)
   })
 
   it('keeps Set-Cookie on error responses', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.cookies.set('a', '1')
-        throw new Error('boom')
-      }),
-    )
-    const res = await fetch(url)
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('a', '1')
+      throw new Error('boom')
+    })
+    const res = await call(app)
     expect(res.status).toBe(500)
     expect(setCookies(res)).toHaveLength(1)
   })
@@ -134,13 +117,11 @@ describe('ctx.cookies.set', () => {
 
 describe('ctx.cookies.delete', () => {
   it('sends an expired cookie with the same Path and Domain', async () => {
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        ctx.cookies.delete('sid', { path: '/app', domain: 'example.com' })
-        return 'ok'
-      }),
-    )
-    expect(setCookies(await fetch(url))).toEqual([
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.delete('sid', { path: '/app', domain: 'example.com' })
+      return 'ok'
+    })
+    expect(setCookies(await call(app))).toEqual([
       'sid=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/app; Domain=example.com; HttpOnly; Secure; SameSite=Lax',
     ])
   })
@@ -197,34 +178,32 @@ describe('validation', () => {
 
   it.each(cases)('throws when %s', async (_label, act) => {
     let error: unknown
-    const url = await serve((app) =>
-      app.mix((ctx) => {
-        try {
-          act(ctx.cookies)
-        } catch (e) {
-          error = e
-        }
-        return 'ok'
-      }),
-    )
-    const res = await fetch(url)
+    const app = new Mixer().mix((ctx) => {
+      try {
+        act(ctx.cookies)
+      } catch (e) {
+        error = e
+      }
+      return 'ok'
+    })
+    const res = await call(app)
     expect(error).toBeInstanceOf(TypeError)
     expect(setCookies(res)).toEqual([])
   })
 
-  it('throws on set after the response has been sent', async () => {
+  it('throws on set after the response is final', async () => {
     let error: unknown
-    const url = await serve((app) =>
-      app.mix(async (ctx) => {
-        await ctx.send(200, 'sent')
+    const app = new Mixer().mix((ctx) => {
+      ctx.onResponse(() => {
         try {
           ctx.cookies.set('a', '1')
         } catch (e) {
           error = e
         }
-      }),
-    )
-    await fetch(url)
+      })
+      return 'sent'
+    })
+    await call(app)
     expect(error).toBeInstanceOf(Error)
   })
 })

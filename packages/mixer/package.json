@@ -1,6 +1,6 @@
 {
   "name": "@imatomix/mixer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Minimal & asynchronous web module",
   "type": "module",
   "exports": {
@@ -8,6 +8,11 @@
       "@imatomix/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "@imatomix/source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "main": "./dist/index.js",
