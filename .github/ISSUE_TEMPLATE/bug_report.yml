@@ -1,0 +1,56 @@
+name: Bug report
+description: Report something that does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. For security vulnerabilities, use the Security tab instead of this form.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - "@imatomix/mixer"
+        - "@imatomix/mix-router"
+        - "@imatomix/mix-cors"
+        - "@imatomix/mix-static"
+        - "@imatomix/mix-session"
+        - "@imatomix/mix-logger"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and version
+      placeholder: "Node.js 26.13.1"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: A minimal code example and the request that triggers the problem.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the response, error messages, or logs.
+    validations:
+      required: true
