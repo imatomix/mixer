@@ -27,11 +27,7 @@ export function serveStatic(
   const index = options.index ?? 'index.html'
   const maxAge = options.maxAge ?? 0
   const dotfiles = options.dotfiles ?? false
-  if (!Number.isInteger(maxAge) || maxAge < 0) {
-    throw new Error(
-      `mix-static: maxAge は 0 以上の整数で指定してください: ${maxAge}`,
-    )
-  }
+  validateMaxAge(maxAge)
   if (index !== false && !isValidIndexName(index)) {
     throw new Error(
       `mix-static: index にはファイル名だけを指定してください: ${index}`,
@@ -78,6 +74,32 @@ export function serveStatic(
       return undefined
     }
 
+    return sendFile(ctx, realFilePath, { maxAge })
+  }
+}
+
+export interface FileOptions {
+  /** Cache-Control の max-age（秒） */
+  maxAge?: number
+}
+
+/**
+ * 常に指定したファイルを返す Component。パスの判定はしないので、
+ * mix-router などと組み合わせて `get('/favicon.ico', serveFile('./favicon.ico'))` のように使う
+ */
+export function serveFile(
+  filePath: string,
+  options: FileOptions = {},
+): Component {
+  const realFilePath = realpathSync(resolve(filePath))
+  if (!statSync(realFilePath).isFile()) {
+    throw new Error(`mix-static: 通常のファイルではありません: ${filePath}`)
+  }
+  const maxAge = options.maxAge ?? 0
+  validateMaxAge(maxAge)
+
+  return (ctx) => {
+    if (ctx.method !== 'GET' && ctx.method !== 'HEAD') return undefined
     return sendFile(ctx, realFilePath, { maxAge })
   }
 }
@@ -155,8 +177,20 @@ async function statOrUndefined(path: string) {
 }
 
 function isNotFound(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException).code
+  const code = errorCode(error)
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENAMETOOLONG'
+}
+
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException).code
+}
+
+function validateMaxAge(maxAge: number): void {
+  if (!Number.isInteger(maxAge) || maxAge < 0) {
+    throw new Error(
+      `mix-static: maxAge は 0 以上の整数で指定してください: ${maxAge}`,
+    )
+  }
 }
 
 function redirectToDirectory(ctx: Context, rawSegments: string[]) {
@@ -178,14 +212,22 @@ async function sendFile(
   filePath: string,
   { maxAge }: { maxAge: number },
 ) {
-  // 検証後に最後の要素がシンボリックリンクへ差し替えられても、それをたどらない
-  const handle: FileHandle = await open(
-    filePath,
-    constants.O_RDONLY | constants.O_NOFOLLOW,
-  )
+  let handle: FileHandle
+  try {
+    // 検証後に最後の要素がシンボリックリンクへ差し替えられても、それをたどらない
+    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW)
+  } catch (error) {
+    // 検証後に消えた・シンボリックリンクに差し替えられた（ELOOP）ものは配信しない
+    if (isNotFound(error) || errorCode(error) === 'ELOOP') return undefined
+    throw error
+  }
   try {
     // チェック後にファイルが差し替えられても、開いたものと同じファイルの情報を返す
     const stats = await handle.stat()
+    if (!stats.isFile()) {
+      await handle.close()
+      return undefined
+    }
     const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`
     const lastModified = new Date(Math.floor(stats.mtimeMs / 1000) * 1000)
 

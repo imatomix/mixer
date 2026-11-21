@@ -34,6 +34,26 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 
 ファイルが見つからなければ何もせず次のコンポーネントへ進む（最終的に mixer の 404 になる）。
 
+## 単体のファイルを配信する（favicon など）
+
+`serveFile(filePath, { maxAge })` は、常に指定したファイルを返す Component。パスの判定はしないので、[mix-router](../mix-router) などと組み合わせる。
+
+```ts
+import { get } from '@imatomix/mix-router'
+import { serveFile } from '@imatomix/mix-static'
+
+app.mix(
+  get('/favicon.ico', serveFile('./assets/favicon.ico', { maxAge: 86400 })),
+  get('/robots.txt', serveFile('./assets/robots.txt')),
+)
+```
+
+- GET と HEAD 以外は次のコンポーネントへ進む
+- ファイルは定義時に存在と種類（通常のファイル）を確認する。実行中に消えたら次のコンポーネントへ進む
+- レスポンスのヘッダや 304 の扱いは `serveStatic` と同じ
+
+公開ディレクトリに `favicon.ico` を置いているなら、`serveStatic` だけで配信できる（旧 mix-favicon は廃止した）。
+
 ## Options
 
 | オプション | 初期値 | 説明 |
