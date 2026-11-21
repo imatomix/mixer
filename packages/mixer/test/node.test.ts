@@ -146,6 +146,28 @@ describe('request URL', () => {
     expect(status(await raw(server.port, request))).toBe(400)
   })
 
+  it('accepts a Host with an explicit default port', async () => {
+    const server = await start(echoUrl())
+    const res = await raw(
+      server.port,
+      'GET /a HTTP/1.1\r\nHost: example.com:80\r\nConnection: close\r\n\r\n',
+    )
+    expect(status(res)).toBe(200)
+    expect(JSON.parse(body(res))).toMatchObject({
+      host: 'example.com',
+      path: '/a',
+    })
+  })
+
+  it('returns 400 for port 0 in Host', async () => {
+    const server = await start(echoUrl())
+    const res = await raw(
+      server.port,
+      'GET / HTTP/1.1\r\nHost: a.test:0\r\nConnection: close\r\n\r\n',
+    )
+    expect(status(res)).toBe(400)
+  })
+
   it('accepts an IPv6 host with a port', async () => {
     const server = await start(echoUrl())
     const res = await raw(

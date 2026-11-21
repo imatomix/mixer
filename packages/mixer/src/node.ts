@@ -121,17 +121,15 @@ function requestUrl(req: IncomingMessage): URL | undefined {
     return undefined
   }
 
+  // Only host[:port]: a name or bracketed IPv6 address and a port of 1–65535. Comparing with the
+  // URL parser's output instead would reject valid spellings such as an explicit default port (:80)
+  const match = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?$/.exec(host)
+  if (!match) return undefined
+  const port = match[2]
+  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) {
+    return undefined
+  }
   try {
-    const origin = new URL(`http://${host}`)
-    const plainHost =
-      origin.host === host &&
-      origin.username === '' &&
-      origin.password === '' &&
-      origin.pathname === '/' &&
-      origin.search === '' &&
-      origin.hash === '' &&
-      (origin.port === '' || Number(origin.port) > 0)
-    if (!plainHost) return undefined
     return new URL(`http://${host}${pathAndQuery}`)
   } catch {
     return undefined
