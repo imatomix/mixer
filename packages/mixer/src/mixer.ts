@@ -1,132 +1,148 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { DEFAULT_BODY_LIMIT } from './body.js'
-import { Context, type State } from './context.js'
+import { Context, type ExecutionContextLike, type State } from './context.js'
 import { HttpError } from './errors.js'
+import { errorDraft, finalizeResponse, toResponse } from './finalize.js'
 
-export type Component<S extends State = State> = (
-  ctx: Context<S>,
+export type Component<S extends State = State, E = unknown> = (
+  ctx: Context<S, E>,
 ) => unknown | Promise<unknown>
 
-export type ErrorHandler<S extends State = State> = (
+/** Returns a value to use as the error response, or undefined for the default one */
+export type ErrorHandler<S extends State = State, E = unknown> = (
   error: unknown,
-  ctx: Context<S>,
-) => void | Promise<void>
+  ctx: Context<S, E>,
+) => unknown | Promise<unknown>
 
-export interface MixerOptions<S extends State = State> {
+export interface MixerOptions<S extends State = State, E = unknown> {
+  /** Path prefix the app is mounted at, such as '/api'. ctx.path does not include it */
+  basePath?: string
   /** Maximum request body size in bytes (default 3 MB) */
   bodyLimit?: number
-  onError?: ErrorHandler<S>
+  onError?: ErrorHandler<S, E>
 }
 
-export class Mixer<S extends State = State> {
-  readonly #components: Component<S>[] = []
+export class Mixer<S extends State = State, E = unknown> {
+  readonly #components: Component<S, E>[] = []
+  readonly #basePath: string
   readonly #bodyLimit: number
-  readonly #onError: ErrorHandler<S>
-  #server: Server | undefined
+  readonly #onError: ErrorHandler<S, E> | undefined
 
-  constructor(options: MixerOptions<S> = {}) {
+  constructor(options: MixerOptions<S, E> = {}) {
+    this.#basePath = normalizeBasePath(options.basePath)
     this.#bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
-    this.#onError = options.onError ?? defaultErrorHandler
+    this.#onError = options.onError
   }
 
-  mix(...components: Component<S>[]): this {
+  mix(...components: Component<S, E>[]): this {
     this.#components.push(...components)
     return this
   }
 
-  readonly handler = async (
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> => {
-    let ctx: Context<S>
+  /** Handles a request. Defined as a property so that it can be passed around without its object */
+  readonly fetch = async (
+    request: Request,
+    env?: E,
+    executionContext?: ExecutionContextLike,
+  ): Promise<Response> => {
+    const pathname = new URL(request.url).pathname
+    const path = stripBasePath(pathname, this.#basePath)
+    const ctx = new Context<S, E>(request, {
+      path: path ?? pathname,
+      bodyLimit: this.#bodyLimit,
+      env: env as E,
+      executionContext,
+    })
+
+    let response: Response
     try {
-      ctx = new Context<S>(req, res, this.#bodyLimit)
-    } catch {
-      // An unparsable request target. ctx cannot be created, so respond directly without onError
-      res.statusCode = 400
-      res.end()
-      return
-    }
-    try {
-      await this.#run(ctx)
+      if (path === undefined) throw new HttpError(404)
+      response = await this.#respond(ctx, await this.#run(ctx))
     } catch (error) {
-      await this.#handleError(error, ctx)
+      response = await this.#respondToError(error, ctx)
     }
+
+    const final = finalizeResponse(response, ctx.method)
+    await ctx.runOnResponse(final)
+    return final
   }
 
-  async #run(ctx: Context<S>): Promise<void> {
+  async #run(ctx: Context<S, E>): Promise<unknown> {
     for (const component of this.#components) {
       const result = await component(ctx)
-      if (ctx.sent) return
-      if (result !== undefined) {
-        await ctx.send(ctx.status, result)
-        return
-      }
+      if (result !== undefined) return result
     }
     throw new HttpError(404)
   }
 
-  async #handleError(error: unknown, ctx: Context<S>): Promise<void> {
-    if (ctx.sent) {
-      // A correct error response cannot be sent once headers are out, so drop the connection
-      ctx.res.destroy(error instanceof Error ? error : undefined)
-      return
-    }
+  async #respond(ctx: Context<S, E>, value: unknown): Promise<Response> {
     try {
-      await this.#onError(error, ctx)
-    } catch (handlerError) {
-      console.error(handlerError)
+      await ctx.runBeforeSend()
+    } catch (error) {
+      // The value will never be sent, so release a stream it holds (for example, an open file)
+      cancelBody(value)
+      throw error
     }
-    // Never leave a request hanging, even if onError forgets to respond or fails
-    if (!ctx.sent) await defaultErrorHandler(error, ctx)
+    return toResponse(value, ctx.draft, ctx.url.pathname)
   }
 
-  listen(port = 0, hostname?: string): Promise<Server> {
-    if (this.#server?.listening) {
-      return Promise.reject(new Error('Mixer is already listening'))
+  async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
+    const status = error instanceof HttpError ? error.status : 500
+    const draft = errorDraft(ctx.headers, status)
+    ctx.resetDraft(draft)
+
+    if (this.#onError) {
+      try {
+        const value = await this.#onError(error, ctx)
+        if (value !== undefined) return await this.#respond(ctx, value)
+      } catch (handlerError) {
+        console.error(handlerError)
+      }
+      ctx.resetDraft(errorDraft(draft.headers, status))
     }
-    const server = createServer(this.handler)
-    this.#server = server
-    return new Promise((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(port, hostname, () => {
-        server.off('error', reject)
-        resolve(server)
-      })
-    })
-  }
 
-  get address(): AddressInfo | undefined {
-    const address = this.#server?.address()
-    return typeof address === 'object' && address !== null ? address : undefined
-  }
-
-  close(): Promise<void> {
-    const server = this.#server
-    if (!server) return Promise.resolve()
-    this.#server = undefined
-    return new Promise((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()))
-      server.closeIdleConnections()
-    })
+    try {
+      await ctx.runBeforeSend()
+    } catch (hookError) {
+      console.error(hookError)
+      ctx.resetDraft(errorDraft(ctx.headers, 500))
+      return toResponse({ error: 'Internal Server Error' }, ctx.draft)
+    }
+    return defaultErrorResponse(error, ctx)
   }
 }
 
-async function defaultErrorHandler(
+function defaultErrorResponse(
   error: unknown,
-  ctx: Context<State>,
-): Promise<void> {
+  ctx: Context<State, unknown>,
+): Response {
   if (error instanceof HttpError && error.expose) {
-    await ctx.send(error.status, { error: error.message })
-    return
+    return toResponse({ error: error.message }, ctx.draft)
   }
   console.error(error)
-  const status = error instanceof HttpError ? error.status : 500
-  await ctx.send(status, { error: 'Internal Server Error' })
+  return toResponse({ error: 'Internal Server Error' }, ctx.draft)
+}
+
+function cancelBody(value: unknown): void {
+  const stream =
+    value instanceof ReadableStream
+      ? value
+      : value instanceof Response
+        ? value.body
+        : null
+  stream?.cancel().catch((error: unknown) => console.error(error))
+}
+
+function normalizeBasePath(basePath: string | undefined): string {
+  if (!basePath) return ''
+  const segments = basePath.split('/').filter(Boolean)
+  return segments.length === 0 ? '' : `/${segments.join('/')}`
+}
+
+/** Removes basePath from the path, comparing whole segments. undefined when the path is outside it */
+function stripBasePath(pathname: string, basePath: string): string | undefined {
+  if (!basePath) return pathname
+  if (pathname === basePath || pathname === `${basePath}/`) return '/'
+  if (pathname.startsWith(`${basePath}/`))
+    return pathname.slice(basePath.length)
+  return undefined
 }

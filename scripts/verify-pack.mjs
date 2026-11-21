@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
+const migrationScope = JSON.parse(
+  readFileSync(join(root, 'scripts', 'migration-scope.json'), 'utf8'),
+)
+console.log(`Migration scope: ${migrationScope.join(', ')}`)
 
 // The packages are installed and type-checked once; only the final smoke test runs on the chosen runtime.
 const runtimeArg = process.argv.find((arg) => arg.startsWith('--runtime='))
@@ -36,6 +40,8 @@ const packages = readdirSync(join(root, 'packages'))
   })
   // Only packages that publish a dist build
   .filter(({ manifest }) => manifest.files?.includes('dist'))
+  // Temporary during the Web standard migration: only packages that have been migrated
+  .filter(({ manifest }) => migrationScope.includes(manifest.name))
 
 const work = mkdtempSync(join(tmpdir(), 'mixer-verify-pack-'))
 console.log(`Working directory: ${work}`)

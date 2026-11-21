@@ -1,81 +1,71 @@
-import type { IncomingMessage } from 'node:http'
 import { HttpError } from './errors.js'
 
 export const DEFAULT_BODY_LIMIT = 1024 * 1024 * 3
 
 export type FormBody = Record<string, string | string[]>
 
-export function readBuffer(
-  req: IncomingMessage,
+export async function readBytes(
+  request: Request,
   limit = DEFAULT_BODY_LIMIT,
-): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const declaredLength = Number(req.headers['content-length'])
-    if (declaredLength > limit) {
-      req.resume()
-      reject(new HttpError(413))
-      return
+): Promise<Uint8Array> {
+  const declared = request.headers.get('content-length')
+  if (declared !== null) {
+    if (!/^\d+$/.test(declared)) {
+      throw new HttpError(400, 'Invalid Content-Length')
     }
+    if (Number(declared) > limit) throw new HttpError(413)
+  }
+  if (!request.body) return new Uint8Array(0)
 
-    const chunks: Buffer[] = []
-    let received = 0
-
-    const onData = (chunk: Buffer) => {
-      received += chunk.length
-      if (received > limit) {
-        cleanup()
-        // req.destroy() would close the socket and make the 413 response impossible, so drain the rest instead
-        req.resume()
-        reject(new HttpError(413))
-        return
-      }
-      chunks.push(chunk)
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > limit) {
+      // Stop reading instead of draining a body that is already too large
+      await reader.cancel().catch(() => {})
+      throw new HttpError(413)
     }
-    const onEnd = () => {
-      cleanup()
-      resolve(Buffer.concat(chunks))
-    }
-    const onError = (error: Error) => {
-      cleanup()
-      reject(error)
-    }
-    const cleanup = () => {
-      req.off('data', onData)
-      req.off('end', onEnd)
-      req.off('error', onError)
-    }
-
-    req.on('data', onData)
-    req.on('end', onEnd)
-    req.on('error', onError)
-  })
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
 }
 
 export function parseBody(
-  buffer: Buffer,
-  contentType: string | undefined,
+  bytes: Uint8Array,
+  contentType: string | null,
 ): unknown {
-  if (buffer.length === 0) return undefined
+  if (bytes.length === 0) return undefined
+  const text = () => new TextDecoder().decode(bytes)
 
   const mimeType = contentType?.split(';')[0]?.trim().toLowerCase() ?? ''
 
   if (mimeType === 'application/json' || mimeType.endsWith('+json')) {
     try {
-      return JSON.parse(buffer.toString('utf8'))
+      return JSON.parse(text())
     } catch (error) {
       throw new HttpError(400, 'Invalid JSON body', { cause: error })
     }
   }
 
   if (mimeType === 'application/x-www-form-urlencoded') {
-    return parseForm(buffer.toString('utf8'))
+    return parseForm(text())
   }
 
   if (mimeType === '' || mimeType.startsWith('text/')) {
-    return buffer.toString('utf8')
+    return text()
   }
 
-  return buffer
+  return bytes
 }
 
 function parseForm(text: string): FormBody {
