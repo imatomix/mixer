@@ -14,31 +14,36 @@ export type { Params } from './params.js'
 export type RouteHandler<
   P = Record<string, string>,
   S extends State = State,
-> = (ctx: Context<S>, params: P) => unknown
+  E = unknown,
+> = (ctx: Context<S, E>, params: P) => unknown
 
 const dispatch = Symbol('dispatch')
 
-type Dispatch<S extends State> = (
-  ctx: Context<S>,
+type Dispatch<S extends State, E> = (
+  ctx: Context<S, E>,
   prefix: string,
 ) => Promise<unknown>
 
 /** A route that can be passed to `mix()` as a mixer Component and nested in a namespace */
-export interface Route<S extends State = State> {
-  (ctx: Context<S>): Promise<unknown>
-  readonly [dispatch]: Dispatch<S>
+export interface Route<S extends State = State, E = unknown> {
+  (ctx: Context<S, E>): Promise<unknown>
+  readonly [dispatch]: Dispatch<S, E>
 }
 
-function createRoute<S extends State>(run: Dispatch<S>): Route<S> {
-  const component = (ctx: Context<S>) => run(ctx, '')
+function createRoute<S extends State, E>(run: Dispatch<S, E>): Route<S, E> {
+  const component = (ctx: Context<S, E>) => run(ctx, '')
   return Object.assign(component, { [dispatch]: run })
 }
 
-export function route<Path extends string, S extends State = State>(
+export function route<
+  Path extends string,
+  S extends State = State,
+  E = unknown,
+>(
   methods: string | readonly string[],
   path: Path,
-  ...handlers: RouteHandler<Params<Path>, S>[]
-): Route<S> {
+  ...handlers: RouteHandler<Params<Path>, S, E>[]
+): Route<S, E> {
   const allowed = new Set(
     (typeof methods === 'string' ? [methods] : methods).map((method) =>
       method.toUpperCase(),
@@ -48,18 +53,18 @@ export function route<Path extends string, S extends State = State>(
   return createMatcher(path, handlers, (method) => allowed.has(method))
 }
 
-export function all<Path extends string, S extends State = State>(
+export function all<Path extends string, S extends State = State, E = unknown>(
   path: Path,
-  ...handlers: RouteHandler<Params<Path>, S>[]
-): Route<S> {
+  ...handlers: RouteHandler<Params<Path>, S, E>[]
+): Route<S, E> {
   return createMatcher(path, handlers, () => true)
 }
 
-function createMatcher<Path extends string, S extends State>(
+function createMatcher<Path extends string, S extends State, E>(
   path: Path,
-  handlers: RouteHandler<Params<Path>, S>[],
+  handlers: RouteHandler<Params<Path>, S, E>[],
   acceptsMethod: (method: string) => boolean,
-): Route<S> {
+): Route<S, E> {
   // Cache the compiled pattern per namespace prefix instead of compiling it on every request
   const patterns = new Map<string, Pattern>()
   compilePattern(path)
@@ -91,8 +96,8 @@ type Decoded = { segments: string[] | undefined } | { error: unknown }
 // (including a 400 for malformed encoding) between routes
 const decodedPaths = new WeakMap<Context<State>, Decoded>()
 
-function requestSegments<S extends State>(
-  ctx: Context<S>,
+function requestSegments<S extends State, E>(
+  ctx: Context<S, E>,
 ): string[] | undefined {
   const key = ctx as unknown as Context<State>
   let decoded = decodedPaths.get(key)
@@ -108,10 +113,10 @@ function requestSegments<S extends State>(
   return decoded.segments
 }
 
-type MethodRoute = <Path extends string, S extends State = State>(
+type MethodRoute = <Path extends string, S extends State = State, E = unknown>(
   path: Path,
-  ...handlers: RouteHandler<Params<Path>, S>[]
-) => Route<S>
+  ...handlers: RouteHandler<Params<Path>, S, E>[]
+) => Route<S, E>
 
 function methodRoute(method: string): MethodRoute {
   return (path, ...handlers) => route(method, path, ...handlers)
@@ -138,7 +143,9 @@ export function namespace(prefix: string) {
     .map((segment) => `/${segment}`)
     .join('')
 
-  return <S extends State = State>(...routes: Route<S>[]): Route<S> =>
+  return <S extends State = State, E = unknown>(
+    ...routes: Route<S, E>[]
+  ): Route<S, E> =>
     createRoute(async (ctx, outerPrefix) => {
       for (const child of routes) {
         const result = await child[dispatch](ctx, outerPrefix + normalized)
@@ -148,33 +155,36 @@ export function namespace(prefix: string) {
     })
 }
 
-type MethodRouteOf<S extends State> = <Path extends string>(
+type MethodRouteOf<S extends State, E> = <Path extends string>(
   path: Path,
-  ...handlers: RouteHandler<Params<Path>, S>[]
-) => Route<S>
+  ...handlers: RouteHandler<Params<Path>, S, E>[]
+) => Route<S, E>
 
-/** A set of route functions with a fixed State type */
-export interface Router<S extends State> {
-  get: MethodRouteOf<S>
-  post: MethodRouteOf<S>
-  put: MethodRouteOf<S>
-  patch: MethodRouteOf<S>
-  del: MethodRouteOf<S>
-  head: MethodRouteOf<S>
-  options: MethodRouteOf<S>
-  all: MethodRouteOf<S>
+/** A set of route functions with fixed State and Env types */
+export interface Router<S extends State, E = unknown> {
+  get: MethodRouteOf<S, E>
+  post: MethodRouteOf<S, E>
+  put: MethodRouteOf<S, E>
+  patch: MethodRouteOf<S, E>
+  del: MethodRouteOf<S, E>
+  head: MethodRouteOf<S, E>
+  options: MethodRouteOf<S, E>
+  all: MethodRouteOf<S, E>
   route: <Path extends string>(
     methods: string | readonly string[],
     path: Path,
-    ...handlers: RouteHandler<Params<Path>, S>[]
-  ) => Route<S>
-  namespace: (prefix: string) => (...routes: Route<S>[]) => Route<S>
+    ...handlers: RouteHandler<Params<Path>, S, E>[]
+  ) => Route<S, E>
+  namespace: (prefix: string) => (...routes: Route<S, E>[]) => Route<S, E>
 }
 
 /**
- * With `const { get } = createRouter<AppState>()`, handlers get a typed `ctx.state`
- * (no need to write `get<'/path', AppState>(...)`)
+ * With `const { get } = createRouter<AppState, Env>()`, handlers get a typed `ctx.state` and `ctx.env`
+ * (no need to write `get<'/path', AppState, Env>(...)`). Env defaults to unknown, as in mixer
  */
-export function createRouter<S extends State = State>(): Router<S> {
+export function createRouter<S extends State = State, E = unknown>(): Router<
+  S,
+  E
+> {
   return { get, post, put, patch, del, head, options, all, route, namespace }
 }

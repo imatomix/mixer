@@ -266,7 +266,7 @@ const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATAB
 export default app satisfies ExportedHandler<Env>
 ```
 
-- `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される
+- `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される。mix-router を使うときは、`createRouter<State, Env>()` にもバインディングの型を渡す
 - PR ごとに、workerd の互換日付 `2026-07-30`、Node 互換を切った状態（`no_nodejs_compat`、`no_nodejs_compat_v2`）で動作を確かめ、`@cloudflare/workers-types` で型も確かめている。mixer に `nodejs_compat` は要らない
 
 | パッケージ | Workers での扱い |

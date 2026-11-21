@@ -265,7 +265,7 @@ const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATAB
 export default app satisfies ExportedHandler<Env>
 ```
 
-- `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` passes work to the Worker's `ctx.waitUntil`
+- `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` passes work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
 - Checked on every pull request with workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
 
 | Package | On Workers |
