@@ -1,20 +1,23 @@
 {
-  "name": "@imatomix/mixer",
-  "version": "0.0.1",
-  "description": "Minimal & asynchronous web module ",
-  "main": "./lib/index.js",
-  "directories": {
-    "lib": "lib"
+  "name": "mixer-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "verify:pack": "node scripts/verify-pack.mjs"
   },
-  "keywords": [
-    "mixer",
-    "web",
-    "http",
-    "mix"
-  ],
-  "author": "Keita Imatomi",
-  "license": "MIT"
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "vitest": "catalog:",
+    "typescript": "catalog:"
+  }
 }
