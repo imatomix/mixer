@@ -101,15 +101,31 @@ const checks = Object.keys(dependencies)
 
 const smoke = `${imports}
 ${checks}
+import { serve } from '@imatomix/mixer/node'
+
+type FetchApp = { fetch: (request: Request) => Promise<Response> }
+type BunRuntime = {
+  serve(options: { port: number; hostname: string; fetch: FetchApp['fetch'] }): {
+    port: number
+    stop(closeActiveConnections?: boolean): Promise<void>
+  }
+}
+
+// On Bun, serve the app the way Bun users would (Bun.serve with app.fetch); on Node, through the Node adapter
+async function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
+  const bun = (globalThis as { Bun?: BunRuntime }).Bun
+  if (!bun) return serve(app, { hostname: '127.0.0.1' })
+  const server = bun.serve({ port: 0, hostname: '127.0.0.1', fetch: app.fetch })
+  return { port: server.port, close: () => server.stop(true) }
+}
 ${
   dependencies['@imatomix/mix-router']
     ? `
 import { Mixer } from '@imatomix/mixer'
-import { serve } from '@imatomix/mixer/node'
 import { get } from '@imatomix/mix-router'
 
 const app = new Mixer().mix(get('/hello/:name', (_ctx, { name }) => ({ hello: name })))
-const server = await serve(app, { hostname: '127.0.0.1' })
+const server = await listen(app)
 const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
 await server.close()
@@ -121,7 +137,6 @@ ${
   dependencies['@imatomix/mix-session']
     ? `
 import { Mixer as SessionMixer } from '@imatomix/mixer'
-import { serve as serveSession } from '@imatomix/mixer/node'
 import { session, type SessionState } from '@imatomix/mix-session'
 
 const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
@@ -134,7 +149,7 @@ const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   }
   return { user: current.get('user') }
 })
-const sessionServer = await serveSession(sessionApp, { hostname: '127.0.0.1' })
+const sessionServer = await listen(sessionApp)
 const base = \`http://127.0.0.1:\${sessionServer.port}\`
 const login = await fetch(\`\${base}/login\`)
 const setCookies = login.headers.getSetCookie()
@@ -154,7 +169,6 @@ import { mkdtempSync as makeTempDir, symlinkSync, writeFileSync as writeTempFile
 import { tmpdir as osTmpdir } from 'node:os'
 import { join as joinPath } from 'node:path'
 import { Mixer as StaticMixer } from '@imatomix/mixer'
-import { serve as serveStaticApp } from '@imatomix/mixer/node'
 import { serveStatic } from '@imatomix/mix-static'
 
 const publicDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-static-'))
@@ -164,7 +178,7 @@ const outsideDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-outside-'))
 writeTempFile(joinPath(outsideDir, 'secret.txt'), 'secret')
 symlinkSync(joinPath(outsideDir, 'secret.txt'), joinPath(publicDir, 'link.txt'))
 const staticApp = new StaticMixer().mix(serveStatic(publicDir))
-const staticServer = await serveStaticApp(staticApp, { hostname: '127.0.0.1' })
+const staticServer = await listen(staticApp)
 const staticBase = \`http://127.0.0.1:\${staticServer.port}\`
 const file = await fetch(\`\${staticBase}/hello.txt\`)
 const fileText = await file.text()
@@ -194,11 +208,10 @@ ${
   dependencies['@imatomix/mix-cors']
     ? `
 import { Mixer as CorsMixer } from '@imatomix/mixer'
-import { serve as serveCors } from '@imatomix/mixer/node'
 import { cors } from '@imatomix/mix-cors'
 
 const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
-const corsServer = await serveCors(corsApp, { hostname: '127.0.0.1' })
+const corsServer = await listen(corsApp)
 const corsBase = \`http://127.0.0.1:\${corsServer.port}\`
 const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })
 await simple.text()
@@ -218,7 +231,6 @@ ${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'
-import { serve as serveLogger } from '@imatomix/mixer/node'
 import { type LogEntry, logger } from '@imatomix/mix-logger'
 
 let resolveEntry: (entry: LogEntry) => void = () => {}
@@ -226,7 +238,7 @@ const logged = new Promise<LogEntry>((resolve) => {
   resolveEntry = resolve
 })
 const loggerApp = new LoggerMixer().mix(logger({ write: (entry) => resolveEntry(entry) }), () => 'logged')
-const loggerServer = await serveLogger(loggerApp, { hostname: '127.0.0.1' })
+const loggerServer = await listen(loggerApp)
 await (await fetch(\`http://127.0.0.1:\${loggerServer.port}/log?secret=1\`)).text()
 const entry = await logged
 await loggerServer.close()
@@ -236,7 +248,7 @@ if (entry.method !== 'GET' || entry.path !== '/log' || entry.status !== 200) {
 `
     : ''
 }
-const runtimeName = process.versions.bun ? \`bun \${process.versions.bun}\` : \`node \${process.versions.node}\`
+const runtimeName = process.versions.bun ? \`bun \${process.versions.bun} (Bun.serve)\` : \`node \${process.versions.node} (serve from @imatomix/mixer/node)\`
 console.log(\`ok on \${runtimeName}\`)
 `
 writeFileSync(join(consumer, 'smoke.ts'), smoke)
