@@ -74,6 +74,18 @@ The goal is that users can pick only the modules they need and replace any of th
 - Use `ctx.onBeforeSend()` for work that must happen right before the response is sent, and the `finish` / `close` events of `ctx.res` for work after it.
 - Do not add runtime dependencies without discussing it in an issue first.
 
+## Adding a new package
+
+Open an issue first. A new package should not be something that fits better as an extension of an existing package or as a primitive in mixer itself.
+
+1. **Package structure.** Copy the setup from an existing module such as `packages/mix-cors`:
+   - `package.json`: `"type": "module"`, `exports` (`types` + `import`), `files: ["dist"]`, `engines.node: ">=24"`, the same `scripts`, `peerDependencies` on `@imatomix/mixer`, and `devDependencies` with `"@imatomix/mixer": "workspace:*"` plus `catalog:` entries for `@types/node`, `tsup`, `typescript`, and `vitest`. Start at version `0.1.0`.
+   - `tsconfig.json`, `tsconfig.build.json`, `tsup.config.ts`, and `vitest.config.ts`. The vitest config is required so that mixer resolves from `src` through the `@imatomix/source` condition.
+   - Run `pnpm install`.
+2. **Tests first.** Write `test/*.test.ts` for the behavior you want, watch the tests fail, then implement `src/index.ts`. Export one function that takes options and returns a `Component`.
+3. **Documentation.** Write `README.md` (English) and `README.ja.md` (Japanese), and add the package to the table in the root READMEs.
+4. **Checks.** Run `pnpm format`, `pnpm check`, `pnpm --filter @imatomix/<name> build`, and `pnpm verify:pack`. The new package is picked up by `verify:pack` automatically; add a combination check to `scripts/verify-pack.mjs` if it interacts with mixer in a way worth checking end to end. Make sure `dist/index.js` imports nothing from mixer except its public API.
+
 ## Directory layout and naming
 
 ```
