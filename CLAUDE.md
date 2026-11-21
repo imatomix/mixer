@@ -29,6 +29,8 @@ pnpm verify:pack                     # npm pack した公開物を利用側と�
 - mix-* は mixer に `peerDependencies` で依存する（アプリ内の mixer の実体を 1 つに保ち、`instanceof HttpError` などが正しく働くようにする）
   - `devDependencies` には `"@imatomix/mixer": "workspace:*"` を入れる
   - peer の版範囲は、実際に使っている mixer の API が入った版以上にする（例: `onBeforeSend` を使うならそれが入った版）
+  - mixer の公開 API を変えたら、それを使う mix-* の peer の下限と `scripts/verify-pack.mjs` の組み合わせ確認を更新し、必要なら同時に公開する
+- パッケージは個別に公開する（`@imatomix/mixer` と `@imatomix/mix-*`）。ユーザーがモジュールごとに選び、版を管理できるようにするため
 - mixer の**公開 API**（`src/index.ts` から export されているもの）は実行時にも使ってよい（`HttpError` など）。内部実装には依存しない
 - エラーで応答するときは `ctx.send()` で直接返さず `HttpError` を投げる。ユーザーが `onError` でまとめて差し替えられるようにするため
 - mix-* 同士は依存しない。他のモジュールの存在を前提にしない
