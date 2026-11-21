@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, web-standard]
   push:
-    branches: [main]
+    branches: [main, web-standard]
 
 # Pull requests from forks run with a read-only token and no secrets.
 permissions:

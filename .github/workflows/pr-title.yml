@@ -4,7 +4,7 @@ name: PR title
 # check instead of the whole test suite.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, web-standard]
     types: [opened, edited, synchronize, reopened]
 
 # Pull requests from forks run with a read-only token and no secrets.
