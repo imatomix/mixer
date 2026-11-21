@@ -467,6 +467,30 @@ describe('onBeforeSend', () => {
   })
 })
 
+describe('onBeforeSend の失敗', () => {
+  it('フックが失敗したら、返そうとしていたストリームを破棄する', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let destroyed = false
+    const url = await serve((app) =>
+      app.mix((ctx) => {
+        ctx.onBeforeSend(() => {
+          throw new Error('store down')
+        })
+        const stream = new Readable({ read() {} })
+        stream.on('close', () => {
+          destroyed = true
+        })
+        return stream
+      }),
+    )
+    const res = await fetch(url)
+    expect(res.status).toBe(500)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(destroyed).toBe(true)
+    consoleError.mockRestore()
+  })
+})
+
 describe('ctx.url', () => {
   it('// で始まるパスをホスト名として解釈しない', async () => {
     const url = await serve((app) =>

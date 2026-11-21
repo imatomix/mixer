@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { Readable } from 'node:stream'
 import { parseBody, readBuffer } from './body.js'
 import { Cookies } from './cookies.js'
 import { sendResponse } from './send.js'
@@ -64,8 +65,14 @@ export class Context<S extends State = State> {
     this.status = status
     // 先に取り出しておくことで、フックが失敗してエラー応答になったときに再実行されない
     const hooks = this.#beforeSendHooks.splice(0)
-    for (const hook of hooks) {
-      await hook()
+    try {
+      for (const hook of hooks) {
+        await hook()
+      }
+    } catch (error) {
+      // sendResponse に渡す前に失敗すると誰もストリームを閉じず、ファイルディスクリプタなどが漏れる
+      if (body instanceof Readable) body.destroy()
+      throw error
     }
     await sendResponse(this.res, this.status, body)
   }
