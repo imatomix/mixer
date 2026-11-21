@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "pnpm -r --if-present build",
-    "test": "node scripts/run-in-scope.mjs test",
-    "typecheck": "node scripts/run-in-scope.mjs typecheck",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
