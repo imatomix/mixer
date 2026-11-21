@@ -39,7 +39,12 @@ pnpm verify:pack  # required when package.json (exports, files, dependencies) or
 
 ## Design principles
 
-The goal is that users can pick only the modules they need and replace any of them with another implementation. The rules in [CONTRIBUTING.md](CONTRIBUTING.md#design-principles) apply. In addition:
+mixer aims to be **safe by default and simple to write**, and treats both as equally important.
+
+- Prefer designs that achieve both. A safe default should not require extra code, and a simple API should not leave a foot-gun.
+- When they conflict, do not pick one silently: lay out the trade-off, recommend one option with a reason, and let the maintainer decide.
+
+The goal is also that users can pick only the modules they need and replace any of them with another implementation. The rules in [CONTRIBUTING.md](CONTRIBUTING.md#design-principles) apply. In addition:
 
 - **Changing mixer's public API needs the maintainer's agreement first.** If a `mix-*` change seems to need something new from mixer (a property, a type, a behavior change), stop and propose it before implementing. Do not work around a missing primitive inside a module. Once agreed, land the mixer change in its own commit with tests.
 - Prefer putting a genuinely shared HTTP primitive (like cookies) in mixer over duplicating it in several modules.
