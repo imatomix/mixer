@@ -118,7 +118,7 @@ app.mix(
 namespace のパスに `:param` や `*` は使えない。
 ハンドラの params の型にその値が現れず、型と実際の値がずれてしまうため。
 
-## 独自の State を使う
+## 独自の State と Env を使う
 
 `createRouter<State>()` で、`ctx.state` に型が付いたルート関数一式を作れる。
 
@@ -132,6 +132,19 @@ const { get, post, namespace } = createRouter<AppState>()
 const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined
 ```
+
+`ctx.env` の型（Cloudflare Workers のバインディングなど）は、`Mixer` と同じく 2 つ目の型引数で渡す。省くと `ctx.env` は `unknown` になる。
+
+```ts
+type Env = { DATABASE_URL: string }
+
+const { get } = createRouter<AppState, Env>()
+
+const app = new Mixer<AppState, Env>()
+app.mix(get('/db', (ctx) => ctx.env.DATABASE_URL)) // ctx.env.DATABASE_URL: string
+```
+
+ルートは `mix()` に渡す前に作るので、アプリから型を受け取れない。`createRouter` で一度だけ型を書く。
 
 ## v0.1 からの移行
 

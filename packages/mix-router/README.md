@@ -117,7 +117,7 @@ app.mix(
 `:param` and `*` cannot be used in a namespace path,
 because those values would not appear in the handlers' params type, and the types would disagree with the actual values.
 
-## Custom State
+## Custom State and Env
 
 `createRouter<State>()` returns a set of route functions with a typed `ctx.state`.
 
@@ -131,6 +131,19 @@ const { get, post, namespace } = createRouter<AppState>()
 const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined
 ```
+
+Pass the type of `ctx.env` (such as Cloudflare Workers bindings) as the second type argument, the same as for `Mixer`. Without it, `ctx.env` is `unknown`.
+
+```ts
+type Env = { DATABASE_URL: string }
+
+const { get } = createRouter<AppState, Env>()
+
+const app = new Mixer<AppState, Env>()
+app.mix(get('/db', (ctx) => ctx.env.DATABASE_URL)) // ctx.env.DATABASE_URL: string
+```
+
+Routes are created before they are mixed in, so they cannot learn these types from the app; `createRouter` is where you state them once.
 
 ## Migrating from v0.1
 

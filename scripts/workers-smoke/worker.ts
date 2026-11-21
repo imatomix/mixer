@@ -9,7 +9,7 @@ import { HttpError, Mixer } from '@imatomix/mixer'
 
 type Env = { GREETING: string }
 
-const { get, post } = createRouter<SessionState>()
+const { get, post } = createRouter<SessionState, Env>()
 
 // Set by a log write that finishes after the response, to prove that ctx.waitUntil reached workerd
 let lastLoggedPath = ''
@@ -29,8 +29,7 @@ const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
   get('/logged', () => lastLoggedPath),
   get('/hello/:name', (ctx, { name }) => ({
     hello: name,
-    // mix-router types ctx.state but not ctx.env, so the binding type is stated here
-    greeting: (ctx.env as Env).GREETING,
+    greeting: ctx.env.GREETING,
   })),
   post('/echo', (ctx) => ctx.body()),
   get('/stream', () => {
