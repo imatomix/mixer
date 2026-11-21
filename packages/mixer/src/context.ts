@@ -66,7 +66,7 @@ export class Context<S extends State = State, E = unknown> {
   get cookies(): Cookies {
     this.#cookies ??= new Cookies(
       this.request.headers,
-      this.#headers,
+      () => this.#headers,
       () => this.#final,
     )
     return this.#cookies
@@ -123,7 +123,6 @@ export class Context<S extends State = State, E = unknown> {
   resetDraft(draft: Draft): void {
     this.status = draft.status
     this.#headers = draft.headers
-    this.#cookies = undefined
   }
 
   /** @internal Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
