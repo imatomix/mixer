@@ -24,7 +24,7 @@ const DEFAULT_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
 const DEFAULT_MAX_AGE = 600
 
 export function cors(options: CorsOptions = {}): Component {
-  const origin = options.origin ?? '*'
+  const origin = toFullMatch(options.origin ?? '*')
   const allowsAnyOrigin = origin === '*'
   const credentials = options.credentials ?? false
   const methods = (options.methods ?? DEFAULT_METHODS).join(', ')
@@ -100,14 +100,25 @@ async function matchOrigin(
   return candidates.some((candidate: string | RegExp) =>
     typeof candidate === 'string'
       ? candidate === origin
-      : testRegExp(candidate, origin),
+      : candidate.test(origin),
   )
 }
 
-// g / y フラグ付きの正規表現は lastIndex を持ち越し、同じ入力でも結果が交互に変わるので毎回戻す
-function testRegExp(pattern: RegExp, value: string): boolean {
-  pattern.lastIndex = 0
-  return pattern.test(value)
+/**
+ * 正規表現は Origin 全体と一致したときだけ許可する。`/example\.com/` のようなアンカーなしや、
+ * `/^a|b$/` のように選択の片側しか固定されていないものは `https://example.com.evil` を通してしまう。
+ * g / y フラグは lastIndex を持ち越して判定が交互に変わるので外す
+ */
+function toFullMatch(matcher: OriginMatcher): OriginMatcher {
+  const wrap = (pattern: RegExp) =>
+    new RegExp(`^(?:${pattern.source})$`, pattern.flags.replace(/[gy]/g, ''))
+  if (matcher instanceof RegExp) return wrap(matcher)
+  if (Array.isArray(matcher)) {
+    return matcher.map((candidate: string | RegExp) =>
+      candidate instanceof RegExp ? wrap(candidate) : candidate,
+    )
+  }
+  return matcher
 }
 
 function appendVary(res: ServerResponse, field: string): void {

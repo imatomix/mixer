@@ -76,6 +76,29 @@ describe('通常のリクエスト', () => {
     }
   })
 
+  it.each([
+    ['アンカーなしの', /https:\/\/a\.example/],
+    ['選択（|）を含む', /^https:\/\/a\.example|https:\/\/b\.example$/],
+  ])(
+    '%s正規表現でも Origin 全体と一致したときだけ許可する',
+    async (_label, origin) => {
+      const url = await serve(cors({ origin }), ok)
+      const allowed = await fetch(url, {
+        headers: { origin: 'https://a.example' },
+      })
+      expect(allowed.headers.get('access-control-allow-origin')).toBe(
+        'https://a.example',
+      )
+      for (const evil of [
+        'https://a.example.evil',
+        'https://evil.test?https://a.example',
+      ]) {
+        const res = await fetch(url, { headers: { origin: evil } })
+        expect(res.headers.get('access-control-allow-origin')).toBeNull()
+      }
+    },
+  )
+
   it('origin の関数は ctx を受け取る', async () => {
     const url = await serve(
       cors({

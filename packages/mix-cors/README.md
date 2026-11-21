@@ -48,7 +48,7 @@ cors({
 ### origin の注意
 
 - 文字列は完全一致で比べる。`'https://example.com'` は `https://example.com.evil` に一致しない
-- 正規表現は `^` と `$` で両端を固定すること。`/example\.com/` は `https://example.com.evil` にも一致してしまう
+- 正規表現は **Origin 全体と一致したときだけ**許可する（内部で `^(?:…)$` に包む）。`/example\.com/` や `/^a|b$/` と書いても `https://example.com.evil` には一致しない。`g` / `y` フラグは無視する
 - `'*'` 以外を指定すると、一致した Origin をそのまま返し、`Vary: Origin` を付ける（キャッシュが別の Origin に使い回さないように）
 
 ### `origin: '*'` と `credentials: true` は併用できない
