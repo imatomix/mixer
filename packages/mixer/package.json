@@ -8,6 +8,11 @@
       "@imatomix/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "@imatomix/source": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "main": "./dist/index.js",
