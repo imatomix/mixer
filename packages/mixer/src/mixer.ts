@@ -91,11 +91,19 @@ export class Mixer<S extends State = State, E = unknown> {
     ctx.resetDraft(draft)
 
     if (this.#onError) {
+      let value: unknown
       try {
-        const value = await this.#onError(error, ctx)
-        if (value !== undefined) return await this.#respond(ctx, value)
+        value = await this.#onError(error, ctx)
       } catch (handlerError) {
         console.error(handlerError)
+      }
+      // A failure while sending onError's value is a hook failure, not an onError failure, so it is a 500
+      if (value !== undefined) {
+        try {
+          return await this.#respond(ctx, value)
+        } catch (hookError) {
+          return respondToHookFailure(hookError, ctx)
+        }
       }
       ctx.resetDraft(errorDraft(draft.headers, status))
     }
@@ -103,12 +111,19 @@ export class Mixer<S extends State = State, E = unknown> {
     try {
       await ctx.runBeforeSend()
     } catch (hookError) {
-      console.error(hookError)
-      ctx.resetDraft(errorDraft(ctx.headers, 500))
-      return toResponse({ error: 'Internal Server Error' }, ctx.draft)
+      return respondToHookFailure(hookError, ctx)
     }
     return defaultErrorResponse(error, ctx)
   }
+}
+
+function respondToHookFailure(
+  error: unknown,
+  ctx: Context<State, unknown>,
+): Response {
+  console.error(error)
+  ctx.resetDraft(errorDraft(ctx.headers, 500))
+  return toResponse({ error: 'Internal Server Error' }, ctx.draft)
 }
 
 function defaultErrorResponse(

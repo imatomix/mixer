@@ -210,6 +210,24 @@ describe('onBeforeSend', () => {
     expect(res.headers.getSetCookie()[0]).toMatch(/^saved=1;/)
   })
 
+  it('returns 500 when a hook fails while sending the value from onError', async () => {
+    quiet()
+    let calls = 0
+    const app = new Mixer({ onError: () => ({ message: 'custom' }) }).mix(
+      (ctx) => {
+        ctx.onBeforeSend(() => {
+          calls++
+          throw new Error('session store down')
+        })
+        throw new HttpError(404)
+      },
+    )
+    const res = await call(app)
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'Internal Server Error' })
+    expect(calls).toBe(1)
+  })
+
   it('keeps a captured ctx.cookies handle writing to the error response', async () => {
     const app = new Mixer().mix(
       (ctx) => {
