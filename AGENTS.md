@@ -14,7 +14,7 @@ A pnpm workspaces monorepo for `@imatomix/mixer`, a minimal and asynchronous web
 ## Language
 
 - Everything committed to the repository is in English: code comments, test names, error messages, documentation (except `README.ja.md`), commit messages, pull request titles and descriptions, and review replies.
-- Talk to the maintainer in **Japanese**.
+- Reply to your user in the language they use. The maintainer ([@imatomix](https://github.com/imatomix)) works in **Japanese**, so use Japanese when you are working for the maintainer.
 - `README.md` and `README.ja.md` must describe the same content. Update both when one changes.
 
 ## Commands
