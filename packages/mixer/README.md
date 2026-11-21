@@ -248,6 +248,8 @@ A returned `Response` keeps its own status, body, and headers. Headers you set i
 `ctx.onBeforeSend(fn)` runs right before the response is built, once, for every response including `404` and errors. Use it to apply state that later components changed, such as a session cookie. Hooks run in registration order and can change `ctx.status`, `ctx.headers`, and cookies; if one throws, the response is `500`.
 
 ```ts
+const app = new Mixer<{ user?: string }>()
+
 app
   .mix((ctx) => {
     ctx.onBeforeSend(() => {

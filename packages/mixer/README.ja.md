@@ -248,6 +248,8 @@ mixer が代わりに決められないことが 1 つある。**メールやリ
 `ctx.onBeforeSend(fn)` は、応答を組み立てる直前に、`404` やエラーを含むすべての応答で 1 回だけ実行される。後のコンポーネントが変えた状態（セッションの Cookie など）を反映するのに使う。登録順に実行され、`ctx.status`・`ctx.headers`・Cookie を変えられる。例外を投げると応答は `500` になる。
 
 ```ts
+const app = new Mixer<{ user?: string }>()
+
 app
   .mix((ctx) => {
     ctx.onBeforeSend(() => {
