@@ -46,16 +46,18 @@ export function cors(options: CorsOptions = {}): Component {
   }
 
   return async (ctx) => {
+    const { res } = ctx
+    // 応答が Origin によって変わる場合、キャッシュが別の Origin に使い回さないようにする。
+    // Origin なしの応答（CORS ヘッダなし）がキャッシュされ、許可した Origin に返されることも防ぐため、
+    // Origin ヘッダの有無にかかわらず付ける
+    if (!allowsAnyOrigin) appendVary(res, 'Origin')
+
     const requestOrigin = ctx.req.headers.origin
     if (requestOrigin === undefined) return undefined
 
-    const { res } = ctx
     const isPreflight =
       ctx.method === 'OPTIONS' &&
       ctx.req.headers['access-control-request-method'] !== undefined
-
-    // 応答が Origin によって変わる場合、キャッシュが別の Origin に使い回さないようにする
-    if (!allowsAnyOrigin) appendVary(res, 'Origin')
 
     const allowed =
       allowsAnyOrigin || (await matchOrigin(origin, requestOrigin, ctx))

@@ -33,6 +33,13 @@ describe('通常のリクエスト', () => {
     expect(await res.text()).toBe('ok')
   })
 
+  it('origin を限定しているときは、Origin ヘッダがなくても Vary: Origin を付ける', async () => {
+    const url = await serve(cors({ origin: 'https://a.example' }), ok)
+    const res = await fetch(url)
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    expect(res.headers.get('vary')).toBe('Origin')
+  })
+
   it('許可した Origin を返し、Vary: Origin を付ける', async () => {
     const url = await serve(cors({ origin: 'https://a.example' }), ok)
     const res = await fetch(url, { headers: { origin: 'https://a.example' } })
