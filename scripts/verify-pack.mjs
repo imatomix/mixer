@@ -224,6 +224,7 @@ ${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'
+import { serve as serveLogger } from '@imatomix/mixer/node'
 import { type LogEntry, logger } from '@imatomix/mix-logger'
 
 let resolveEntry: (entry: LogEntry) => void = () => {}
@@ -231,10 +232,10 @@ const logged = new Promise<LogEntry>((resolve) => {
   resolveEntry = resolve
 })
 const loggerApp = new LoggerMixer().mix(logger({ write: (entry) => resolveEntry(entry) }), () => 'logged')
-await loggerApp.listen(0, '127.0.0.1')
-await (await fetch(\`http://127.0.0.1:\${loggerApp.address?.port}/log?secret=1\`)).text()
+const loggerServer = await serveLogger(loggerApp, { hostname: '127.0.0.1' })
+await (await fetch(\`http://127.0.0.1:\${loggerServer.port}/log?secret=1\`)).text()
 const entry = await logged
-await loggerApp.close()
+await loggerServer.close()
 if (entry.method !== 'GET' || entry.path !== '/log' || entry.status !== 200) {
   throw new Error('mixer + mix-logger smoke test failed')
 }

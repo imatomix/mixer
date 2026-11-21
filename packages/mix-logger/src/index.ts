@@ -4,49 +4,44 @@ export interface LogEntry {
   /** When the request was received */
   time: Date
   method: string
-  /** Path only. The query is left out because even its keys may contain secrets */
+  /** Path only, including basePath. The query is left out because even its keys may contain secrets */
   path: string
   status: number
-  durationMs: number
-  /** Value of the response's Content-Length header (as declared; undefined when not set, such as for streams) */
+  /** From when this component ran until the Response was ready. Sending the body is not included */
+  responseDurationMs: number
+  /** Value of the response's Content-Length header (undefined when the length is unknown, such as for streams) */
   contentLength?: number
-  /** The connection closed before the response was fully sent */
-  aborted: boolean
 }
 
 export interface LoggerOptions {
-  /** Where entries are written. Defaults to one formatLogEntry line on standard output */
+  /**
+   * Where entries are written. Defaults to one formatLogEntry line through console.log.
+   * A returned Promise is not awaited; it is handed to ctx.waitUntil so that serverless runtimes keep it alive
+   */
   write?: (entry: LogEntry) => void | Promise<void>
 }
 
 /** Mix it in as early as possible (the duration is measured from when this component runs) */
 export function logger(options: LoggerOptions = {}): Component {
-  const write = options.write ?? writeToStdout
+  const write = options.write ?? writeToConsole
 
   return (ctx) => {
     const time = new Date()
     const startedAt = performance.now()
-    const { res } = ctx
-    let recorded = false
 
-    // Both finish and close can fire, so record once on whichever comes first
-    const record = () => {
-      if (recorded) return
-      recorded = true
-      const contentLength = Number(res.getHeader('Content-Length'))
+    ctx.onResponse(({ status, headers }) => {
+      const contentLength = Number(headers.get('Content-Length') ?? Number.NaN)
       const entry: LogEntry = {
         time,
         method: ctx.method,
         path: ctx.url.pathname,
-        status: res.statusCode,
-        durationMs: performance.now() - startedAt,
-        aborted: !res.writableFinished,
+        status,
+        responseDurationMs: performance.now() - startedAt,
         ...(Number.isFinite(contentLength) ? { contentLength } : {}),
       }
-      safely(() => write(entry))
-    }
-    res.once('finish', record)
-    res.once('close', record)
+      const pending = safely(() => write(entry))
+      if (pending) ctx.waitUntil(pending)
+    })
     return undefined
   }
 }
@@ -57,27 +52,29 @@ export function formatLogEntry(entry: LogEntry): string {
     escapeControlCharacters(entry.method),
     escapeControlCharacters(entry.path),
     String(entry.status),
-    `${entry.durationMs.toFixed(1)}ms`,
+    `${entry.responseDurationMs.toFixed(1)}ms`,
   ]
   if (entry.contentLength !== undefined) parts.push(`${entry.contentLength}B`)
-  if (entry.aborted) parts.push('aborted')
   return parts.join(' ')
 }
 
-function writeToStdout(entry: LogEntry): void {
-  process.stdout.write(`${formatLogEntry(entry)}\n`)
+function writeToConsole(entry: LogEntry): void {
+  console.log(formatLogEntry(entry))
 }
 
 /** Failing to write a log entry must not affect the response or the server */
-function safely(run: () => void | Promise<void>): void {
+function safely(run: () => void | Promise<void>): Promise<void> | undefined {
   try {
     const result = run()
     if (result instanceof Promise) {
-      result.catch((error: unknown) => console.error('mix-logger:', error))
+      return result.catch((error: unknown) => {
+        console.error('mix-logger:', error)
+      })
     }
   } catch (error) {
     console.error('mix-logger:', error)
   }
+  return undefined
 }
 
 const ESCAPES: Record<string, string> = {
