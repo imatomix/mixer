@@ -106,6 +106,8 @@ function mergeResponse(
     if (name === 'set-cookie') continue
     if (!headers.has(name)) headers.set(name, value)
   }
+  const vary = joinVary(response.headers.get('Vary'), draft.headers.get('Vary'))
+  if (vary) headers.set('Vary', vary)
 
   const fallbackPath = defaultCookiePath(requestPath)
   const own = new Set(
@@ -130,6 +132,25 @@ function mergeResponse(
     statusText: response.statusText,
     headers,
   })
+}
+
+/**
+ * Vary lists what a cached response depends on, so dropping a field (such as Origin from mix-cors) would let caches
+ * reuse the response too widely. Joining both lists can only narrow reuse
+ */
+function joinVary(...values: (string | null)[]): string | undefined {
+  const fields: string[] = []
+  for (const value of values) {
+    for (const field of (value ?? '').split(',')) {
+      const trimmed = field.trim()
+      if (trimmed === '*') return '*'
+      const lower = trimmed.toLowerCase()
+      if (trimmed && !fields.some((f) => f.toLowerCase() === lower)) {
+        fields.push(trimmed)
+      }
+    }
+  }
+  return fields.length > 0 ? fields.join(', ') : undefined
 }
 
 /** Identifies a cookie by name, Path, and Domain, like browsers do when replacing one */
