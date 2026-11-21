@@ -36,6 +36,8 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 ファイルが見つからなければ何もせず次のコンポーネントへ進む（最終的に mixer の 404 になる）。
+
+mix-static は `node:fs` でファイルを読むので、Node.js と Bun で動く。Cloudflare Workers にはファイルシステムがないので、静的ファイルは Workers Static Assets で配る。
 ファイルは mixer の `ctx.path` で探すので、`basePath` を使うと公開ディレクトリはその下のパスに対応する。ディレクトリへのリダイレクトでは、`Location` に `basePath` を残す。
 
 ## 単体のファイルを配信する（favicon など）

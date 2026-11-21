@@ -26,4 +26,4 @@ pnpm build
 pnpm --filter @imatomix/mixer test   # a single package
 ```
 
-Packages run on Node.js 24 or later and Bun 1.4.4 or later, and `app.fetch` can also serve part of a Next.js, Nuxt, SvelteKit, or React Router app. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+Packages run on Node.js 24 or later, Bun 1.4.4 or later, and Cloudflare Workers (except mix-static), and `app.fetch` can also serve part of a Next.js, Nuxt, SvelteKit, or React Router app. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.

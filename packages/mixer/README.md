@@ -5,7 +5,7 @@ English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mixer
 Minimal & asynchronous web module, built on the Web standard `Request` and `Response`.
 
 - Written in TypeScript, ESM only, zero dependencies
-- Node.js 24 or later, or Bun 1.4.4 or later
+- Node.js 24 or later, Bun 1.4.4 or later, or Cloudflare Workers
 - `app.fetch(request)` is a plain Web standard handler, so it also runs inside frameworks such as Next.js, Nuxt, SvelteKit, and React Router
 - Safe by default: `X-Content-Type-Options: nosniff` on every response, cookies are `HttpOnly; Secure; SameSite=Lax`, responses that set cookies stay out of shared caches, and error details never reach the client
 
@@ -250,6 +250,36 @@ await server.close()
 ```ts
 Bun.serve({ port: 3000, fetch: app.fetch })
 ```
+
+### Cloudflare Workers
+
+A `Mixer` is a Workers handler as it is: export it as the default export.
+
+```ts
+import { Mixer } from '@imatomix/mixer'
+
+type Env = { DATABASE_URL: string }
+
+const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATABASE_URL)
+
+export default app satisfies ExportedHandler<Env>
+```
+
+- `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` passes work to the Worker's `ctx.waitUntil`
+- Checked on every pull request with workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
+
+| Package | On Workers |
+| --- | --- |
+| `@imatomix/mixer`, mix-router, mix-cors, mix-logger | Supported |
+| mix-session | Supported with an external store (`MemoryStore` lives in one isolate, and requests may run in different ones) |
+| mix-static | Not supported (no file system). Serve static files with Workers Static Assets |
+| `@imatomix/mixer/node` | Not used (Node.js only) |
+
+Notes:
+
+- **The host name is not trusted** here either: build absolute URLs from a configured origin, not from `ctx.url.host`
+- `bodyLimit` applies when the body is read through `ctx.body()`, `ctx.text()`, or `ctx.bytes()`. Reading `ctx.request` directly bypasses it
+- Work passed to `ctx.waitUntil()` is bound by the Workers time limits
 
 ### Inside frameworks
 

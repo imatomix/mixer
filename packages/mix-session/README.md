@@ -84,7 +84,7 @@ interface SessionStore {
 `update` works "only if it exists" so that a concurrent request holding an old ID cannot bring back a session right after `destroy()` or `regenerate()`.
 
 `MemoryStore` keeps sessions in process memory. It never returns expired sessions, and drops the least recently used ones when `maxEntries` (default 10000) is exceeded.
-To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in. On serverless platforms, where each request may run in a different instance, always use an external store.
+To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in. On serverless platforms and Cloudflare Workers, where each request may run in a different instance, always use an external store. Its `update` must check and update in one step (for example, a D1 transaction or a Durable Object); Workers KV does not fit, because its writes take time to reach other locations.
 
 ## Invalid IDs
 
