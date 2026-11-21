@@ -82,7 +82,7 @@ export class Mixer<S extends State = State, E = unknown> {
       cancelBody(value)
       throw error
     }
-    return toResponse(value, ctx.draft)
+    return toResponse(value, ctx.draft, ctx.url.pathname)
   }
 
   async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {

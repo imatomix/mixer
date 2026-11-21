@@ -174,6 +174,34 @@ describe('returning a Response', () => {
   })
 })
 
+describe('cookies without a Path on a returned Response', () => {
+  it('resolves the default path from the request path before deduplicating', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('sid', 'draft')
+      return new Response('ok', { headers: { 'Set-Cookie': 'sid=returned' } })
+    })
+    const cookies = (await call(app, '/account/login')).headers.getSetCookie()
+    expect(cookies).toHaveLength(2)
+    expect(cookies.some((c) => c.startsWith('sid=draft;'))).toBe(true)
+    expect(cookies).toContain('sid=returned')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('treats a missing Path at the root as Path=/', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('sid', 'draft')
+      return new Response('ok', { headers: { 'Set-Cookie': 'sid=returned' } })
+    })
+    const cookies = (await call(app, '/login')).headers.getSetCookie()
+    expect(cookies).toEqual(['sid=returned'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
 describe('finalizing', () => {
   it('always sets X-Content-Type-Options: nosniff', async () => {
     expect(
