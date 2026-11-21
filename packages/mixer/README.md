@@ -234,13 +234,30 @@ const app = new Mixer({
 ```ts
 import { serve } from '@imatomix/mixer/node'
 
-const server = await serve(app, { port: 3000, hostname: '127.0.0.1' })
+const server = await serve(app, { port: 3000 })
 server.port // the port in use (pass port: 0 for any free port)
 await server.close()
 ```
 
+**Safe by default:**
+
+- It listens on `127.0.0.1` (this machine only) unless you pass `hostname`
+- It accepts only the host names `localhost`, `*.localhost`, `127.0.0.1`, `[::1]`, and an IP address given as `hostname`. Requests for any other host name get an empty `400` and never reach the app, and the first one is logged with `console.warn`. This stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
+
+To serve a domain, or other machines (for example, in a container), say so:
+
+```ts
+await serve(app, {
+  port: 3000,
+  hostname: '0.0.0.0', // accept connections from other machines
+  allowedHosts: ['example.com', 'www.example.com'], // exact names; case and port are ignored
+})
+```
+
+`allowedHosts: true` accepts any host name; use it only when something in front of the app (such as a reverse proxy) already checks it. `X-Forwarded-*` headers are not used.
+
 - The request URL is built from the `Host` header. A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
-- **The host name is not trusted.** It comes from the client, so do not build absolute URLs for emails or redirects from `ctx.url.host`; use a configured origin instead
+- **Build absolute URLs from a configured origin**, not from `ctx.url.host`, for emails and redirects. With `allowedHosts` the host is one you listed, but it is still the client's choice among them
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
 
@@ -249,6 +266,8 @@ await server.close()
 ```ts
 Bun.serve({ port: 3000, fetch: app.fetch })
 ```
+
+`Bun.serve` does not check host names; the checks above belong to `serve()` from `@imatomix/mixer/node`. When you run a development server on Bun, pass `hostname: '127.0.0.1'` and avoid trusting `ctx.url.host`.
 
 ### Cloudflare Workers
 
@@ -359,6 +378,7 @@ app.mix(() => {
 | --- | --- |
 | `await app.listen(3000)` | `await serve(app, { port: 3000 })` from `@imatomix/mixer/node` |
 | `app.close()`, `app.address` | `server.close()`, `server.port` |
+| `listen()` on all interfaces, any `Host` | `serve()` listens on `127.0.0.1` and accepts local host names only: pass `hostname` and `allowedHosts` for others |
 | `app.handler` (`(req, res)`) | `app.fetch` (`(request) => Response`) |
 | `ctx.req` | `ctx.request` (a Web standard `Request`) |
 | `ctx.req.headers.origin` | `ctx.request.headers.get('origin')` |

@@ -3,14 +3,20 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { type AddressInfo, isIP } from 'node:net'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 export interface ServeOptions {
   /** Defaults to 0 (any free port) */
   port?: number
+  /** Defaults to 127.0.0.1 (this machine only). Pass '0.0.0.0' to accept connections from other machines, such as in a container */
   hostname?: string
+  /**
+   * Host names accepted in the Host header, besides localhost, *.localhost, 127.0.0.1, [::1], and an IP address
+   * given as hostname. Compared exactly, ignoring case and the port. `true` accepts any host name
+   */
+  allowedHosts?: readonly string[] | true
 }
 
 export interface Server {
@@ -23,12 +29,24 @@ interface FetchApp {
 }
 
 /** Serves a mixer app with Node's http module */
-export function serve(
+export async function serve(
   app: FetchApp,
   options: ServeOptions = {},
 ): Promise<Server> {
+  const hostname = options.hostname ?? '127.0.0.1'
+  const allowsHost = createHostCheck(options.allowedHosts, hostname)
+  let warned = false
+  const rejectHost = (host: string) => {
+    if (warned) return
+    warned = true
+    // The host name passed the format check in requestUrl, so it cannot inject anything into the log
+    console.warn(
+      `mixer: rejected a request for the host name "${host}". To accept it, pass serve(app, { allowedHosts: ['${host}'] })`,
+    )
+  }
+
   const server = createServer((req, res) => {
-    handle(app, req, res).catch((error: unknown) => {
+    handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
       console.error(error)
       if (!res.headersSent) {
         res.statusCode = 500
@@ -41,7 +59,7 @@ export function serve(
 
   return new Promise((resolve, reject) => {
     server.once('error', reject)
-    server.listen(options.port ?? 0, options.hostname, () => {
+    server.listen(options.port ?? 0, hostname, () => {
       server.off('error', reject)
       const { port } = server.address() as AddressInfo
       resolve({
@@ -60,9 +78,13 @@ async function handle(
   app: FetchApp,
   req: IncomingMessage,
   res: ServerResponse,
+  allowsHost: (host: string) => boolean,
+  rejectHost: (host: string) => void,
 ): Promise<void> {
   const url = requestUrl(req)
-  if (!url) {
+  const host = url && normalizeHost(url.hostname)
+  if (!url || !host || !allowsHost(host)) {
+    if (host) rejectHost(host)
     res.writeHead(400, { 'Content-Length': '0', Connection: 'close' })
     res.end()
     return
@@ -134,6 +156,43 @@ function requestUrl(req: IncomingMessage): URL | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * Accepting only known host names defeats DNS rebinding (a page on another site reaching this server through
+ * a name that resolves to it) and keeps a forged Host out of ctx.url
+ */
+function createHostCheck(
+  allowedHosts: readonly string[] | true | undefined,
+  hostname: string,
+): (host: string) => boolean {
+  if (allowedHosts === true) return () => true
+  const allowed = new Set(['localhost', '127.0.0.1', '[::1]'])
+  const listening = canonicalIp(hostname)
+  if (listening && listening !== '0.0.0.0' && listening !== '[::]') {
+    allowed.add(listening)
+  }
+  for (const entry of allowedHosts ?? []) {
+    const name = canonicalIp(entry) ?? normalizeHost(entry)
+    if (!name || !/^(\[[0-9a-f:.]+\]|[a-z0-9-]+(\.[a-z0-9-]+)*)$/.test(name)) {
+      throw new TypeError(
+        `mixer: allowedHosts takes host names without a port or wildcard: ${JSON.stringify(entry)}`,
+      )
+    }
+    allowed.add(name)
+  }
+  return (host) => allowed.has(host) || host.endsWith('.localhost')
+}
+
+/** The form URL gives an IP address (IPv6 in brackets), so that both spellings compare equal */
+function canonicalIp(value: string): string | undefined {
+  const bare = value.replace(/^\[(.*)\]$/, '$1')
+  if (!isIP(bare)) return undefined
+  return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}`).hostname
+}
+
+function normalizeHost(host: string): string {
+  return host.toLowerCase().replace(/\.$/, '')
 }
 
 function requestHeaders(req: IncomingMessage): Headers {

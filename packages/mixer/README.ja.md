@@ -235,13 +235,30 @@ const app = new Mixer({
 ```ts
 import { serve } from '@imatomix/mixer/node'
 
-const server = await serve(app, { port: 3000, hostname: '127.0.0.1' })
+const server = await serve(app, { port: 3000 })
 server.port // 使っているポート（port: 0 なら空いているポート）
 await server.close()
 ```
 
+**何もしなくても安全側:**
+
+- `hostname` を渡さなければ `127.0.0.1`（このマシンだけ）で待ち受ける
+- 受け付けるホスト名は `localhost`、`*.localhost`、`127.0.0.1`、`[::1]`、`hostname` に渡した IP アドレスだけ。それ以外のホスト名へのリクエストは本文なしの `400` になってアプリに届かず、最初の 1 回だけ `console.warn` に出る。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
+
+ドメインで公開するときや、ほかのマシンから使うとき（コンテナなど）は、明示する。
+
+```ts
+await serve(app, {
+  port: 3000,
+  hostname: '0.0.0.0', // ほかのマシンからの接続も受け付ける
+  allowedHosts: ['example.com', 'www.example.com'], // 完全一致。大文字小文字とポートは無視する
+})
+```
+
+`allowedHosts: true` はどのホスト名も受け付ける。アプリの手前（リバースプロキシなど）でホスト名を確かめている場合だけに使う。`X-Forwarded-*` ヘッダは使わない。
+
 - リクエストの URL は `Host` ヘッダから作る。`Host` がない、複数ある、単純なホスト名とポート以外のものは `400` になる
-- **ホスト名は信頼できない。** クライアントが送ってくる値なので、メールやリダイレクトに使う絶対 URL を `ctx.url.host` から作らず、設定したオリジンを使う
+- メールやリダイレクトに使う**絶対 URL は、設定したオリジンから作る**。`ctx.url.host` は使わない。`allowedHosts` があっても、一覧の中のどれを送るかはクライアントが選べる
 - コンポーネントがリクエストボディを読まなかったとき（`413` のあとなど）は、残りを読まずに接続を閉じる
 - クライアントが切断すると `ctx.request.signal` が中断され、ストリーミング中の本文も止まる
 
@@ -250,6 +267,8 @@ await server.close()
 ```ts
 Bun.serve({ port: 3000, fetch: app.fetch })
 ```
+
+`Bun.serve` はホスト名を確かめない。上の確認は `@imatomix/mixer/node` の `serve()` のもの。Bun で開発用のサーバーを動かすときは `hostname: '127.0.0.1'` を渡し、`ctx.url.host` を信用しない。
 
 ### Cloudflare Workers
 
@@ -360,6 +379,7 @@ app.mix(() => {
 | --- | --- |
 | `await app.listen(3000)` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
 | `app.close()`、`app.address` | `server.close()`、`server.port` |
+| `listen()` は全てのネットワークで待ち受け、どの `Host` も受け付ける | `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。ほかは `hostname` と `allowedHosts` で渡す |
 | `app.handler`（`(req, res)`） | `app.fetch`（`(request) => Response`） |
 | `ctx.req` | `ctx.request`（Web 標準の `Request`） |
 | `ctx.req.headers.origin` | `ctx.request.headers.get('origin')` |

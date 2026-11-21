@@ -1,7 +1,8 @@
 import { connect } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
+import { networkInterfaces } from 'node:os'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Mixer } from '../src/index.js'
-import { type Server, serve } from '../src/node.js'
+import { type ServeOptions, type Server, serve } from '../src/node.js'
 import { trackedStream } from './helpers.js'
 
 const servers: Server[] = []
@@ -9,8 +10,18 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()))
 })
 
-async function start(app: Mixer): Promise<Server> {
-  const server = await serve(app, { port: 0, hostname: '127.0.0.1' })
+// The host names used by the request tests below
+const TEST_HOSTS = ['a.test', 'app.test', 'example.com']
+
+async function start(
+  app: Mixer,
+  options: ServeOptions = { allowedHosts: TEST_HOSTS },
+): Promise<Server> {
+  const server = await serve(app, {
+    port: 0,
+    hostname: '127.0.0.1',
+    ...options,
+  })
   servers.push(server)
   return server
 }
@@ -252,5 +263,135 @@ describe('connections', () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(aborted).toBe(true)
+  })
+})
+
+describe('allowed hosts', () => {
+  const request = (host: string) =>
+    `GET / HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`
+
+  it('rejects a host name that is not allowed with an empty 400, without calling the app', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let called = false
+    const server = await start(
+      new Mixer().mix(() => {
+        called = true
+        return 'reached'
+      }),
+      {},
+    )
+    const res = await raw(server.port, request('evil.example'))
+    expect(status(res)).toBe(400)
+    expect(body(res)).toBe('')
+    expect(called).toBe(false)
+  })
+
+  it.each([
+    'localhost',
+    'localhost:3000',
+    'app.localhost',
+    '127.0.0.1:8080',
+    '[::1]:8080',
+  ])('accepts %s by default', async (host) => {
+    const server = await start(
+      new Mixer().mix(() => 'ok'),
+      {},
+    )
+    expect(status(await raw(server.port, request(host)))).toBe(200)
+  })
+
+  it.each([
+    'evil.example',
+    'localhost.evil.example',
+    'evillocalhost',
+    '127.0.0.2',
+    '10.0.0.1',
+  ])('rejects %s by default', async (host) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const server = await start(
+      new Mixer().mix(() => 'ok'),
+      {},
+    )
+    expect(status(await raw(server.port, request(host)))).toBe(400)
+  })
+
+  it('adds names from allowedHosts by exact match, ignoring case, the port, and a trailing dot', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const server = await start(
+      new Mixer().mix(() => 'ok'),
+      {
+        allowedHosts: ['Example.com'],
+      },
+    )
+    for (const host of ['example.com', 'EXAMPLE.COM:8080', 'example.com.']) {
+      expect(status(await raw(server.port, request(host)))).toBe(200)
+    }
+    expect(status(await raw(server.port, request('sub.example.com')))).toBe(400)
+    expect(status(await raw(server.port, request('localhost')))).toBe(200)
+  })
+
+  it('accepts any well-formed host with allowedHosts: true', async () => {
+    const server = await start(
+      new Mixer().mix(() => 'ok'),
+      {
+        allowedHosts: true,
+      },
+    )
+    expect(status(await raw(server.port, request('anything.example')))).toBe(
+      200,
+    )
+    expect(status(await raw(server.port, request('a.test/evil')))).toBe(400)
+  })
+
+  it('warns once per server about rejected host names', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const server = await start(
+      new Mixer().mix(() => 'ok'),
+      {},
+    )
+    await raw(server.port, request('evil.example'))
+    await raw(server.port, request('other.example'))
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain('allowedHosts')
+    warn.mockRestore()
+  })
+
+  it.each([
+    'example.com:80',
+    '',
+    'exa mple.com',
+    'http://example.com',
+    '*.example.com',
+  ])('throws for an invalid allowedHosts entry (%j)', async (host) => {
+    await expect(
+      serve(new Mixer(), {
+        port: 0,
+        hostname: '127.0.0.1',
+        allowedHosts: [host],
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('listens on the loopback address when hostname is omitted', async () => {
+    const server = await serve(
+      new Mixer().mix(() => 'ok'),
+      { port: 0 },
+    )
+    servers.push(server)
+    expect(status(await raw(server.port, request('localhost')))).toBe(200)
+    const external = Object.values(networkInterfaces())
+      .flat()
+      .find((info) => info?.family === 'IPv4' && !info.internal)?.address
+    if (external) {
+      await expect(
+        new Promise((resolve, reject) => {
+          const socket = connect(server.port, external, () => {
+            socket.destroy()
+            resolve('connected')
+          })
+          socket.on('error', reject)
+        }),
+      ).rejects.toThrow()
+    }
   })
 })
