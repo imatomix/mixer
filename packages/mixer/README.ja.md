@@ -8,7 +8,7 @@ Minimal & asynchronous web module. Web 標準の `Request` / `Response` で動�
 仕様は気紛れに変わります。
 
 - TypeScript 製・ESM のみ・依存ゼロ
-- Node.js 24 以上、または Bun 1.4.4 以上
+- Node.js 24 以上、Bun 1.4.4 以上、または Cloudflare Workers
 - `app.fetch(request)` は Web 標準のハンドラそのものなので、Next.js・Nuxt・SvelteKit・React Router などのフレームワークの中でも動く
 - 何もしなくても安全側: すべての応答に `X-Content-Type-Options: nosniff`、Cookie は `HttpOnly; Secure; SameSite=Lax`、Cookie を付けた応答は共有キャッシュに残さない、エラーの詳細はクライアントに見せない
 
@@ -251,6 +251,36 @@ await server.close()
 ```ts
 Bun.serve({ port: 3000, fetch: app.fetch })
 ```
+
+### Cloudflare Workers
+
+`Mixer` はそのまま Workers のハンドラになる。default export で書き出す。
+
+```ts
+import { Mixer } from '@imatomix/mixer'
+
+type Env = { DATABASE_URL: string }
+
+const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATABASE_URL)
+
+export default app satisfies ExportedHandler<Env>
+```
+
+- `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される
+- PR ごとに、workerd の互換日付 `2026-07-30`、Node 互換を切った状態（`no_nodejs_compat`、`no_nodejs_compat_v2`）で動作を確かめ、`@cloudflare/workers-types` で型も確かめている。mixer に `nodejs_compat` は要らない
+
+| パッケージ | Workers での扱い |
+| --- | --- |
+| `@imatomix/mixer`、mix-router、mix-cors、mix-logger | 対応 |
+| mix-session | 外部のストアを使えば対応（`MemoryStore` は 1 つの isolate の中にしかなく、リクエストは別の isolate で動きうる） |
+| mix-static | 非対応（ファイルシステムがない）。静的ファイルは Workers Static Assets で配る |
+| `@imatomix/mixer/node` | 使わない（Node.js 専用） |
+
+注意:
+
+- ここでも**ホスト名は信頼できない**。絶対 URL は `ctx.url.host` からではなく、設定したオリジンから作る
+- `bodyLimit` が効くのは、`ctx.body()`・`ctx.text()`・`ctx.bytes()` で本文を読んだときだけ。`ctx.request` を直接読むと効かない
+- `ctx.waitUntil()` に渡した処理には、Workers の時間の上限がかかる
 
 ### フレームワークの中で使う
 

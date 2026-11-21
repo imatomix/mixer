@@ -29,6 +29,7 @@ pnpm install
 pnpm check                           # lint + type check + tests for all packages
 pnpm verify:pack                     # pack each package, install it into a scratch project, and check types and runtime imports
 pnpm verify:pack:bun                 # the same, with the final smoke test running on Bun (requires Bun)
+pnpm verify:pack:workers             # the same, with a Worker running on workerd without Node.js compatibility
 pnpm format                          # format and fix lint issues with biome
 pnpm --filter @imatomix/<name> test  # run the tests of a single package
 pnpm check:pr-title                  # check PR_TITLE against the PR title rules
@@ -62,7 +63,7 @@ pnpm check:pr-title                  # check PR_TITLE against the PR title rules
 - Tests live in `packages/<name>/test/*.test.ts` and use [vitest](https://vitest.dev/).
 - Call the app directly with `app.fetch(new Request('http://localhost/path'))`. No server or port is needed, and the test sees the same `Response` users get.
 - Start a real server only for what `app.fetch` cannot show: the Node adapter itself (`packages/mixer/test/node.test.ts`) and paths that `Request` would normalize, such as `/../x` (send them as is over `node:http` through `serve()` from `@imatomix/mixer/node`). Close those servers in `afterEach`.
-- `pnpm verify:pack` runs the published packages end to end, with `serve()` on Node and `Bun.serve` on Bun.
+- `pnpm verify:pack` runs the published packages end to end, with `serve()` on Node, `Bun.serve` on Bun, and a Worker on workerd (`scripts/workers-smoke/`).
 - Name tests after the behavior they check (for example `returns 204 for preflight requests`).
 
 ## Design principles

@@ -4,14 +4,17 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { verifyOnWorkers } from './workers-smoke/run.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 
 // The packages are installed and type-checked once; only the final smoke test runs on the chosen runtime.
 const runtimeArg = process.argv.find((arg) => arg.startsWith('--runtime='))
 const runtime = runtimeArg ? runtimeArg.slice('--runtime='.length) : 'node'
-if (runtime !== 'node' && runtime !== 'bun') {
-  throw new Error(`Unknown runtime: ${runtime} (expected node or bun)`)
+if (runtime !== 'node' && runtime !== 'bun' && runtime !== 'workers') {
+  throw new Error(
+    `Unknown runtime: ${runtime} (expected node, bun, or workers)`,
+  )
 }
 // Running through pnpm run passes pnpm's npm_config_* variables, which make npm print warnings, so drop them
 const env = Object.fromEntries(
@@ -255,9 +258,13 @@ writeFileSync(join(consumer, 'smoke.ts'), smoke)
 
 run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', consumer], consumer)
 console.log('Type check: ok')
-const smokeResult = run(runtime, [join('out', 'smoke.js')], consumer)
+const smokeResult =
+  runtime === 'workers'
+    ? await verifyOnWorkers({ root, consumer, run })
+    : run(runtime, [join('out', 'smoke.js')], consumer)
 // Make sure the smoke test really ran on the requested runtime instead of silently falling back to another one
-if (!smokeResult.startsWith(`ok on ${runtime} `)) {
+const expectedRuntime = runtime === 'workers' ? 'workerd' : runtime
+if (!smokeResult.startsWith(`ok on ${expectedRuntime} `)) {
   throw new Error(`Smoke test did not run on ${runtime}: ${smokeResult}`)
 }
 console.log(`Runtime imports and smoke test: ${smokeResult}`)

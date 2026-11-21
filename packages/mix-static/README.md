@@ -35,6 +35,8 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 When a file is not found, it does nothing and hands over to the next component (ending up as mixer's 404).
+
+mix-static reads files with `node:fs`, so it runs on Node.js and Bun. Cloudflare Workers have no file system: serve static files there with Workers Static Assets.
 Files are looked up by mixer's `ctx.path`, so with `basePath` the public directory maps to the paths below it. The directory redirect keeps `basePath` in `Location`.
 
 ## Serving a single file (favicon and the like)
