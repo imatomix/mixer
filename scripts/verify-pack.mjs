@@ -126,6 +126,8 @@ const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   const current = ctx.state.session
   if (ctx.url.pathname === '/login') {
     current.set('user', 'mixer')
+    // A second cookie checks that several Set-Cookie headers survive on this runtime
+    ctx.cookies.set('theme', 'dark')
     return 'ok'
   }
   return { user: current.get('user') }
@@ -133,17 +135,20 @@ const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
 await sessionApp.listen(0, '127.0.0.1')
 const base = \`http://127.0.0.1:\${sessionApp.address?.port}\`
 const login = await fetch(\`\${base}/login\`)
-const sid = login.headers.getSetCookie()[0]?.split(';')[0]
+const setCookies = login.headers.getSetCookie()
+const sid = setCookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
 await sessionApp.close()
-if (me.user !== 'mixer') throw new Error('mixer + mix-session smoke test failed')
+if (me.user !== 'mixer' || setCookies.length !== 2) {
+  throw new Error('mixer + mix-session smoke test failed')
+}
 `
     : ''
 }
 ${
   dependencies['@imatomix/mix-static']
     ? `
-import { mkdtempSync as makeTempDir, writeFileSync as writeTempFile } from 'node:fs'
+import { mkdtempSync as makeTempDir, symlinkSync, writeFileSync as writeTempFile } from 'node:fs'
 import { tmpdir as osTmpdir } from 'node:os'
 import { join as joinPath } from 'node:path'
 import { Mixer as StaticMixer } from '@imatomix/mixer'
@@ -151,6 +156,10 @@ import { serveStatic } from '@imatomix/mix-static'
 
 const publicDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-static-'))
 writeTempFile(joinPath(publicDir, 'hello.txt'), 'hello static')
+// A symbolic link inside the public directory that points outside it must never be served
+const outsideDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-outside-'))
+writeTempFile(joinPath(outsideDir, 'secret.txt'), 'secret')
+symlinkSync(joinPath(outsideDir, 'secret.txt'), joinPath(publicDir, 'link.txt'))
 const staticApp = new StaticMixer().mix(serveStatic(publicDir))
 await staticApp.listen(0, '127.0.0.1')
 const staticBase = \`http://127.0.0.1:\${staticApp.address?.port}\`
@@ -161,13 +170,17 @@ const headResponse = await fetch(\`\${staticBase}/hello.txt\`, { method: 'HEAD' 
 await headResponse.text()
 const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-none-match': etag } })
 await notModified.text()
+const escaped = await fetch(\`\${staticBase}/link.txt\`)
+const escapedText = await escaped.text()
 await staticApp.close()
 if (
   fileText !== 'hello static' ||
   file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||
   headResponse.status !== 200 ||
   headResponse.headers.get('content-length') !== '12' ||
-  notModified.status !== 304
+  notModified.status !== 304 ||
+  escaped.status !== 404 ||
+  escapedText.includes('secret')
 ) {
   throw new Error('mixer + mix-static smoke test failed')
 }
