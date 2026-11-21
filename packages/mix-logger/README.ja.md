@@ -59,7 +59,7 @@ app.mix(
 
 `formatLogEntry(entry)` で、既定の 1 行の形式に変換できる。既定では `console.log` で出力する。
 
-`write` が Promise を返しても、応答はそれを待たない。`ctx.waitUntil` に渡すので、サーバーレス環境でも応答のあとまで実行される。
+`write` が Promise を返しても、応答はそれを待たない。`ctx.waitUntil` に渡す。応答のあとで止まりうる環境では、書き込みが打ち切られないよう、その環境の応答後の処理を登録する API を `app.fetch` に渡す（[mixer の `ctx.waitUntil()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#ctxwaituntil) を参照）。
 
 ## 安全性
 

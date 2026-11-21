@@ -25,6 +25,7 @@ A component receives a single `ctx`, and the value it returns becomes the respon
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
+import { serve } from '@imatomix/mixer/node'
 
 const app = new Mixer().mix(() => 'Hello Mixer')
 
@@ -66,7 +67,7 @@ A component that returns nothing hands over to the next one. If no component res
 | `ctx.cookies` | Read cookies and add Set-Cookie headers (see below) |
 | `ctx.onBeforeSend(fn)` | Run work right before the response is built (see below) |
 | `ctx.onResponse(fn)` | Run work once the response is ready (see below) |
-| `ctx.waitUntil(promise)` | Keep background work alive after the response |
+| `ctx.waitUntil(promise)` | Run work after the response without delaying it (see below) |
 
 `ctx.status` and `ctx.headers` are a draft of the response. mixer builds the `Response` once, from the draft and the returned value.
 
@@ -130,6 +131,13 @@ app.mix((ctx) => {
   })
 })
 ```
+
+### ctx.waitUntil()
+
+Runs work after the response without making the response wait for it. Whether the work is kept alive depends on where the app runs:
+
+- **Long-running servers** (`serve()`, `Bun.serve`): the process keeps running, so the work finishes. A failure is logged with `console.error`
+- **Platforms that may stop after the response** (serverless functions): pass the platform's background-work API as the third argument of `app.fetch`, as in `app.fetch(request, env, { waitUntil })`. Without it, mixer cannot tell the platform about the work, and it may be cut off
 
 ### ctx.cookies
 
@@ -320,7 +328,7 @@ app.mix(() => {
 
 | v0.1 | v0.2 |
 | --- | --- |
-| `await app.listen(3000)` | `await serve(app, { port: 3000 })` from `@imatomix/mixer/node` |
+| `await serve(app, { port: 3000 })` | `await serve(app, { port: 3000 })` from `@imatomix/mixer/node` |
 | `app.close()`, `app.address` | `server.close()`, `server.port` |
 | `app.handler` (`(req, res)`) | `app.fetch` (`(request) => Response`) |
 | `ctx.req` | `ctx.request` (a Web standard `Request`) |

@@ -26,6 +26,7 @@ npm install @imatomix/mixer
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
+import { serve } from '@imatomix/mixer/node'
 
 const app = new Mixer().mix(() => 'Hello Mixer')
 
@@ -67,7 +68,7 @@ app.mix(fn, fn, fn)
 | `ctx.cookies` | Cookie の読み取りと Set-Cookie の追加（後述） |
 | `ctx.onBeforeSend(fn)` | レスポンスを組み立てる直前に実行する処理を登録する（後述） |
 | `ctx.onResponse(fn)` | レスポンスができたあとに実行する処理を登録する（後述） |
-| `ctx.waitUntil(promise)` | 応答のあとも続く処理を最後まで実行させる |
+| `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理を実行する（後述） |
 
 `ctx.status` と `ctx.headers` はレスポンスの下書き。mixer は下書きと戻り値から、`Response` を 1 回だけ組み立てる。
 
@@ -131,6 +132,13 @@ app.mix((ctx) => {
   })
 })
 ```
+
+### ctx.waitUntil()
+
+応答を待たせずに、応答のあとで処理を実行する。処理が最後まで続くかどうかは、動かす場所で決まる。
+
+- **動き続けるサーバー**（`serve()`、`Bun.serve`）: プロセスが動き続けるので、処理は最後まで実行される。失敗は `console.error` に出す
+- **応答のあとで止まりうる環境**（サーバーレス関数など）: その環境の、応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。渡さないと mixer は環境に処理を伝えられず、途中で打ち切られることがある
 
 ### ctx.cookies
 
@@ -321,7 +329,7 @@ app.mix(() => {
 
 | v0.1 | v0.2 |
 | --- | --- |
-| `await app.listen(3000)` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
+| `await serve(app, { port: 3000 })` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
 | `app.close()`、`app.address` | `server.close()`、`server.port` |
 | `app.handler`（`(req, res)`） | `app.fetch`（`(request) => Response`） |
 | `ctx.req` | `ctx.request`（Web 標準の `Request`） |

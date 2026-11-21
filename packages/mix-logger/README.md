@@ -58,7 +58,7 @@ app.mix(
 
 `formatLogEntry(entry)` converts an entry to the default one-line format, which is written with `console.log`.
 
-If `write` returns a Promise, the response does not wait for it: it is passed to `ctx.waitUntil`, so serverless platforms keep it running after the response.
+If `write` returns a Promise, the response does not wait for it: it is passed to `ctx.waitUntil`. On platforms that may stop after the response, pass the platform's background-work API to `app.fetch` so that the write is not cut off (see [mixer's `ctx.waitUntil()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#ctxwaituntil)).
 
 ## Safety
 
