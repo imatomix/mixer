@@ -72,18 +72,40 @@ function createMatcher<Path extends string, S extends State>(
       pattern = compilePattern(prefix + path)
       patterns.set(prefix, pattern)
     }
-    const segments = decodePath(ctx.url.pathname)
+    const segments = requestSegments(ctx)
     if (!segments) return undefined
     const params = matchPattern(pattern, segments)
     if (!params) return undefined
 
     for (const handler of handlers) {
       const result = await handler(ctx, params as Params<Path>)
-      if (ctx.sent) return undefined
       if (result !== undefined) return result
     }
     return undefined
   })
+}
+
+type Decoded = { segments: string[] | undefined } | { error: unknown }
+
+// Every route needs the decoded path, so decode it once per request and share the result
+// (including a 400 for malformed encoding) between routes
+const decodedPaths = new WeakMap<Context<State>, Decoded>()
+
+function requestSegments<S extends State>(
+  ctx: Context<S>,
+): string[] | undefined {
+  const key = ctx as unknown as Context<State>
+  let decoded = decodedPaths.get(key)
+  if (!decoded) {
+    try {
+      decoded = { segments: decodePath(ctx.path) }
+    } catch (error) {
+      decoded = { error }
+    }
+    decodedPaths.set(key, decoded)
+  }
+  if ('error' in decoded) throw decoded.error
+  return decoded.segments
 }
 
 type MethodRoute = <Path extends string, S extends State = State>(
@@ -120,7 +142,6 @@ export function namespace(prefix: string) {
     createRoute(async (ctx, outerPrefix) => {
       for (const child of routes) {
         const result = await child[dispatch](ctx, outerPrefix + normalized)
-        if (ctx.sent) return undefined
         if (result !== undefined) return result
       }
       return undefined

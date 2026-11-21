@@ -111,13 +111,14 @@ ${
   dependencies['@imatomix/mix-router']
     ? `
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { get } from '@imatomix/mix-router'
 
 const app = new Mixer().mix(get('/hello/:name', (_ctx, { name }) => ({ hello: name })))
-await app.listen(0, '127.0.0.1')
-const res = await fetch(\`http://127.0.0.1:\${app.address?.port}/hello/mixer\`)
+const server = await serve(app, { hostname: '127.0.0.1' })
+const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
-await app.close()
+await server.close()
 if (body.hello !== 'mixer') throw new Error('mixer + mix-router smoke test failed')
 `
     : ''
