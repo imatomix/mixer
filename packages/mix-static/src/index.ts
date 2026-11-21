@@ -54,7 +54,9 @@ export function serveStatic(
 
     if (stats.isDirectory()) {
       if (index === false) return undefined
-      if (!ctx.path.endsWith('/')) {
+      // Check the full pathname: under basePath, ctx.path for `/api` is `/`, but the browser resolves
+      // relative links against `/api`, so it still needs the redirect to `/api/`
+      if (!ctx.url.pathname.endsWith('/')) {
         const indexStats = await statOrUndefined(join(filePath, index))
         if (!indexStats?.isFile()) return undefined
         return redirectToDirectory(ctx)

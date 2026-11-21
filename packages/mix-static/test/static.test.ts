@@ -171,8 +171,11 @@ describe('basePath', () => {
     expect(res.headers.get('location')).toBe('/api/sub/?x=1')
   })
 
-  it('serves index.html for basePath itself', async () => {
-    expect(await (await call(mounted(), '/api')).text()).toBe('<h1>root</h1>')
+  it('redirects basePath itself to the path with a trailing slash, so relative links stay inside it', async () => {
+    const res = await call(mounted(), '/api?x=1', { redirect: 'manual' })
+    expect(res.status).toBe(301)
+    expect(res.headers.get('location')).toBe('/api/?x=1')
+    expect(await (await call(mounted(), '/api/')).text()).toBe('<h1>root</h1>')
   })
 })
 
