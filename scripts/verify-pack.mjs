@@ -127,11 +127,12 @@ ${
   dependencies['@imatomix/mix-session']
     ? `
 import { Mixer as SessionMixer } from '@imatomix/mixer'
+import { serve as serveSession } from '@imatomix/mixer/node'
 import { session, type SessionState } from '@imatomix/mix-session'
 
 const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   const current = ctx.state.session
-  if (ctx.url.pathname === '/login') {
+  if (ctx.path === '/login') {
     current.set('user', 'mixer')
     // A second cookie checks that several Set-Cookie headers survive on this runtime
     ctx.cookies.set('theme', 'dark')
@@ -139,13 +140,13 @@ const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   }
   return { user: current.get('user') }
 })
-await sessionApp.listen(0, '127.0.0.1')
-const base = \`http://127.0.0.1:\${sessionApp.address?.port}\`
+const sessionServer = await serveSession(sessionApp, { hostname: '127.0.0.1' })
+const base = \`http://127.0.0.1:\${sessionServer.port}\`
 const login = await fetch(\`\${base}/login\`)
 const setCookies = login.headers.getSetCookie()
 const sid = setCookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
-await sessionApp.close()
+await sessionServer.close()
 if (me.user !== 'mixer' || setCookies.length !== 2) {
   throw new Error('mixer + mix-session smoke test failed')
 }
