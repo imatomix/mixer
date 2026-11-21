@@ -64,6 +64,8 @@ mix-* の移行中に mixer 側の変更（新しいプロパティ、型の追�
 - パッケージをまたぐ変更は、パッケージごと・論理単位ごとにコミットを分ける
 - 破壊的変更は `!` と `BREAKING CHANGE:` を付ける
 
-## 周辺モジュールの TypeScript 移行
+## 新しいモジュールを追加するとき
 
-`packages/mix-*/lib/*.js` は v0.0.x の `(req, res)` 形式のままのものがある。移行するときは `migrate-module` skill の手順に従う。
+v0.0.x からの移行はすべて完了した（mix-favicon は廃止し、mix-static の `serveFile` に統合）。
+新しい mix-* を作るときも `migrate-module` skill の手順 2〜5（パッケージ構成・テスト先行・ドキュメント・確認とコミット）に従う。
+追加する前に、既存のモジュールの拡張で足りないか、mixer 本体に置くべき基本機能ではないかを検討する（例: favicon は mix-static に統合、Cookie は mixer 本体に置いた）。

@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/*.md", "!packages/*/lib"]
+    "includes": ["**", "!**/*.md"]
   },
   "formatter": {
     "enabled": true,
