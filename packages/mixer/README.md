@@ -1,6 +1,6 @@
 # mixer
 
-English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mixer/README.ja.md)
+English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md)
 
 Minimal & asynchronous web module.
 
@@ -235,12 +235,12 @@ app.mix((ctx) => nuxt.render(ctx.req, ctx.res))
 
 Pick only the ones you need.
 
-- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/master/packages/mix-router): type-safe router
-- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/master/packages/mix-cors): CORS
-- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/master/packages/mix-static): static file serving
-- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/master/packages/mix-session): server-side sessions
-- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/master/packages/mix-logger): access logging
+- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router): type-safe router
+- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors): CORS
+- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static): static file serving
+- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session): server-side sessions
+- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger): access logging
 
 ## Development
 
-Run `pnpm check` at the [repository root](https://github.com/imatomix/mixer/tree/master). See [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/master/CONTRIBUTING.md) for details.
+Run `pnpm check` at the [repository root](https://github.com/imatomix/mixer/tree/main). See [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md) for details.

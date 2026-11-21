@@ -44,7 +44,7 @@
     "url": "git+https://github.com/imatomix/mixer.git",
     "directory": "packages/mixer"
   },
-  "homepage": "https://github.com/imatomix/mixer/tree/master/packages/mixer#readme",
+  "homepage": "https://github.com/imatomix/mixer/tree/main/packages/mixer#readme",
   "bugs": {
     "url": "https://github.com/imatomix/mixer/issues"
   }

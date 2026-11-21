@@ -32,7 +32,7 @@ pnpm verify:pack  # required when package.json (exports, files, dependencies) or
 - **Tests first.** Write the test, run it, and watch it fail for the expected reason before changing the code. Bug fixes start with a test that reproduces the bug.
 - **Verify before claiming.** Report work as done only after `pnpm check` (and `pnpm verify:pack` when relevant) has passed in this session, and state the result.
 - **Commits.** One logical change per commit, Conventional Commits in English (see [CONTRIBUTING.md](CONTRIBUTING.md#branches-commits-and-pull-requests)). Do not mix unrelated changes.
-- **Branches and pull requests.** Never commit to `master`; it is protected and only accepts pull requests that pass CI. Work on a branch named after the change (`feat/`, `fix/`, `docs/`, ...). Pull requests are squash-merged, so the title becomes the commit message.
+- **Branches and pull requests.** Never commit to `main`; it is protected and only accepts pull requests that pass CI. Work on a branch named after the change (`feat/`, `fix/`, `docs/`, ...). Pull requests are squash-merged, so the title becomes the commit message.
 - **Merging.** Do not merge your own pull request unless the maintainer explicitly asks you to. Report the CI and review results and let the maintainer decide.
 - **Reviews.** When a reviewer (human or bot) leaves findings, verify each one before acting on it. Fix what is valid with a test first, reply in the thread with the fixing commit, and explain why when you disagree.
 - **Recommend, don't just list.** When there are several options, give the trade-offs and recommend one with a reason. Treat the maintainer's opinions as input for discussion; record something as a rule only when the maintainer decides it.

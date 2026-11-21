@@ -38,7 +38,7 @@ pnpm check:pr-title                  # check PR_TITLE against the PR title rules
 
 ## Branches, commits, and pull requests
 
-- Create a branch from `master` named after the kind of change: `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `ci/`, `build/`, or `chore/` (for example `fix/router-trailing-slash`).
+- Create a branch from `main` named after the kind of change: `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `ci/`, `build/`, or `chore/` (for example `fix/router-trailing-slash`).
 - Write commit messages and pull request titles in English, following [Conventional Commits](https://www.conventionalcommits.org/):
 
   ```
@@ -52,7 +52,7 @@ pnpm check:pr-title                  # check PR_TITLE against the PR title rules
   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
   - The scope is a package name without the `@imatomix/` prefix (`mixer`, `mix-router`, ...) and may be omitted for repository-wide changes.
   - Add `!` after the type or scope for breaking changes, and explain the migration in the pull request description.
-- Pull requests are **squash-merged**, so the pull request title becomes the commit message on `master`. CI checks the title format.
+- Pull requests are **squash-merged**, so the pull request title becomes the commit message on `main`. CI checks the title format.
 - When you revert a pull request with GitHub's **Revert** button, rename the generated title (`Revert "feat(mix-router): ..."`) to `revert: <original title>` (for example `revert: feat(mix-router): support 405 Method Not Allowed`) so that it passes the title check.
 - Fill in the pull request template. A pull request should contain one logical change; split unrelated changes into separate pull requests.
 

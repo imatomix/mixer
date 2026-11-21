@@ -1,8 +1,8 @@
 # @imatomix/mix-session
 
-English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix-session/README.ja.md)
+English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-session/README.ja.md)
 
-Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
 
 > **Note:** This package is at 0.x, so the API may change between minor versions.
 
