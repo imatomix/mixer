@@ -1,5 +1,5 @@
 // Checks that a pull request title follows Conventional Commits.
-// PRs are squash-merged, so the title becomes the commit message on master.
+// PRs are squash-merged, so the title becomes the commit message on main.
 // The title is read from the PR_TITLE environment variable rather than being
 // interpolated into a shell command, so it is never executed.
 

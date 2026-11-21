@@ -36,7 +36,7 @@
     "url": "git+https://github.com/imatomix/mixer.git",
     "directory": "packages/mix-cors"
   },
-  "homepage": "https://github.com/imatomix/mixer/tree/master/packages/mix-cors#readme",
+  "homepage": "https://github.com/imatomix/mixer/tree/main/packages/mix-cors#readme",
   "bugs": {
     "url": "https://github.com/imatomix/mixer/issues"
   },

@@ -1,6 +1,6 @@
 # mixer
 
-[English](https://github.com/imatomix/mixer/blob/master/packages/mixer/README.md) | 日本語
+[English](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md) | 日本語
 
 Minimal & asynchronous web module.
 
@@ -236,12 +236,12 @@ app.mix((ctx) => nuxt.render(ctx.req, ctx.res))
 
 必要なものだけ選んで導入できる。
 
-- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/master/packages/mix-router) : 型安全なルーター
-- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/master/packages/mix-cors) : CORS
-- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/master/packages/mix-static) : 静的ファイルの配信
-- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/master/packages/mix-session) : サーバ側セッション
-- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/master/packages/mix-logger) : アクセスログ
+- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) : 型安全なルーター
+- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) : CORS
+- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) : 静的ファイルの配信
+- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) : サーバ側セッション
+- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) : アクセスログ
 
 ## 開発
 
-[リポジトリのルート](https://github.com/imatomix/mixer/tree/master) で `pnpm check` を実行する。詳しくは [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/master/CONTRIBUTING.md)（英語）を参照。
+[リポジトリのルート](https://github.com/imatomix/mixer/tree/main) で `pnpm check` を実行する。詳しくは [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md)（英語）を参照。

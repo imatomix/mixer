@@ -1,8 +1,8 @@
 # @imatomix/mix-static
 
-[English](https://github.com/imatomix/mixer/blob/master/packages/mix-static/README.md) | 日本語
+[English](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.md) | 日本語
 
-Serve static files for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+Serve static files for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
 
 デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
 仕様は気紛れに変わります。
@@ -38,7 +38,7 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 
 ## 単体のファイルを配信する（favicon など）
 
-`serveFile(filePath, { maxAge })` は、常に指定したファイルを返す Component。パスの判定はしないので、[mix-router](https://github.com/imatomix/mixer/tree/master/packages/mix-router) などと組み合わせる。
+`serveFile(filePath, { maxAge })` は、常に指定したファイルを返す Component。パスの判定はしないので、[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) などと組み合わせる。
 
 ```ts
 import { get } from '@imatomix/mix-router'

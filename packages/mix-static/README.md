@@ -1,8 +1,8 @@
 # @imatomix/mix-static
 
-English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix-static/README.ja.md)
+English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.ja.md)
 
-Serve static files for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+Serve static files for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
 
 > **Note:** This package is at 0.x, so the API may change between minor versions.
 
@@ -37,7 +37,7 @@ When a file is not found, it does nothing and hands over to the next component (
 
 ## Serving a single file (favicon and the like)
 
-`serveFile(filePath, { maxAge })` is a Component that always returns the given file. It does not check the path, so combine it with [mix-router](https://github.com/imatomix/mixer/tree/master/packages/mix-router) or similar.
+`serveFile(filePath, { maxAge })` is a Component that always returns the given file. It does not check the path, so combine it with [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) or similar.
 
 ```ts
 import { get } from '@imatomix/mix-router'

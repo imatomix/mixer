@@ -36,7 +36,7 @@
     "url": "git+https://github.com/imatomix/mixer.git",
     "directory": "packages/mix-logger"
   },
-  "homepage": "https://github.com/imatomix/mixer/tree/master/packages/mix-logger#readme",
+  "homepage": "https://github.com/imatomix/mixer/tree/main/packages/mix-logger#readme",
   "bugs": {
     "url": "https://github.com/imatomix/mixer/issues"
   },

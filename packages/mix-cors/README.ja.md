@@ -1,8 +1,8 @@
 # @imatomix/mix-cors
 
-[English](https://github.com/imatomix/mixer/blob/master/packages/mix-cors/README.md) | 日本語
+[English](https://github.com/imatomix/mixer/blob/main/packages/mix-cors/README.md) | 日本語
 
-CORS for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+CORS for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
 
 デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
 仕様は気紛れに変わります。

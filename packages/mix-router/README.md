@@ -1,8 +1,8 @@
 # @imatomix/mix-router
 
-English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix-router/README.ja.md)
+English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.ja.md)
 
-Type-safe router for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+Type-safe router for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
 
 > **Note:** This package is at 0.x, so the API may change between minor versions.
 
