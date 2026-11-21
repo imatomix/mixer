@@ -14,6 +14,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 Requirements:
 
 - Node.js **26** for development (packages support Node.js `>=24`). The version is pinned in [`.node-version`](.node-version).
+- [Bun](https://bun.com/) 1.4.4 (optional) to run `pnpm verify:pack:bun` locally. CI runs it on every pull request.
 - [pnpm](https://pnpm.io/), in the version pinned by `packageManager` in [`package.json`](package.json). The easiest way to get it is Corepack. Corepack is no longer bundled with Node.js 25 and later, so install it from npm first:
 
 ```sh
@@ -27,6 +28,7 @@ pnpm install
 ```sh
 pnpm check                           # lint + type check + tests for all packages
 pnpm verify:pack                     # pack each package, install it into a scratch project, and check types and runtime imports
+pnpm verify:pack:bun                 # the same, with the final smoke test running on Bun (requires Bun)
 pnpm format                          # format and fix lint issues with biome
 pnpm --filter @imatomix/<name> test  # run the tests of a single package
 pnpm check:pr-title                  # check PR_TITLE against the PR title rules

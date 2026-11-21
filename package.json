@@ -14,7 +14,8 @@
     "format": "biome check --write .",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "verify:pack": "node scripts/verify-pack.mjs",
-    "check:pr-title": "node scripts/check-pr-title.mjs"
+    "check:pr-title": "node scripts/check-pr-title.mjs",
+    "verify:pack:bun": "node scripts/verify-pack.mjs --runtime=bun"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",

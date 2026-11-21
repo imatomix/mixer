@@ -26,4 +26,4 @@ pnpm build
 pnpm --filter @imatomix/mixer test   # 特定のパッケージだけ
 ```
 
-対応環境は Node.js 24 以上。開発に参加するときは [CONTRIBUTING.md](CONTRIBUTING.md)（英語）を参照。
+対応環境は Node.js 24 以上と Bun 1.4.4 以上。開発に参加するときは [CONTRIBUTING.md](CONTRIBUTING.md)（英語）を参照。

@@ -26,4 +26,4 @@ pnpm build
 pnpm --filter @imatomix/mixer test   # a single package
 ```
 
-Requires Node.js 24 or later. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+Packages run on Node.js 24 or later and Bun 1.4.4 or later. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
