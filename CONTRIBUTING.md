@@ -60,8 +60,9 @@ pnpm check:pr-title                  # check PR_TITLE against the PR title rules
 
 - Write the test first, watch it fail, then implement the change.
 - Tests live in `packages/<name>/test/*.test.ts` and use [vitest](https://vitest.dev/).
-- Start a real server with `new Mixer().mix(...)` and `listen(0, '127.0.0.1')`, then call it with `fetch`. Do not use mocked `req` / `res` objects.
-- Close servers in `afterEach` so that no ports are left open.
+- Call the app directly with `app.fetch(new Request('http://localhost/path'))`. No server or port is needed, and the test sees the same `Response` users get.
+- Start a real server only for what `app.fetch` cannot show: the Node adapter itself (`packages/mixer/test/node.test.ts`) and paths that `Request` would normalize, such as `/../x` (send them as is over `node:http` through `serve()` from `@imatomix/mixer/node`). Close those servers in `afterEach`.
+- `pnpm verify:pack` runs the published packages end to end, with `serve()` on Node and `Bun.serve` on Bun.
 - Name tests after the behavior they check (for example `returns 204 for preflight requests`).
 
 ## Design principles
@@ -71,10 +72,12 @@ The goal is that users can pick only the modules they need and replace any of th
 - Every `mix-*` package depends on `@imatomix/mixer` as a **peer dependency**, so that an application has exactly one instance of mixer.
 - `mix-*` packages may use mixer's **public API** (anything exported from `packages/mixer/src/index.ts`, such as `HttpError`) at runtime, but never its internals.
 - `mix-*` packages never depend on each other.
-- Do not add properties to `ctx.req` or `ctx.res`. Pass values to later components through `ctx.state` and export its type.
-- Respond by returning a value or calling `ctx.send()`. Return `undefined` to hand over to the next component.
+- Pass values to later components through `ctx.state` and export its type. Do not add properties to `ctx` or `ctx.request`.
+- Respond by returning a value or a `Response`; set `ctx.status` and `ctx.headers` for the draft. Return `undefined` to hand over to the next component.
+- Match paths against `ctx.path`, so that modules work under `basePath`. Use `ctx.url` only when the full URL is needed (for example, a redirect `Location`).
+- Keep modules runtime-neutral: use Web standard APIs (`Request`, `Headers`, `ReadableStream`, Web Crypto) and reach for `node:` modules only when the job needs them (such as `node:fs` in mix-static).
 - Throw `HttpError` for error responses instead of sending them directly, so that users can customize them with `onError`.
-- Use `ctx.onBeforeSend()` for work that must happen right before the response is sent, and the `finish` / `close` events of `ctx.res` for work after it.
+- Use `ctx.onBeforeSend()` for work that must happen right before the response is built, `ctx.onResponse()` for work once it is ready, and `ctx.waitUntil()` for slow work that should not delay the response.
 - Do not add runtime dependencies without discussing it in an issue first.
 
 ## Adding a new package
@@ -82,7 +85,7 @@ The goal is that users can pick only the modules they need and replace any of th
 Open an issue first. A new package should not be something that fits better as an extension of an existing package or as a primitive in mixer itself.
 
 1. **Package structure.** Copy the setup from an existing module such as `packages/mix-cors`:
-   - `package.json`: `"type": "module"`, `exports` (`types` + `import`), `files: ["dist"]`, `engines.node: ">=24"`, the same `scripts`, `peerDependencies` on `@imatomix/mixer`, and `devDependencies` with `"@imatomix/mixer": "workspace:*"` plus `catalog:` entries for `@types/node`, `tsup`, `typescript`, and `vitest`. Start at version `0.1.0`.
+   - `package.json`: `"type": "module"`, `exports` (`types` + `import`), `files: ["dist"]`, `engines.node: ">=24"`, the same `scripts`, `peerDependencies` on `@imatomix/mixer`, and `devDependencies` with `"@imatomix/mixer": "workspace:*"` plus `catalog:` entries for `@types/node`, `tsup`, `typescript`, and `vitest`. Start at the version of the other packages.
    - `tsconfig.json`, `tsconfig.build.json`, `tsup.config.ts`, and `vitest.config.ts`. The vitest config is required so that mixer resolves from `src` through the `@imatomix/source` condition.
    - Run `pnpm install`.
 2. **Tests first.** Write `test/*.test.ts` for the behavior you want, watch the tests fail, then implement `src/index.ts`. Export one function that takes options and returns a `Component`.
