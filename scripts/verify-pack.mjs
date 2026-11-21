@@ -6,6 +6,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
+
+// The packages are installed and type-checked once; only the final smoke test runs on the chosen runtime.
+const runtimeArg = process.argv.find((arg) => arg.startsWith('--runtime='))
+const runtime = runtimeArg ? runtimeArg.slice('--runtime='.length) : 'node'
+if (runtime !== 'node' && runtime !== 'bun') {
+  throw new Error(`Unknown runtime: ${runtime} (expected node or bun)`)
+}
 // Running through pnpm run passes pnpm's npm_config_* variables, which make npm print warnings, so drop them
 const env = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith('npm_config_')),
@@ -133,12 +140,94 @@ if (me.user !== 'mixer') throw new Error('mixer + mix-session smoke test failed'
 `
     : ''
 }
-console.log('ok')
+${
+  dependencies['@imatomix/mix-static']
+    ? `
+import { mkdtempSync as makeTempDir, writeFileSync as writeTempFile } from 'node:fs'
+import { tmpdir as osTmpdir } from 'node:os'
+import { join as joinPath } from 'node:path'
+import { Mixer as StaticMixer } from '@imatomix/mixer'
+import { serveStatic } from '@imatomix/mix-static'
+
+const publicDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-static-'))
+writeTempFile(joinPath(publicDir, 'hello.txt'), 'hello static')
+const staticApp = new StaticMixer().mix(serveStatic(publicDir))
+await staticApp.listen(0, '127.0.0.1')
+const staticBase = \`http://127.0.0.1:\${staticApp.address?.port}\`
+const file = await fetch(\`\${staticBase}/hello.txt\`)
+const fileText = await file.text()
+const etag = file.headers.get('etag') ?? ''
+const headResponse = await fetch(\`\${staticBase}/hello.txt\`, { method: 'HEAD' })
+await headResponse.text()
+const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-none-match': etag } })
+await notModified.text()
+await staticApp.close()
+if (
+  fileText !== 'hello static' ||
+  file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||
+  headResponse.status !== 200 ||
+  headResponse.headers.get('content-length') !== '12' ||
+  notModified.status !== 304
+) {
+  throw new Error('mixer + mix-static smoke test failed')
+}
+`
+    : ''
+}
+${
+  dependencies['@imatomix/mix-cors']
+    ? `
+import { Mixer as CorsMixer } from '@imatomix/mixer'
+import { cors } from '@imatomix/mix-cors'
+
+const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
+await corsApp.listen(0, '127.0.0.1')
+const corsBase = \`http://127.0.0.1:\${corsApp.address?.port}\`
+const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })
+await simple.text()
+const preflight = await fetch(corsBase, {
+  method: 'OPTIONS',
+  headers: { origin: 'https://a.example', 'access-control-request-method': 'PUT' },
+})
+await preflight.text()
+await corsApp.close()
+if (simple.headers.get('access-control-allow-origin') !== '*' || preflight.status !== 204) {
+  throw new Error('mixer + mix-cors smoke test failed')
+}
+`
+    : ''
+}
+${
+  dependencies['@imatomix/mix-logger']
+    ? `
+import { Mixer as LoggerMixer } from '@imatomix/mixer'
+import { type LogEntry, logger } from '@imatomix/mix-logger'
+
+let resolveEntry: (entry: LogEntry) => void = () => {}
+const logged = new Promise<LogEntry>((resolve) => {
+  resolveEntry = resolve
+})
+const loggerApp = new LoggerMixer().mix(logger({ write: (entry) => resolveEntry(entry) }), () => 'logged')
+await loggerApp.listen(0, '127.0.0.1')
+await (await fetch(\`http://127.0.0.1:\${loggerApp.address?.port}/log?secret=1\`)).text()
+const entry = await logged
+await loggerApp.close()
+if (entry.method !== 'GET' || entry.path !== '/log' || entry.status !== 200) {
+  throw new Error('mixer + mix-logger smoke test failed')
+}
+`
+    : ''
+}
+const runtimeName = process.versions.bun ? \`bun \${process.versions.bun}\` : \`node \${process.versions.node}\`
+console.log(\`ok on \${runtimeName}\`)
 `
 writeFileSync(join(consumer, 'smoke.ts'), smoke)
 
 run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', consumer], consumer)
 console.log('Type check: ok')
-console.log(
-  `Runtime imports and smoke test: ${run('node', [join('out', 'smoke.js')], consumer)}`,
-)
+const smokeResult = run(runtime, [join('out', 'smoke.js')], consumer)
+// Make sure the smoke test really ran on the requested runtime instead of silently falling back to another one
+if (!smokeResult.startsWith(`ok on ${runtime} `)) {
+  throw new Error(`Smoke test did not run on ${runtime}: ${smokeResult}`)
+}
+console.log(`Runtime imports and smoke test: ${smokeResult}`)
