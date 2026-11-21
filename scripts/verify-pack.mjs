@@ -76,7 +76,7 @@ writeFileSync(
   join(consumer, 'tsconfig.json'),
   JSON.stringify({
     compilerOptions: {
-      target: 'ES2023',
+      target: 'ES2024',
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
