@@ -2,9 +2,10 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-session/README.ja.md)
 
-Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer). The cookie holds only a random ID, and nothing is created until you write.
 
-> **Note:** This package is at 0.x, so the API may change between minor versions.
+- Runs on Node.js, Bun, and Cloudflare Workers (on Workers and other serverless platforms, with an external store)
+- At 0.x, so the API may change between minor versions
 
 ## Install
 
@@ -91,18 +92,3 @@ To run multiple processes, or to keep sessions across restarts, implement an ext
 - An ID that is not in the store (expired or forged) is never adopted; a new ID is issued on write
 - Malformed IDs, and multiple cookies with the same name (possibly planted from a subdomain), are not loaded
 
-## Migrating from v0.1
-
-Options, the store interface, and the cookie format are unchanged, so existing sessions stay valid. Respond by returning a value or a `Response` instead of `ctx.send()`.
-
-## Migrating from v0.0.x
-
-v0.0.x used `crypto.createCipher`, which was removed in Node.js 22, so it does not run on current Node.js. It was redesigned from scratch, and the API is not compatible.
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `req.session.user = 'x'` | `ctx.state.session.set('user', 'x')` |
-| `secret` (encrypts the data) | Not needed (the data stays on the server) |
-| `generateId` | Removed (always 32 random bytes) |
-| `cookie.httpOnly` (was always true) | `cookie.httpOnly` (defaults to true; false is allowed) |
-| A session for every visitor | Created only when something is written |

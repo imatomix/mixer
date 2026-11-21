@@ -2,18 +2,18 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mix-cors/README.md) | 日本語
 
-CORS for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+[mixer](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md) の CORS。Origin は完全一致で照合し、preflight はルートに届く前に応答する。
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- 動く場所: Node.js・Bun・Cloudflare Workers
+- 0.x なので、マイナーバージョンの間で API が変わることがある
 
-## Install
+## インストール
 
 ```sh
 npm install @imatomix/mixer @imatomix/mix-cors
 ```
 
-## Usage
+## 使い方
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
@@ -29,7 +29,7 @@ await serve(app, { port: 3000 })
 
 ルーターなどより**前に** mix する。
 
-## Options
+## オプション
 
 ```ts
 cors({
@@ -71,18 +71,3 @@ cors({
 - preflight ではない `OPTIONS` は横取りしない（mix-router の `options()` などがそのまま動く）
 - 付けたヘッダは、後続で `HttpError` になったときのエラー応答にも残り（ブラウザからエラー内容を読める）、後続のコンポーネントが返した `Response` にも付く
 
-## v0.1 からの移行
-
-オプションと動作は変わらない。自分のコードで CORS ヘッダを `ctx.res` から読んでいた場合は、`ctx.headers` から読む。
-
-## v0.0.x からの移行
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const cors = require('mix-cors')` | `import { cors } from '@imatomix/mix-cors'` |
-| `allowCredentials`（初期値 `true`） | `credentials`（初期値 `false`） |
-| `allowMethods` | `methods`（`OPTIONS` は不要になったので初期値から外した） |
-| `allowHeaders`（初期値 `['Accept', 'Content-Type']`） | 初期値はリクエストされたヘッダをそのまま許可 |
-| `maxAge`（初期値 86400） | 初期値 600 |
-| `origin` は文字列のみ | 文字列・正規表現・配列・関数 |
-| すべての OPTIONS を preflight 扱い（応答はしない） | 本物の preflight だけを 204 で完結させる |

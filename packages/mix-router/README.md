@@ -2,9 +2,10 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.ja.md)
 
-Type-safe router for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+Type-safe router for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer). Routes are mixer components with parameters typed from the path.
 
-> **Note:** This package is at 0.x, so the API may change between minor versions.
+- Runs on Node.js, Bun, and Cloudflare Workers
+- At 0.x, so the API may change between minor versions
 
 ## Install
 
@@ -17,13 +18,16 @@ npm install @imatomix/mixer @imatomix/mix-router
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
-import { all, get } from '@imatomix/mix-router'
+import { get, post } from '@imatomix/mix-router'
 
 const app = new Mixer()
 
 app.mix(
-  get('/mix/:fruit', (ctx, { fruit }) => `${fruit} juice`),
-  all('/*', () => new Response('Not found route', { status: 404 })),
+  get('/users/:id', (ctx, { id }) => ({ id })), // GET and HEAD /users/42 → { "id": "42" }
+  post('/users', async (ctx) => {
+    ctx.status = 201
+    return await ctx.body()
+  }),
 )
 
 await serve(app, { port: 3000 })
@@ -145,22 +149,3 @@ app.mix(get('/db', (ctx) => ctx.env.DATABASE_URL)) // ctx.env.DATABASE_URL: stri
 
 Routes are created before they are mixed in, so they cannot learn these types from the app; `createRouter` is where you state them once.
 
-## Migrating from v0.1
-
-The router API is unchanged. Follow [mixer's migration table](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#migrating-from-v01) for the handlers:
-
-- Routes match `ctx.path` instead of `ctx.url.pathname`, so they work under `basePath`
-- Instead of `ctx.send(status, body)`, return a value (after setting `ctx.status`) or a `Response`
-- The request path is decoded once per request, however many routes there are
-
-## Migrating from v0.0.x
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const { get } = require('mix-router')` | `import { get } from '@imatomix/mix-router'` |
-| `get(path, (req, res) => {})` | `get(path, (ctx, params) => {})` |
-| `req.params.fruit` | `params.fruit` from the second argument |
-| `req.query.q` | `ctx.url.searchParams.get('q')` |
-| `namespace(prefix)(...routes)` | Same (paths are now joined correctly when nested) |
-| Other methods such as `mkcalendar()` | `route('MKCALENDAR', path, handler)` |
-| `res.post(200, x)` | `return x` |

@@ -2,18 +2,18 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.md) | 日本語
 
-Serve static files for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+[mixer](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md) の静的ファイル配信。パストラバーサル、ドットファイル、外を指すシンボリックリンクを防ぐ。
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- 動く場所: Node.js・Bun（`node:fs` でファイルを読む。Cloudflare Workers では Workers Static Assets を使う）
+- 0.x なので、マイナーバージョンの間で API が変わることがある
 
-## Install
+## インストール
 
 ```sh
 npm install @imatomix/mixer @imatomix/mix-static
 ```
 
-## Usage
+## 使い方
 
 `./public` 以下のファイルを `http://localhost:3000/` から配信する。
 
@@ -36,8 +36,6 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 ファイルが見つからなければ何もせず次のコンポーネントへ進む（最終的に mixer の 404 になる）。
-
-mix-static は `node:fs` でファイルを読むので、Node.js と Bun で動く。Cloudflare Workers にはファイルシステムがないので、静的ファイルは Workers Static Assets で配る。
 ファイルは mixer の `ctx.path` で探すので、`basePath` を使うと公開ディレクトリはその下のパスに対応する。ディレクトリへのリダイレクトでは、`Location` に `basePath` を残す。
 
 ## 単体のファイルを配信する（favicon など）
@@ -60,7 +58,7 @@ app.mix(
 
 公開ディレクトリに `favicon.ico` を置いているなら、`serveStatic` だけで配信できる（旧 mix-favicon は廃止した）。
 
-## Options
+## オプション
 
 | オプション | 初期値 | 説明 |
 | --- | --- | --- |
@@ -94,17 +92,3 @@ app.mix(
 
 **公開ディレクトリは、信頼できない利用者が書き換えられない場所にすること。** 検証してからファイルを開くまでの間にシンボリックリンクを差し替えられる攻撃は、最後の要素については `O_NOFOLLOW` で防いでいるが、途中のディレクトリの差し替えまでは防げない。
 
-## v0.1 からの移行
-
-オプションと動作は変わらない。mix-static は `node:fs` を使うので、Node.js と Bun で動く。
-
-## v0.0.x からの移行
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const static = require('mix-static')` | `import { serveStatic } from '@imatomix/mix-static'` |
-| `static({ public: './public' })` | `serveStatic('./public')` |
-| `public` の初期値 `'./'` | 必須（カレントディレクトリ全体を誤って公開しないように） |
-| `route` | `prefix`（セグメント単位で比べる） |
-| ドットファイルも配信 | 既定では配信しない |
-| `Content-Type` なし | 拡張子から設定 |

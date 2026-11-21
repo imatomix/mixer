@@ -1,88 +1,82 @@
-# mixer
+# @imatomix/mixer
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md)
 
-Minimal & asynchronous web module, built on the Web standard `Request` and `Response`.
+A small web framework built on the Web standard `Request` and `Response`. You write an app as a list of functions, and mixer turns what they return into a safe response.
 
-- Written in TypeScript, ESM only, zero dependencies
-- Node.js 24 or later, Bun 1.4.4 or later, or Cloudflare Workers
-- `app.fetch(request)` is a plain Web standard handler, so it also runs inside frameworks such as Next.js, Nuxt, SvelteKit, and React Router
-- Safe by default: `X-Content-Type-Options: nosniff` on every response, cookies are `HttpOnly; Secure; SameSite=Lax`, responses that set cookies stay out of shared caches, and error details never reach the client
+- **Web standard.** `app.fetch(request)` takes a `Request` and returns a `Response`, so the same app runs on Node.js, Bun, Cloudflare Workers, and inside Next.js, Nuxt, SvelteKit, or React Router
+- **Safe by default.** Security headers, cookie attributes, cache rules for cookies, and error responses are right without extra code ([see below](#safe-by-default))
+- **Pick what you need.** Routing, CORS, static files, sessions, and logging are [separate modules](#modules), and any of them can be replaced
+- TypeScript, ESM only, zero dependencies. Node.js 24 or later, Bun 1.4.4 or later, or Cloudflare Workers
 
-> **Note:** mixer is at 0.x, so the API may change between minor versions.
+> mixer is at 0.x, so the API may change between minor versions.
 
-## Install
+## Quick start
 
 ```sh
 npm install @imatomix/mixer
 ```
 
-## Usage
-
-Add functions (components) that run on each request with `mix()`.
-A component receives a single `ctx`, and the value it returns becomes the response.
-
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
 
-const app = new Mixer().mix(() => 'Hello Mixer')
+const app = new Mixer().mix(() => 'Hello mixer')
 
 await serve(app, { port: 3000 })
 ```
 
-On Bun, pass `app.fetch` to `Bun.serve`:
+Open http://localhost:3000. On Bun, use `Bun.serve({ port: 3000, fetch: app.fetch })` instead; see [Running the app](#running-the-app) for the other places.
+
+## The basics
+
+### Components
+
+An app is a list of **components**: functions that receive `ctx` and may return a response. Add them with `mix()`.
 
 ```ts
-Bun.serve({ port: 3000, fetch: app.fetch })
+app.mix(
+  (ctx) => {
+    ctx.state.startedAt = Date.now() // returns nothing: hand over to the next one
+  },
+  (ctx) => {
+    if (ctx.path === '/hello') return { hello: 'mixer' } // returns a value: this is the response
+  },
+)
 ```
 
-### mix()
-
-Chain `mix()` calls, or pass several functions to one `mix()`.
-
-```ts
-app.mix(fn).mix(fn).mix(fn)
-app.mix(fn, fn, fn)
-```
-
-Components run in the order they were mixed in, and **stop at the first one that returns a value (anything other than `undefined`)**.
-A component that returns nothing hands over to the next one. If no component responds, the response is `404`.
+Components run in the order they were mixed in and **stop at the first one that returns a value** (anything other than `undefined`). If none does, the response is `404`. Routing is a component too: see [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router).
 
 ### ctx
 
 | Property | Description |
 | --- | --- |
 | `ctx.request` | The Web standard `Request` |
-| `ctx.url` | The request URL as a `URL` object (`ctx.url.pathname`, `ctx.url.searchParams`) |
-| `ctx.path` | The path without `basePath` (see below). Route on this |
+| `ctx.url` | The request URL as a `URL` (`ctx.url.searchParams` for the query) |
+| `ctx.path` | The path without `basePath`. Route on this |
 | `ctx.method` | The HTTP method |
-| `ctx.status` | Status of the response (default `200`) |
-| `ctx.headers` | Headers of the response (a `Headers` object) |
-| `ctx.state` | A place to pass values to later components |
-| `ctx.env` | The second argument of `app.fetch` (bindings on serverless platforms) |
-| `await ctx.body()` | The body, parsed according to its Content-Type |
+| `ctx.status` / `ctx.headers` | Status (default `200`) and headers of the response being built |
+| `ctx.state` | Values passed to later components |
+| `ctx.env` | Bindings and settings passed as the second argument of `app.fetch` |
+| `await ctx.body()` | The request body, parsed by Content-Type ([details](#request-body)) |
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
-| `ctx.cookies` | Read cookies and add Set-Cookie headers (see below) |
-| `ctx.onBeforeSend(fn)` | Run work right before the response is built (see below) |
-| `ctx.onResponse(fn)` | Run work once the response is ready (see below) |
-| `ctx.waitUntil(promise)` | Run work after the response without delaying it (see below) |
+| `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
+| `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
+| `ctx.waitUntil(promise)` | Run work after the response without delaying it ([details](#ctxwaituntil)) |
 
-`ctx.status` and `ctx.headers` are a draft of the response. mixer builds the `Response` once, from the draft and the returned value.
-
-### Responses
-
-The format is chosen from the type of the returned value. A `Content-Type` set earlier in `ctx.headers` takes precedence.
+### What a component can return
 
 | Value | Response |
 | --- | --- |
 | `string` | `text/plain; charset=utf-8` |
+| Object, array, number, boolean | JSON (`application/json; charset=utf-8`) |
 | `Uint8Array` / `ArrayBuffer` | `application/octet-stream` |
 | `Blob` | Its own type, or `application/octet-stream` |
-| `ReadableStream` | Streamed as is (`application/octet-stream`) |
-| Object, number, boolean | JSON (`application/json; charset=utf-8`) |
-| `null` | `204 No Content` (or `ctx.status` if you set one, such as `304`) |
-| `Response` | Used as is, combined with the draft (see below) |
+| `ReadableStream` | Streamed (`application/octet-stream`) |
+| `null` | No body: `204`, or `ctx.status` if you set one (such as `304`) |
+| `Response` | Used as is, with the headers you set added ([details](#returning-a-response)) |
+
+A `Content-Type` you set in `ctx.headers` wins over these defaults.
 
 ```ts
 app.mix((ctx) => {
@@ -92,132 +86,19 @@ app.mix((ctx) => {
 })
 ```
 
-A returned `Response` keeps its own status, body, and headers. Draft headers it does not have are added, `Set-Cookie` from both are kept (the `Response` wins for the same cookie), and `Vary` lists from both are joined.
-`Response.error()` and a `Response` whose body was already read become `500`.
+### Errors
 
-Every response gets `X-Content-Type-Options: nosniff`. A response that sets cookies gets `Cache-Control: private` unless it already says `private` or `no-store`. `HEAD` responses and `204` / `205` / `304` have no body.
-
-### ctx.onBeforeSend()
-
-Registers work to run right before the response is built. Hooks run in registration order and can change `ctx.status`, `ctx.headers`, and cookies.
-Use it to apply state that later components changed, such as a session cookie.
+Throw an `HttpError` to answer with its status and `{ "error": message }`. Any other error becomes `500`; its details go to `console.error`, never to the client.
 
 ```ts
-app
-  .mix((ctx) => {
-    ctx.onBeforeSend(() => {
-      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
-    })
-  })
-  .mix((ctx) => {
-    ctx.state.user = 'imatomix'
-    return 'ok'
-  })
-```
+import { HttpError } from '@imatomix/mixer'
 
-- Runs once, for every response, including `404` and error responses
-- If a hook throws, the response is `500` (hooks are not run again)
-
-### ctx.onResponse()
-
-Registers work to run once the final response is ready, such as logging. The hook receives a snapshot `{ status, headers }`; changing it has no effect.
-Hooks run before `app.fetch` resolves, so keep them short and pass slow work to `ctx.waitUntil()`. A failing hook is logged and does not affect the response.
-
-```ts
 app.mix((ctx) => {
-  ctx.onResponse(({ status }) => {
-    ctx.waitUntil(sendMetrics(ctx.path, status))
-  })
+  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
 })
 ```
 
-### ctx.waitUntil()
-
-Runs work after the response without making the response wait for it. Whether the work is kept alive depends on where the app runs:
-
-- **Long-running servers** (`serve()`, `Bun.serve`): the process keeps running, so the work finishes. A failure is logged with `console.error`
-- **Platforms that may stop after the response** (serverless functions): pass the platform's background-work API as the third argument of `app.fetch`, as in `app.fetch(request, env, { waitUntil })`. Without it, mixer cannot tell the platform about the work, and it may be cut off
-
-### ctx.cookies
-
-```ts
-ctx.cookies.get('theme') // the first value if the name appears more than once
-ctx.cookies.getAll('theme')
-ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
-ctx.cookies.delete('theme') // pass the same path / domain used when setting it
-```
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `httpOnly` | `true` | Hide the cookie from JavaScript |
-| `secure` | `true` | Send only over HTTPS. Set to `false` when developing on http://localhost |
-| `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
-| `path` | `'/'` | |
-| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | none | |
-
-- Values are URL-encoded when sent and decoded when read
-- Setting the same name, path, and domain again in one response replaces the earlier value. Set-Cookie headers added in other ways are kept
-- Names, paths, and domains that could inject headers, and combinations that browsers reject (such as `SameSite=None` without Secure, or `__Host-` with a Domain), throw a `TypeError`
-- `set` / `delete` after the response is final throw
-
-### Request body
-
-`ctx.body()` reads the body only when needed, and returns the same result however many times it is called.
-
-| Content-Type | Result |
-| --- | --- |
-| `application/json`, `*+json` | The value from `JSON.parse` (`400` if invalid) |
-| `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
-| `text/*` or none | A string |
-| Anything else | A `Uint8Array` |
-| Empty body | `undefined` |
-
-Bodies over the limit (default 3 MB) get `413`.
-
-```ts
-const app = new Mixer({ bodyLimit: 1024 * 1024 })
-```
-
-### basePath
-
-Mount the app under a path. Requests outside it get `404`, and `ctx.path` is the path below it (`ctx.url` keeps the full URL).
-
-```ts
-const app = new Mixer({ basePath: '/api' })
-// GET /api/users → ctx.path === '/users'
-```
-
-### ctx.state, ctx.env, and types
-
-```ts
-type State = { user?: string }
-type Env = { DATABASE_URL: string }
-
-const app = new Mixer<State, Env>()
-
-app
-  .mix((ctx) => {
-    ctx.state.user = 'imatomix'
-  })
-  .mix((ctx) => `hello ${ctx.state.user}`)
-```
-
-### Error handling
-
-Throwing an `HttpError` responds with its status and `{ "error": message }` (status must be 400–599).
-Any other error becomes `500`, and the details are logged with `console.error` instead of being shown to the client.
-
-```ts
-import { HttpError, Mixer } from '@imatomix/mixer'
-
-app.mix((ctx) => {
-  if (!ctx.state.user) throw new HttpError(401, 'Unauthorized')
-})
-```
-
-Error responses start from a fresh draft: only `Access-Control-*`, `Vary`, and `Set-Cookie` are carried over, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error.
-
-Replace error responses with `onError`. It starts with the error's status in `ctx.status`, and its return value becomes the response. If it returns `undefined` or throws, the default response is sent.
+To shape error responses yourself, pass `onError`. It starts with the error's status in `ctx.status`, and what it returns becomes the response. If it returns `undefined` or throws, the default response is sent.
 
 ```ts
 const app = new Mixer({
@@ -225,11 +106,21 @@ const app = new Mixer({
 })
 ```
 
+### Types
+
+```ts
+type State = { user?: string }
+type Env = { DATABASE_URL: string }
+
+const app = new Mixer<State, Env>()
+// ctx.state.user: string | undefined, ctx.env.DATABASE_URL: string
+```
+
 ## Running the app
 
-### Node.js
+`app.fetch` is a plain `(request, env?, executionContext?) => Promise<Response>` handler, so each place below just passes requests to it.
 
-`serve` from `@imatomix/mixer/node` runs the app on Node's `http` module.
+### Node.js
 
 ```ts
 import { serve } from '@imatomix/mixer/node'
@@ -239,43 +130,39 @@ server.port // the port in use (pass port: 0 for any free port)
 await server.close()
 ```
 
-**Safe by default:**
-
-- It listens on `127.0.0.1` (this machine only) unless you pass `hostname`
-- It accepts only the host names `localhost`, `*.localhost`, `127.0.0.1`, `[::1]`, and an IP address given as `hostname`. Requests for any other host name get an empty `400` and never reach the app, and the first one is logged with `console.warn`. This stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
-
-To serve a domain, or other machines (for example, in a container), say so:
+`serve()` listens on `127.0.0.1` and accepts only local host names unless you say otherwise ([why](#safe-by-default)). To serve a domain, or other machines such as in a container:
 
 ```ts
 await serve(app, {
   port: 3000,
   hostname: '0.0.0.0', // accept connections from other machines
-  allowedHosts: ['example.com', 'www.example.com'], // exact names; case and port are ignored
+  allowedHosts: ['example.com', 'www.example.com'],
 })
 ```
 
-`allowedHosts: true` accepts any host name; use it only when something in front of the app (such as a reverse proxy) already checks it. `X-Forwarded-*` headers are not used.
+| Option | Default | Description |
+| --- | --- | --- |
+| `port` | `0` (any free port) | |
+| `hostname` | `'127.0.0.1'` | Address to listen on |
+| `allowedHosts` | none | Host names to accept besides `localhost`, `*.localhost`, `127.0.0.1`, `[::1]`, and an IP address given as `hostname`. Exact match, ignoring case and the port. `true` accepts any name; use it only when something in front already checks it |
 
-- The request URL is built from the `Host` header. A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
-- **Build absolute URLs from a configured origin**, not from `ctx.url.host`, for emails and redirects. With `allowedHosts` the host is one you listed, but it is still the client's choice among them
+- Other host names get an empty `400` and never reach the app; the first one is logged with `console.warn`
+- A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
+- `X-Forwarded-*` headers are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
 
 ### Bun
 
 ```ts
-Bun.serve({ port: 3000, fetch: app.fetch })
+Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: app.fetch })
 ```
 
-`Bun.serve` does not check host names; the checks above belong to `serve()` from `@imatomix/mixer/node`. When you run a development server on Bun, pass `hostname: '127.0.0.1'` and avoid trusting `ctx.url.host`.
+`Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
 
 ### Cloudflare Workers
 
-A `Mixer` is a Workers handler as it is: export it as the default export.
-
 ```ts
-import { Mixer } from '@imatomix/mixer'
-
 type Env = { DATABASE_URL: string }
 
 const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATABASE_URL)
@@ -283,26 +170,20 @@ const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATAB
 export default app satisfies ExportedHandler<Env>
 ```
 
-- `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` passes work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
-- Checked on every pull request with workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
+- `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` hands work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
+- Checked on every pull request on workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
+- `bodyLimit` applies when the body is read through `ctx.body()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
 
 | Package | On Workers |
 | --- | --- |
-| `@imatomix/mixer`, mix-router, mix-cors, mix-logger | Supported |
-| mix-session | Supported with an external store (`MemoryStore` lives in one isolate, and requests may run in different ones) |
-| mix-static | Not supported (no file system). Serve static files with Workers Static Assets |
-| `@imatomix/mixer/node` | Not used (Node.js only) |
-
-Notes:
-
-- **The host name is not trusted** here either: build absolute URLs from a configured origin, not from `ctx.url.host`
-- `bodyLimit` applies when the body is read through `ctx.body()`, `ctx.text()`, or `ctx.bytes()`. Reading `ctx.request` directly bypasses it
-- Work passed to `ctx.waitUntil()` is bound by the Workers time limits
+| mixer, mix-router, mix-cors, mix-logger | Supported |
+| mix-session | Supported with an external store (`MemoryStore` lives in one isolate) |
+| mix-static | Not supported (no file system); use Workers Static Assets |
+| `@imatomix/mixer/node` | Not used |
 
 ### Inside frameworks
 
-`app.fetch` takes a `Request` and returns a `Response`, so it can serve a part of an app built with a framework. Set `basePath` to the path where it is mounted.
-Pass only the `Request`: frameworks give their handlers other arguments, which would otherwise become `ctx.env`.
+Mount mixer on a catch-all route of your framework, set `basePath` to that route's path, and pass only the `Request`: frameworks give handlers other arguments, which would otherwise become `ctx.env`.
 
 **Next.js** (App Router), `app/api/[[...path]]/route.ts`:
 
@@ -313,15 +194,13 @@ const handler = (request: Request) => app.fetch(request)
 export { handler as GET, handler as POST, handler as PUT, handler as PATCH, handler as DELETE }
 ```
 
-**Nuxt** (Nuxt 4, h3 v1), `server/api/[...path].ts`:
+**Nuxt** (Nuxt 4, h3 v1), `server/api/[...path].ts` (with h3 v2, pass `event.req`):
 
 ```ts
 const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
 
 export default defineEventHandler((event) => app.fetch(toWebRequest(event)))
 ```
-
-With h3 v2, pass `event.req`, which is already a `Request`.
 
 **SvelteKit**, `src/routes/api/[...path]/+server.ts`:
 
@@ -344,62 +223,111 @@ export const loader = ({ request }: Route.LoaderArgs) => app.fetch(request)
 export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 ```
 
-# Examples
+## Safe by default
 
-### async/await
+Without any configuration:
+
+- Every response gets `X-Content-Type-Options: nosniff`
+- Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/`. Values are encoded, and names, paths, and domains that could inject headers are rejected
+- A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
+- Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, keeping only `Access-Control-*`, `Vary`, and `Set-Cookie`, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error
+- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`
+- `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
+- On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
+
+One thing mixer cannot decide for you: **do not build absolute URLs from `ctx.url.host`** (for emails or redirects). The client chooses the `Host` header; use an origin from your configuration.
+
+## Reference
+
+### Returning a Response
+
+A returned `Response` keeps its own status, body, and headers. Headers you set in `ctx.headers` that it does not have are added, `Set-Cookie` headers from both are kept (the `Response` wins for the same cookie), and the `Vary` lists of both are joined. `Response.error()` and a `Response` whose body was already read become `500`.
+
+### Hooks
+
+`ctx.onBeforeSend(fn)` runs right before the response is built, once, for every response including `404` and errors. Use it to apply state that later components changed, such as a session cookie. Hooks run in registration order and can change `ctx.status`, `ctx.headers`, and cookies; if one throws, the response is `500`.
 
 ```ts
-const app = new Mixer().mix(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 3000))
-  return 'Good Morning Mixer'
-})
-```
-
-### Streaming
-
-```ts
-app.mix(() => {
-  const encoder = new TextEncoder()
-  return new ReadableStream({
-    async start(controller) {
-      for (const word of ['mix', 'and', 'match']) {
-        controller.enqueue(encoder.encode(`${word}\n`))
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-      controller.close()
-    },
+app
+  .mix((ctx) => {
+    ctx.onBeforeSend(() => {
+      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
+    })
   })
-})
+  .mix((ctx) => {
+    ctx.state.user = 'imatomix'
+    return 'ok'
+  })
 ```
 
-## Migrating from v0.1
+`ctx.onResponse(fn)` runs once the final response is ready, with a snapshot `{ status, headers }` (changing it has no effect). It runs before `app.fetch` resolves, so keep it short and pass slow work to `ctx.waitUntil()`. A failing hook is logged and does not affect the response.
 
-| v0.1 | v0.2 |
+### ctx.waitUntil()
+
+Runs work after the response without making the response wait. On a long-running server (`serve()`, `Bun.serve`) the work finishes as the process keeps running, and a failure is logged. On platforms that may stop after the response, pass the platform's background-work API as the third argument, as in `app.fetch(request, env, { waitUntil })`; on Cloudflare Workers, `export default app` does this for you.
+
+### Cookies
+
+```ts
+ctx.cookies.get('theme') // the first value if the name appears more than once
+ctx.cookies.getAll('theme')
+ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
+ctx.cookies.delete('theme') // pass the same path / domain used when setting it
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `httpOnly` | `true` | Hide the cookie from JavaScript |
+| `secure` | `true` | Send only over HTTPS. Set to `false` when developing on http://localhost |
+| `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
+| `path` | `'/'` | |
+| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | none | |
+
+- Setting the same name, path, and domain again in one response replaces the earlier value
+- Combinations that browsers reject (such as `SameSite=None` without `Secure`, or `__Host-` with a `Domain`) throw a `TypeError`
+- Setting cookies after the response is final throws
+
+### Request body
+
+`ctx.body()` reads the body only when asked, and returns the same result however many times it is called.
+
+| Content-Type | Result |
 | --- | --- |
-| `await app.listen(3000)` | `await serve(app, { port: 3000 })` from `@imatomix/mixer/node` |
-| `app.close()`, `app.address` | `server.close()`, `server.port` |
-| `listen()` on all interfaces, any `Host` | `serve()` listens on `127.0.0.1` and accepts local host names only: pass `hostname` and `allowedHosts` for others |
-| `app.handler` (`(req, res)`) | `app.fetch` (`(request) => Response`) |
-| `ctx.req` | `ctx.request` (a Web standard `Request`) |
-| `ctx.req.headers.origin` | `ctx.request.headers.get('origin')` |
-| `ctx.res.setHeader(name, value)` | `ctx.headers.set(name, value)` |
-| `ctx.send(status, body)` | `ctx.status = status; return body` or `return new Response(body, { status })` |
-| Writing to `ctx.res` directly | Return a `ReadableStream` or a `Response` |
-| `await ctx.buffer()` (`Buffer`) | `await ctx.bytes()` (`Uint8Array`) |
-| Returning a Node `Readable` | Return a `ReadableStream` (`Readable.toWeb(stream)`) |
-| `onError: (error, ctx) => ctx.send(...)` | `onError: (error, ctx) => value` |
-| Routing on `ctx.url.pathname` | Route on `ctx.path` (works with `basePath`) |
+| `application/json`, `*+json` | The parsed value (`400` if invalid) |
+| `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
+| `text/*` or none | A string |
+| Anything else | A `Uint8Array` |
+| Empty body | `undefined` |
+
+### basePath
+
+```ts
+const app = new Mixer({ basePath: '/api' })
+// GET /api/users → ctx.path === '/users'; requests outside /api get 404
+```
+
+`ctx.url` keeps the full URL. Modules route on `ctx.path`, so they work under `basePath` unchanged.
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `basePath` | none | Path the app is mounted on |
+| `bodyLimit` | 3 MB | Largest request body that `ctx.body()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
+| `onError` | none | `(error, ctx) => value` to shape error responses |
 
 ## Modules
 
-Pick only the ones you need.
+Install only the ones you need. Each is a component, so you can replace any of them with your own.
 
-- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router): type-safe router
-- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors): CORS
-- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static): static file serving
-- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session): server-side sessions
-- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger): access logging
+| Package | Description |
+| --- | --- |
+| [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) | Type-safe router |
+| [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) | CORS |
+| [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) | Static files (Node.js and Bun) |
+| [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) | Server-side sessions |
+| [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) | Access logs |
 
 ## Development
 
-Run `pnpm check` at the [repository root](https://github.com/imatomix/mixer/tree/main). See [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md) for details.
+See the [repository root](https://github.com/imatomix/mixer/tree/main) and [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md).
