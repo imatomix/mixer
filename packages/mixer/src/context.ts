@@ -29,7 +29,7 @@ export class Context<S extends State = State> {
     this.#bodyLimit = bodyLimit
   }
 
-  /** リクエストの Cookie の読み取りと、Set-Cookie の設定 */
+  /** Reads request cookies and sets Set-Cookie headers */
   get cookies(): Cookies {
     this.#cookies ??= new Cookies(this.req, this.res)
     return this.#cookies
@@ -39,7 +39,7 @@ export class Context<S extends State = State> {
     return this.res.headersSent || this.res.writableEnded
   }
 
-  /** ストリームは一度しか読めないので、結果をキャッシュして何度でも呼べるようにしている */
+  /** A stream can be read only once, so the result is cached to allow calling this any number of times */
   buffer(): Promise<Buffer> {
     this.#buffer ??= readBuffer(this.req, this.#bodyLimit)
     return this.#buffer
@@ -54,8 +54,8 @@ export class Context<S extends State = State> {
   }
 
   /**
-   * `send()` で応答する直前に実行する処理を登録する（Cookie の付与など）。
-   * `ctx.res` に直接書き込んで応答した場合は実行されない
+   * Registers work to run right before `send()` responds (for example, setting cookies).
+   * It does not run when a component responds by writing to `ctx.res` directly
    */
   onBeforeSend(hook: BeforeSendHook): void {
     this.#beforeSendHooks.push(hook)
@@ -63,14 +63,14 @@ export class Context<S extends State = State> {
 
   async send(status: number, body?: unknown): Promise<void> {
     this.status = status
-    // 先に取り出しておくことで、フックが失敗してエラー応答になったときに再実行されない
+    // Take the hooks out first so that they do not run again when a hook fails and an error response is sent
     const hooks = this.#beforeSendHooks.splice(0)
     try {
       for (const hook of hooks) {
         await hook()
       }
     } catch (error) {
-      // sendResponse に渡す前に失敗すると誰もストリームを閉じず、ファイルディスクリプタなどが漏れる
+      // If this fails before sendResponse takes the stream, nothing closes it and file descriptors leak
       if (body instanceof Readable) body.destroy()
       throw error
     }
@@ -79,9 +79,9 @@ export class Context<S extends State = State> {
 }
 
 /**
- * ホスト名は信頼できないので、パスとクエリを取り出すためだけに固定のホストを使う。
- * `new URL(target, base)` だと `//admin/x` がプロトコル相対 URL（host=admin）と解釈されるため、
- * `/` で始まるものは文字列として連結してから解析する
+ * The host name cannot be trusted, so a fixed host is used only to extract the path and query.
+ * `new URL(target, base)` would treat `//admin/x` as a protocol-relative URL (host=admin),
+ * so targets starting with `/` are concatenated as strings before parsing
  */
 export function parseRequestUrl(target: string): URL {
   if (target.startsWith('/')) return new URL(`http://localhost${target}`)

@@ -8,15 +8,15 @@ export type OriginMatcher =
   | ((origin: string, ctx: Context) => boolean | Promise<boolean>)
 
 export interface CorsOptions {
-  /** 許可する Origin。`'*'` はすべて許可（credentials とは併用できない） */
+  /** Allowed origins. `'*'` allows any origin (cannot be combined with credentials) */
   origin?: OriginMatcher
-  /** Cookie などの資格情報付きリクエストを許可する */
+  /** Allow requests with credentials such as cookies */
   credentials?: boolean
   methods?: readonly string[]
-  /** 省略時は preflight で要求されたヘッダをそのまま許可する */
+  /** When omitted, the headers requested in the preflight are allowed as is */
   allowHeaders?: readonly string[]
   exposeHeaders?: readonly string[]
-  /** preflight の結果をブラウザがキャッシュする秒数 */
+  /** Number of seconds browsers may cache the preflight result */
   maxAge?: number
 }
 
@@ -32,24 +32,24 @@ export function cors(options: CorsOptions = {}): Component {
   const exposeHeaders = options.exposeHeaders?.join(', ')
   const maxAge = options.maxAge ?? DEFAULT_MAX_AGE
 
-  // ブラウザは '*' と資格情報の併用を拒否する。Origin をそのまま返して回避すると
-  // どのサイトからでも資格情報付きで読めてしまうため、設定ミスとして弾く
+  // Browsers reject '*' together with credentials. Working around it by echoing the Origin back would let
+  // any site read responses with credentials, so treat it as a configuration error
   if (allowsAnyOrigin && credentials) {
     throw new Error(
-      "mix-cors: origin: '*' と credentials: true は併用できません。許可する origin を指定してください",
+      "mix-cors: origin: '*' cannot be combined with credentials: true. Specify the allowed origins instead",
     )
   }
   if (!Number.isInteger(maxAge) || maxAge < 0) {
     throw new Error(
-      `mix-cors: maxAge は 0 以上の整数で指定してください: ${maxAge}`,
+      `mix-cors: maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }
 
   return async (ctx) => {
     const { res } = ctx
-    // 応答が Origin によって変わる場合、キャッシュが別の Origin に使い回さないようにする。
-    // Origin なしの応答（CORS ヘッダなし）がキャッシュされ、許可した Origin に返されることも防ぐため、
-    // Origin ヘッダの有無にかかわらず付ける
+    // When the response depends on the Origin, keep caches from reusing it for another Origin.
+    // This also prevents a response without an Origin (and without CORS headers) from being cached and served to an allowed Origin,
+    // so add it whether or not the request has an Origin header
     if (!allowsAnyOrigin) appendVary(res, 'Origin')
 
     const requestOrigin = ctx.req.headers.origin
@@ -87,7 +87,7 @@ export function cors(options: CorsOptions = {}): Component {
       if (headers) res.setHeader('Access-Control-Allow-Headers', headers)
       res.setHeader('Access-Control-Max-Age', String(maxAge))
     }
-    // 許可しない Origin にも 204 で応答を完結させ、アプリ側のハンドラに preflight を流さない
+    // Complete preflights from disallowed origins with 204 as well, so they never reach the application's handlers
     return null
   }
 }
@@ -107,9 +107,9 @@ async function matchOrigin(
 }
 
 /**
- * 正規表現は Origin 全体と一致したときだけ許可する。`/example\.com/` のようなアンカーなしや、
- * `/^a|b$/` のように選択の片側しか固定されていないものは `https://example.com.evil` を通してしまう。
- * g / y フラグは lastIndex を持ち越して判定が交互に変わるので外す
+ * Regular expressions allow an Origin only when they match it entirely. An unanchored pattern such as `/example\.com/`,
+ * or one that anchors only one side of an alternation such as `/^a|b$/`, would let `https://example.com.evil` through.
+ * The g and y flags are dropped because lastIndex carries over and makes the result alternate
  */
 function toFullMatch(matcher: OriginMatcher): OriginMatcher {
   const wrap = (pattern: RegExp) =>

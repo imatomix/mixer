@@ -1,24 +1,24 @@
 export type SessionData = Record<string, unknown>
 
 /**
- * セッションの保存先。Redis などに差し替えるときはこれを実装する。
- * データは JSON に変換できる値であることを前提にしてよい
+ * Where sessions are stored. Implement this to use Redis or another backend.
+ * Implementations may assume that the data can be converted to JSON
  */
 export interface SessionStore {
   get(id: string): Promise<SessionData | undefined>
-  /** 新しく作る（同じ ID があれば上書き） */
+  /** Creates a session (overwrites one with the same ID) */
   set(id: string, data: SessionData, ttlSeconds: number): Promise<void>
   /**
-   * 存在するときだけ更新し、なければ false を返す。
-   * 並行して破棄・再生成されたセッションを、古い ID のリクエストが保存して復活させないため。
-   * 確認と更新は不可分に行うこと
+   * Updates the session only if it exists, and returns false otherwise.
+   * This keeps a request holding an old ID from bringing back a session that was destroyed or regenerated concurrently.
+   * The existence check and the update must be atomic
    */
   update(id: string, data: SessionData, ttlSeconds: number): Promise<boolean>
   delete(id: string): Promise<void>
 }
 
 export interface MemoryStoreOptions {
-  /** 保持する最大件数。超えたら最も長く使われていないものから捨てる（既定 10000） */
+  /** Maximum number of sessions. When exceeded, the least recently used ones are dropped (defaults to 10000) */
   maxEntries?: number
 }
 
@@ -28,11 +28,11 @@ interface Entry {
 }
 
 /**
- * プロセス内のメモリに保存する。開発用や単一プロセスの小規模な用途向け。
- * 複数プロセスで動かすときや再起動でセッションを失いたくないときは、外部のストアを使う
+ * Stores sessions in process memory, for development or small single-process deployments.
+ * Use an external store to run multiple processes or to keep sessions across restarts
  */
 export class MemoryStore implements SessionStore {
-  // Map は挿入順を保つので、使うたびに入れ直せば先頭が最も長く使われていないものになる
+  // A Map keeps insertion order, so re-inserting on every use keeps the least recently used entry first
   readonly #entries = new Map<string, Entry>()
   readonly #maxEntries: number
 
@@ -40,7 +40,7 @@ export class MemoryStore implements SessionStore {
     const maxEntries = options.maxEntries ?? 10_000
     if (!Number.isInteger(maxEntries) || maxEntries < 1) {
       throw new Error(
-        `mix-session: maxEntries は 1 以上の整数で指定してください: ${maxEntries}`,
+        `mix-session: maxEntries must be an integer of 1 or more: ${maxEntries}`,
       )
     }
     this.#maxEntries = maxEntries
@@ -55,7 +55,7 @@ export class MemoryStore implements SessionStore {
     const entry = this.#live(id)
     if (!entry) return undefined
     this.#touch(id, entry)
-    // 呼び出し側が書き換えても保存内容が変わらないよう、コピーを渡す
+    // Return a copy so that changes made by the caller do not affect the stored data
     return structuredClone(entry.data)
   }
 
@@ -68,7 +68,7 @@ export class MemoryStore implements SessionStore {
     data: SessionData,
     ttlSeconds: number,
   ): Promise<boolean> {
-    // await を挟まずに確認と更新を行うので、他のリクエストが割り込む余地はない
+    // The check and the update happen without an await in between, so no other request can interleave
     if (!this.#live(id)) return false
     this.#write(id, data, ttlSeconds)
     return true

@@ -1,12 +1,12 @@
-// 公開物（npm pack した tarball）を、利用者と同じ条件でインストールして型と実行時の import を検証する。
-// monorepo 内では @imatomix/source condition で src を参照しているため、dist の不備はテストでは気づけない。
+// Installs the published artifacts (npm pack tarballs) the way users would, and checks their types and runtime imports.
+// Inside the monorepo, packages resolve each other from src through the @imatomix/source condition, so tests cannot catch problems in dist.
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
-// pnpm run 経由で起動すると pnpm 用の npm_config_* が渡り、npm が警告を出すので取り除く
+// Running through pnpm run passes pnpm's npm_config_* variables, which make npm print warnings, so drop them
 const env = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith('npm_config_')),
 )
@@ -27,11 +27,11 @@ const packages = readdirSync(join(root, 'packages'))
       manifest: JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')),
     }
   })
-  // 未移行のパッケージ（lib/*.js のまま）は対象外
+  // Only packages that publish a dist build
   .filter(({ manifest }) => manifest.files?.includes('dist'))
 
 const work = mkdtempSync(join(tmpdir(), 'mixer-verify-pack-'))
-console.log(`作業ディレクトリ: ${work}`)
+console.log(`Working directory: ${work}`)
 
 const dependencies = {}
 for (const { path, manifest } of packages) {
@@ -45,7 +45,7 @@ for (const { path, manifest } of packages) {
   )
   if (unexpected.length > 0) {
     throw new Error(
-      `${manifest.name}: 公開物に不要なファイルが含まれています: ${unexpected.join(', ')}`,
+      `${manifest.name}: the published files include unexpected files: ${unexpected.join(', ')}`,
     )
   }
   dependencies[manifest.name] = `file:${tarball}`
@@ -73,7 +73,7 @@ writeFileSync(
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
-      // 型チェックした smoke.ts をそのまま JS にして実行する
+      // Compile the type-checked smoke.ts to JS and run it as is
       outDir: 'out',
       typeRoots: [typesRoot],
       types: ['node'],
@@ -88,7 +88,7 @@ const imports = Object.keys(dependencies)
 const checks = Object.keys(dependencies)
   .map(
     (name, i) =>
-      `if (Object.keys(pkg${i}).length === 0) throw new Error('${name} の export が空です')`,
+      `if (Object.keys(pkg${i}).length === 0) throw new Error('${name} exports nothing')`,
   )
   .join('\n')
 
@@ -105,7 +105,7 @@ await app.listen(0, '127.0.0.1')
 const res = await fetch(\`http://127.0.0.1:\${app.address?.port}/hello/mixer\`)
 const body = await res.json()
 await app.close()
-if (body.hello !== 'mixer') throw new Error('mixer + mix-router の動作確認に失敗しました')
+if (body.hello !== 'mixer') throw new Error('mixer + mix-router smoke test failed')
 `
     : ''
 }
@@ -129,7 +129,7 @@ const login = await fetch(\`\${base}/login\`)
 const sid = login.headers.getSetCookie()[0]?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
 await sessionApp.close()
-if (me.user !== 'mixer') throw new Error('mixer + mix-session の動作確認に失敗しました')
+if (me.user !== 'mixer') throw new Error('mixer + mix-session smoke test failed')
 `
     : ''
 }
@@ -138,7 +138,7 @@ console.log('ok')
 writeFileSync(join(consumer, 'smoke.ts'), smoke)
 
 run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', consumer], consumer)
-console.log('型チェック: ok')
+console.log('Type check: ok')
 console.log(
-  `実行時の import と動作確認: ${run('node', [join('out', 'smoke.js')], consumer)}`,
+  `Runtime imports and smoke test: ${run('node', [join('out', 'smoke.js')], consumer)}`,
 )

@@ -20,7 +20,7 @@ function sidFrom(res: Response): string | undefined {
 
 const cookieHeader = (sid: string) => ({ cookie: `sid=${sid}` })
 
-/** ストアへの呼び出しを記録する */
+/** Records calls to the store */
 class RecordingStore extends MemoryStore {
   calls: string[] = []
   override async set(id: string, data: SessionData, ttl: number) {
@@ -39,8 +39,8 @@ class RecordingStore extends MemoryStore {
 
 type State = SessionState
 
-describe('作成と読み込み', () => {
-  it('書き込むまではストアにも Cookie にも何も作らない', async () => {
+describe('creating and loading', () => {
+  it('creates nothing in the store or cookies until something is written', async () => {
     const store = new MemoryStore()
     const url = await serve(session({ store }), (ctx) => {
       const { session } = ctx.state as State
@@ -52,7 +52,7 @@ describe('作成と読み込み', () => {
     expect(store.size).toBe(0)
   })
 
-  it('書き込むとランダムな ID を Cookie に入れ、次のリクエストで読める', async () => {
+  it('puts a random ID in a cookie on write and reads it back on the next request', async () => {
     const store = new MemoryStore()
     const url = await serve(session({ store }), (ctx) => {
       const { session } = ctx.state as State
@@ -75,7 +75,7 @@ describe('作成と読み込み', () => {
     expect(me.headers.getSetCookie()).toEqual([])
   })
 
-  it('ID は毎回異なる', async () => {
+  it('issues a different ID every time', async () => {
     const url = await serve(session(), (ctx) => {
       ;(ctx.state as State).session.set('v', 1)
       return 'ok'
@@ -86,10 +86,10 @@ describe('作成と読み込み', () => {
   })
 })
 
-describe('不正な ID', () => {
+describe('invalid IDs', () => {
   const forged = 'A'.repeat(43)
 
-  it('ストアにない ID は採用せず、書き込み時に新しい ID を発行する', async () => {
+  it('does not adopt an ID missing from the store and issues a new one on write', async () => {
     const store = new MemoryStore()
     const url = await serve(session({ store }), (ctx) => {
       const { session } = ctx.state as State
@@ -106,9 +106,9 @@ describe('不正な ID', () => {
   })
 
   it.each([
-    ['形式が不正', 'sid=short'],
-    ['同じ名前の Cookie が複数ある', 'sid=VALID; sid=VALID'],
-  ])('%s場合は読み込まない', async (_label, cookie) => {
+    ['the format is invalid', 'sid=short'],
+    ['the cookie name appears more than once', 'sid=VALID; sid=VALID'],
+  ])('does not load the session when %s', async (_label, cookie) => {
     const store = new MemoryStore()
     const valid = 'B'.repeat(43)
     await store.set(valid, { user: 'victim' }, 60)
@@ -122,14 +122,14 @@ describe('不正な ID', () => {
   })
 })
 
-describe('regenerate と destroy', () => {
+describe('regenerate and destroy', () => {
   async function loggedIn(store: MemoryStore) {
     const sid = 'C'.repeat(43)
     await store.set(sid, { cart: ['apple'] }, 60)
     return sid
   }
 
-  it('regenerate はデータを保ったまま ID を作り直し、古い ID を消す', async () => {
+  it('regenerate issues a new ID, keeps the data, and deletes the old ID', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
     const url = await serve(session({ store }), (ctx) => {
@@ -149,7 +149,7 @@ describe('regenerate と destroy', () => {
     })
   })
 
-  it('destroy はストアから消し、Cookie も削除する', async () => {
+  it('destroy deletes the session from the store and removes the cookie', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
     const url = await serve(session({ store }), (ctx) => {
@@ -161,7 +161,7 @@ describe('regenerate と destroy', () => {
     expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
   })
 
-  it('すべてのキーを消すと destroy と同じになる', async () => {
+  it('deleting every key is the same as destroy', async () => {
     const store = new MemoryStore()
     const old = await loggedIn(store)
     const url = await serve(session({ store }), (ctx) => {
@@ -173,7 +173,7 @@ describe('regenerate と destroy', () => {
     expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
   })
 
-  it('並行して destroy されたセッションを、別のリクエストの保存で復活させない', async () => {
+  it('does not bring back a session destroyed concurrently when another request saves', async () => {
     const store = new MemoryStore()
     const sid = await loggedIn(store)
     let releaseSlow: () => void = () => {}
@@ -200,8 +200,8 @@ describe('regenerate と destroy', () => {
   })
 })
 
-describe('期限', () => {
-  it('ttl を Cookie の Max-Age とストアの期限に使う', async () => {
+describe('expiry', () => {
+  it('uses ttl for the cookie Max-Age and the store expiry', async () => {
     const store = new RecordingStore()
     const url = await serve(session({ store, ttl: 600 }), (ctx) => {
       ;(ctx.state as State).session.set('v', 1)
@@ -212,7 +212,7 @@ describe('期限', () => {
     expect(store.calls).toEqual(['set:600'])
   })
 
-  it('rolling なら読むだけのリクエストでも期限を延ばす', async () => {
+  it('extends the expiry on read-only requests with rolling', async () => {
     const store = new RecordingStore()
     const sid = 'D'.repeat(43)
     await store.set(sid, { v: 1 }, 600)
@@ -226,7 +226,7 @@ describe('期限', () => {
     expect(sidFrom(res)).toBe(sid)
   })
 
-  it('rolling でなければ読むだけのリクエストではストアも Cookie も更新しない', async () => {
+  it('updates neither the store nor the cookie on read-only requests without rolling', async () => {
     const store = new RecordingStore()
     const sid = 'E'.repeat(43)
     await store.set(sid, { v: 1 }, 600)
@@ -240,8 +240,8 @@ describe('期限', () => {
   })
 })
 
-describe('設定', () => {
-  it('Cookie の名前と属性を変更できる', async () => {
+describe('options', () => {
+  it('accepts a custom cookie name and attributes', async () => {
     const url = await serve(
       session({
         name: 'app.sid',
@@ -257,7 +257,7 @@ describe('設定', () => {
     )
   })
 
-  it('ストアが失敗したら 500 を返す', async () => {
+  it('returns 500 when the store fails', async () => {
     const failing: SessionStore = {
       get: async () => undefined,
       set: async () => {
@@ -279,7 +279,7 @@ describe('設定', () => {
     }
   })
 
-  it.each([0, -1, 1.5])('ttl に不正な値（%s）は指定できない', (ttl) => {
+  it.each([0, -1, 1.5])('rejects an invalid ttl (%s)', (ttl) => {
     expect(() => session({ ttl })).toThrow()
   })
 })

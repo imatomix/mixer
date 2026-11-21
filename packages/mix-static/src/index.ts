@@ -5,13 +5,13 @@ import { type Component, type Context, HttpError } from '@imatomix/mixer'
 import { contentTypeOf } from './mime.js'
 
 export interface StaticOptions {
-  /** このパス以下へのリクエストだけを扱う（セグメント単位で比較） */
+  /** Only handle requests under this path (compared segment by segment) */
   prefix?: string
-  /** ディレクトリへのアクセスで返すファイル。false で無効 */
+  /** File returned for directory requests. false disables it */
   index?: string | false
-  /** Cache-Control の max-age（秒） */
+  /** max-age of Cache-Control, in seconds */
   maxAge?: number
-  /** `.env` や `.git/` のようなドットで始まるファイル・ディレクトリを配信する */
+  /** Serve files and directories whose names start with a dot, such as `.env` or `.git/` */
   dotfiles?: boolean
 }
 
@@ -21,7 +21,7 @@ export function serveStatic(
 ): Component {
   const rootPath = realpathSync(resolve(root))
   if (!statSync(rootPath).isDirectory()) {
-    throw new Error(`mix-static: root がディレクトリではありません: ${root}`)
+    throw new Error(`mix-static: root is not a directory: ${root}`)
   }
   const prefix = splitSegments(options.prefix ?? '/').map(decodePrefixSegment)
   const index = options.index ?? 'index.html'
@@ -29,9 +29,7 @@ export function serveStatic(
   const dotfiles = options.dotfiles ?? false
   validateMaxAge(maxAge)
   if (index !== false && !isValidIndexName(index)) {
-    throw new Error(
-      `mix-static: index にはファイル名だけを指定してください: ${index}`,
-    )
+    throw new Error(`mix-static: index must be a file name only: ${index}`)
   }
 
   return async (ctx) => {
@@ -66,10 +64,10 @@ export function serveStatic(
     }
     if (!stats.isFile()) return undefined
 
-    // シンボリックリンクで公開ディレクトリの外に出ていないか、実体のパスで確かめる
+    // Check the real path to make sure a symbolic link does not lead outside the public directory
     const realFilePath = await realpath(filePath)
     if (!isInside(rootPath, realFilePath)) return undefined
-    // root 内のシンボリックリンクがドットファイルを指していないか、実体のパスでも確かめる
+    // Also check the real path to make sure a symbolic link inside root does not point to a dotfile
     if (!dotfiles && hasDotSegment(relative(rootPath, realFilePath))) {
       return undefined
     }
@@ -79,13 +77,13 @@ export function serveStatic(
 }
 
 export interface FileOptions {
-  /** Cache-Control の max-age（秒） */
+  /** max-age of Cache-Control, in seconds */
   maxAge?: number
 }
 
 /**
- * 常に指定したファイルを返す Component。パスの判定はしないので、
- * mix-router などと組み合わせて `get('/favicon.ico', serveFile('./favicon.ico'))` のように使う
+ * A Component that always returns the given file. It does not check the path, so combine it with
+ * mix-router or similar, as in `get('/favicon.ico', serveFile('./favicon.ico'))`
  */
 export function serveFile(
   filePath: string,
@@ -93,7 +91,7 @@ export function serveFile(
 ): Component {
   const realFilePath = realpathSync(resolve(filePath))
   if (!statSync(realFilePath).isFile()) {
-    throw new Error(`mix-static: 通常のファイルではありません: ${filePath}`)
+    throw new Error(`mix-static: not a regular file: ${filePath}`)
   }
   const maxAge = options.maxAge ?? 0
   validateMaxAge(maxAge)
@@ -109,9 +107,9 @@ function splitSegments(path: string): string[] {
 }
 
 /**
- * 先頭と末尾の / は許すが、途中の空のセグメント（`//`）を含むパスは扱わない。
- * 空のセグメントを無視すると `//admin/x` を `/admin/x` として配信してしまい、
- * 生のパスの前方一致で認可する別の層と解釈が食い違うため
+ * Leading and trailing slashes are allowed, but paths with an empty segment in the middle (`//`) are not served.
+ * Ignoring empty segments would serve `//admin/x` as `/admin/x`,
+ * which disagrees with other layers that authorize by a prefix of the raw path
  */
 function requestSegments(pathname: string): string[] | undefined {
   const parts = pathname.split('/').slice(1)
@@ -132,7 +130,7 @@ function decodePrefixSegment(segment: string): string {
     return decodeURIComponent(segment)
   } catch {
     throw new Error(
-      `mix-static: prefix のエンコーディングが不正です: ${segment}`,
+      `mix-static: invalid percent-encoding in prefix: ${segment}`,
     )
   }
 }
@@ -146,7 +144,7 @@ function decodeSegments(rawSegments: string[]): string[] | undefined {
     } catch {
       throw new HttpError(400, 'Malformed URL')
     }
-    // デコードしてから区切り文字や NUL が現れるものは、パスの解釈を変えうるので配信しない
+    // Segments that contain separators or NUL after decoding could change how the path is interpreted, so they are not served
     if (/[/\\\0]/.test(decoded)) return undefined
     segments.push(decoded)
   }
@@ -188,19 +186,19 @@ function errorCode(error: unknown): string | undefined {
 function validateMaxAge(maxAge: number): void {
   if (!Number.isInteger(maxAge) || maxAge < 0) {
     throw new Error(
-      `mix-static: maxAge は 0 以上の整数で指定してください: ${maxAge}`,
+      `mix-static: maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }
 }
 
 function redirectToDirectory(ctx: Context, rawSegments: string[]) {
-  // 空のセグメントを詰めて必ず / 1 つで始める。`//host` のままだとプロトコル相対 URL として外部に飛ぶ
+  // Collapse empty segments so that the location always starts with a single /. `//host` would be a protocol-relative URL to another site
   const location = `/${rawSegments.map(encodeSafely).join('/')}/${ctx.url.search}`
   ctx.res.setHeader('Location', location)
   return ctx.send(301, null)
 }
 
-// ctx.url.pathname の各セグメントは既にエンコード済み。ただし '"' などはそのまま残るので念のため再エンコードしない範囲だけ通す
+// Segments of ctx.url.pathname are already encoded, but characters such as '"' remain as is, so encode anything outside the safe set
 function encodeSafely(segment: string): string {
   return segment.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@%]/g, (char) =>
     encodeURIComponent(char),
@@ -214,15 +212,15 @@ async function sendFile(
 ) {
   let handle: FileHandle
   try {
-    // 検証後に最後の要素がシンボリックリンクへ差し替えられても、それをたどらない
+    // Do not follow a symbolic link even if the last component was replaced with one after the checks
     handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW)
   } catch (error) {
-    // 検証後に消えた・シンボリックリンクに差し替えられた（ELOOP）ものは配信しない
+    // Do not serve files that disappeared or were replaced with a symbolic link (ELOOP) after the checks
     if (isNotFound(error) || errorCode(error) === 'ELOOP') return undefined
     throw error
   }
   try {
-    // チェック後にファイルが差し替えられても、開いたものと同じファイルの情報を返す
+    // Return the metadata of the file that was actually opened, even if the path was replaced after the checks
     const stats = await handle.stat()
     if (!stats.isFile()) {
       await handle.close()

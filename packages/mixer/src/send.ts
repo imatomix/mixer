@@ -17,7 +17,7 @@ export async function sendResponse(
 
   if (body instanceof Readable) {
     setDefaultContentType(res, 'application/octet-stream')
-    // HEAD では body を送らないので、ファイルなどを無駄に最後まで読まない
+    // HEAD responses have no body, so do not read files and other streams to the end for nothing
     if (res.req?.method === 'HEAD') {
       body.destroy()
       res.end()
@@ -43,7 +43,7 @@ export async function sendResponse(
   res.end(payload)
 }
 
-// コンポーネントが先に Content-Type を決めていればそれを尊重する
+// Respect a Content-Type that a component has already set
 function setDefaultContentType(res: ServerResponse, type: string): void {
   if (!res.hasHeader('Content-Type')) {
     res.setHeader('Content-Type', type)

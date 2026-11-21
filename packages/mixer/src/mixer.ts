@@ -19,7 +19,7 @@ export type ErrorHandler<S extends State = State> = (
 ) => void | Promise<void>
 
 export interface MixerOptions<S extends State = State> {
-  /** リクエストボディの上限バイト数（デフォルト 3MB） */
+  /** Maximum request body size in bytes (default 3 MB) */
   bodyLimit?: number
   onError?: ErrorHandler<S>
 }
@@ -48,7 +48,7 @@ export class Mixer<S extends State = State> {
     try {
       ctx = new Context<S>(req, res, this.#bodyLimit)
     } catch {
-      // 解析できないリクエストターゲット。ctx を作れないので onError は通さずに直接返す
+      // An unparsable request target. ctx cannot be created, so respond directly without onError
       res.statusCode = 400
       res.end()
       return
@@ -74,7 +74,7 @@ export class Mixer<S extends State = State> {
 
   async #handleError(error: unknown, ctx: Context<S>): Promise<void> {
     if (ctx.sent) {
-      // ヘッダ送信後は正しいエラーレスポンスを返せないため接続ごと切る
+      // A correct error response cannot be sent once headers are out, so drop the connection
       ctx.res.destroy(error instanceof Error ? error : undefined)
       return
     }
@@ -83,7 +83,7 @@ export class Mixer<S extends State = State> {
     } catch (handlerError) {
       console.error(handlerError)
     }
-    // onError が応答し忘れたり失敗したりしても、リクエストを宙ぶらりんにしない
+    // Never leave a request hanging, even if onError forgets to respond or fails
     if (!ctx.sent) await defaultErrorHandler(error, ctx)
   }
 

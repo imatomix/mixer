@@ -9,5 +9,5 @@ type ExtractParams<Path extends string> =
         ? { '*': string }
         : Record<never, never>
 
-/** パスパターンから推論したルートパラメータの型。`Params<'/users/:id'>` は `{ id: string }` */
+/** Route parameters inferred from a path pattern. `Params<'/users/:id'>` is `{ id: string }` */
 export type Params<Path extends string> = Simplify<ExtractParams<Path>>

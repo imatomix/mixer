@@ -17,13 +17,13 @@ beforeAll(() => {
   mkdirSync(join(dir, 'folder'))
 })
 
-/** ルーターの代わりに、パスが一致したときだけ実行する */
+/** Stands in for a router: runs the component only when the path matches */
 const at =
   (path: string, component: (ctx: Context) => unknown) => (ctx: Context) =>
     ctx.url.pathname === path ? component(ctx) : undefined
 
 describe('serveFile', () => {
-  it('指定したファイルを適切なヘッダ付きで返す', async () => {
+  it('returns the given file with the right headers', async () => {
     const url = await serve(
       at('/favicon.ico', serveFile(favicon, { maxAge: 86400 })),
     )
@@ -38,7 +38,7 @@ describe('serveFile', () => {
     )
   })
 
-  it('HEAD にはヘッダだけを返し、条件付きリクエストには 304 を返す', async () => {
+  it('returns only headers for HEAD and 304 for conditional requests', async () => {
     const url = await serve(serveFile(favicon))
     const head = await fetch(url, { method: 'HEAD' })
     expect(head.status).toBe(200)
@@ -49,14 +49,14 @@ describe('serveFile', () => {
     ).toBe(304)
   })
 
-  it('GET と HEAD 以外は次のコンポーネントへ進む', async () => {
+  it('moves on to the next component for methods other than GET and HEAD', async () => {
     const url = await serve(serveFile(favicon), next)
     expect(await (await fetch(url, { method: 'POST' })).text()).toBe(
       'next component',
     )
   })
 
-  it('実行中にファイルが消えたら次のコンポーネントへ進む', async () => {
+  it('moves on to the next component when the file disappears at runtime', async () => {
     const temporary = join(dir, 'temporary.txt')
     writeFileSync(temporary, 'x')
     const url = await serve(serveFile(temporary), next)
@@ -64,12 +64,12 @@ describe('serveFile', () => {
     expect(await (await fetch(url)).text()).toBe('next component')
   })
 
-  it('存在しないファイルやディレクトリを指定すると定義時にエラーになる', () => {
+  it('throws at definition for a missing file or a directory', () => {
     expect(() => serveFile(join(dir, 'missing.ico'))).toThrow()
     expect(() => serveFile(join(dir, 'folder'))).toThrow()
   })
 
-  it.each([-1, 1.5])('maxAge に不正な値（%s）は指定できない', (maxAge) => {
+  it.each([-1, 1.5])('rejects an invalid maxAge (%s)', (maxAge) => {
     expect(() => serveFile(favicon, { maxAge })).toThrow()
   })
 })

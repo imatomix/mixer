@@ -16,8 +16,8 @@ function preflight(
   })
 }
 
-describe('通常のリクエスト', () => {
-  it('既定では Access-Control-Allow-Origin: * を付けて次へ進む', async () => {
+describe('simple requests', () => {
+  it('adds Access-Control-Allow-Origin: * by default and moves on', async () => {
     const url = await serve(cors(), ok)
     const res = await fetch(url, { headers: { origin: 'https://a.example' } })
     expect(res.headers.get('access-control-allow-origin')).toBe('*')
@@ -26,21 +26,21 @@ describe('通常のリクエスト', () => {
     expect(await res.text()).toBe('ok')
   })
 
-  it('Origin ヘッダがなければ CORS ヘッダを付けない', async () => {
+  it('adds no CORS headers when there is no Origin header', async () => {
     const url = await serve(cors(), ok)
     const res = await fetch(url)
     expect(res.headers.get('access-control-allow-origin')).toBeNull()
     expect(await res.text()).toBe('ok')
   })
 
-  it('origin を限定しているときは、Origin ヘッダがなくても Vary: Origin を付ける', async () => {
+  it('adds Vary: Origin even without an Origin header when origins are restricted', async () => {
     const url = await serve(cors({ origin: 'https://a.example' }), ok)
     const res = await fetch(url)
     expect(res.headers.get('access-control-allow-origin')).toBeNull()
     expect(res.headers.get('vary')).toBe('Origin')
   })
 
-  it('許可した Origin を返し、Vary: Origin を付ける', async () => {
+  it('returns the allowed Origin and adds Vary: Origin', async () => {
     const url = await serve(cors({ origin: 'https://a.example' }), ok)
     const res = await fetch(url, { headers: { origin: 'https://a.example' } })
     expect(res.headers.get('access-control-allow-origin')).toBe(
@@ -49,7 +49,7 @@ describe('通常のリクエスト', () => {
     expect(res.headers.get('vary')).toBe('Origin')
   })
 
-  it('許可していない Origin には CORS ヘッダを付けないが、処理は続ける', async () => {
+  it('adds no CORS headers for a disallowed Origin but keeps processing', async () => {
     const url = await serve(cors({ origin: 'https://a.example' }), ok)
     const res = await fetch(url, {
       headers: { origin: 'https://evil.example' },
@@ -60,11 +60,14 @@ describe('通常のリクエスト', () => {
   })
 
   it.each([
-    ['配列', ['https://a.example', 'https://b.example']],
-    ['正規表現', /^https:\/\/[a-z]+\.example$/],
-    ['関数', (origin: string) => origin.endsWith('.example')],
-    ['非同期関数', async (origin: string) => origin === 'https://b.example'],
-  ] as const)('origin に%sを指定できる', async (_label, origin) => {
+    ['an array', ['https://a.example', 'https://b.example']],
+    ['a regular expression', /^https:\/\/[a-z]+\.example$/],
+    ['a function', (origin: string) => origin.endsWith('.example')],
+    [
+      'an async function',
+      async (origin: string) => origin === 'https://b.example',
+    ],
+  ] as const)('accepts %s as origin', async (_label, origin) => {
     const url = await serve(cors({ origin }), ok)
     const res = await fetch(url, { headers: { origin: 'https://b.example' } })
     expect(res.headers.get('access-control-allow-origin')).toBe(
@@ -72,7 +75,7 @@ describe('通常のリクエスト', () => {
     )
   })
 
-  it('g フラグ付きの正規表現でも毎回同じ判定をする', async () => {
+  it('gives the same result every time for a regular expression with the g flag', async () => {
     const url = await serve(cors({ origin: [/^https:\/\/a\.example$/g] }), ok)
     const headers = { origin: 'https://a.example' }
     for (let i = 0; i < 3; i++) {
@@ -84,10 +87,10 @@ describe('通常のリクエスト', () => {
   })
 
   it.each([
-    ['アンカーなしの', /https:\/\/a\.example/],
-    ['選択（|）を含む', /^https:\/\/a\.example|https:\/\/b\.example$/],
+    ['an unanchored', /https:\/\/a\.example/],
+    ['an alternation (|)', /^https:\/\/a\.example|https:\/\/b\.example$/],
   ])(
-    '%s正規表現でも Origin 全体と一致したときだけ許可する',
+    'allows an Origin only on a full match with %s regular expression',
     async (_label, origin) => {
       const url = await serve(cors({ origin }), ok)
       const allowed = await fetch(url, {
@@ -106,7 +109,7 @@ describe('通常のリクエスト', () => {
     },
   )
 
-  it('origin の関数は ctx を受け取る', async () => {
+  it('passes ctx to the origin function', async () => {
     const url = await serve(
       cors({
         origin: (_origin, ctx: Context) =>
@@ -127,7 +130,7 @@ describe('通常のリクエスト', () => {
     ).toBeNull()
   })
 
-  it('正規表現の部分一致で意図しない Origin を許可しない', async () => {
+  it('does not allow an unintended Origin through a partial match', async () => {
     const url = await serve(cors({ origin: 'https://a.example' }), ok)
     const res = await fetch(url, {
       headers: { origin: 'https://a.example.evil' },
@@ -135,7 +138,7 @@ describe('通常のリクエスト', () => {
     expect(res.headers.get('access-control-allow-origin')).toBeNull()
   })
 
-  it('credentials と exposeHeaders を付ける', async () => {
+  it('adds credentials and exposeHeaders', async () => {
     const url = await serve(
       cors({
         origin: 'https://a.example',
@@ -151,7 +154,7 @@ describe('通常のリクエスト', () => {
     )
   })
 
-  it('後続で HttpError になってもエラー応答に CORS ヘッダが残る', async () => {
+  it('keeps CORS headers on error responses from later HttpErrors', async () => {
     const url = await serve(cors(), () => {
       throw new HttpError(403, 'Forbidden')
     })
@@ -162,7 +165,7 @@ describe('通常のリクエスト', () => {
 })
 
 describe('preflight', () => {
-  it('その場で 204 を返し、後続には進まない', async () => {
+  it('responds with 204 immediately and does not move on', async () => {
     let reached = false
     const url = await serve(cors(), () => {
       reached = true
@@ -178,7 +181,7 @@ describe('preflight', () => {
     expect(reached).toBe(false)
   })
 
-  it('既定ではリクエストされたヘッダを許可し、Vary に加える', async () => {
+  it('allows the requested headers by default and adds them to Vary', async () => {
     const url = await serve(cors(), ok)
     const res = await preflight(url, 'https://a.example', {
       'access-control-request-headers': 'content-type, authorization',
@@ -189,7 +192,7 @@ describe('preflight', () => {
     expect(res.headers.get('vary')).toContain('Access-Control-Request-Headers')
   })
 
-  it('allowHeaders を指定するとそれだけを許可する', async () => {
+  it('allows only the given allowHeaders', async () => {
     const url = await serve(cors({ allowHeaders: ['Content-Type'] }), ok)
     const res = await preflight(url, 'https://a.example', {
       'access-control-request-headers': 'content-type, authorization',
@@ -197,14 +200,14 @@ describe('preflight', () => {
     expect(res.headers.get('access-control-allow-headers')).toBe('Content-Type')
   })
 
-  it('methods と maxAge を変更できる', async () => {
+  it('accepts custom methods and maxAge', async () => {
     const url = await serve(cors({ methods: ['GET', 'POST'], maxAge: 60 }), ok)
     const res = await preflight(url, 'https://a.example')
     expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST')
     expect(res.headers.get('access-control-max-age')).toBe('60')
   })
 
-  it('許可していない Origin には CORS ヘッダなしの 204 を返す', async () => {
+  it('returns 204 without CORS headers for a disallowed Origin', async () => {
     let reached = false
     const url = await serve(cors({ origin: 'https://a.example' }), () => {
       reached = true
@@ -216,7 +219,7 @@ describe('preflight', () => {
     expect(reached).toBe(false)
   })
 
-  it('preflight ではない OPTIONS は横取りせず次へ進む', async () => {
+  it('does not intercept OPTIONS requests that are not preflights', async () => {
     const url = await serve(cors(), (ctx) =>
       ctx.method === 'OPTIONS' ? 'app options' : undefined,
     )
@@ -230,16 +233,13 @@ describe('preflight', () => {
   })
 })
 
-describe('設定の検証', () => {
-  it("origin: '*' と credentials: true の組み合わせは定義時にエラーになる", () => {
+describe('configuration validation', () => {
+  it("throws at definition for origin: '*' with credentials: true", () => {
     expect(() => cors({ credentials: true })).toThrow()
     expect(() => cors({ origin: '*', credentials: true })).toThrow()
   })
 
-  it.each([-1, 1.5, Number.NaN])(
-    'maxAge に不正な値（%s）は指定できない',
-    (maxAge) => {
-      expect(() => cors({ maxAge })).toThrow()
-    },
-  )
+  it.each([-1, 1.5, Number.NaN])('rejects an invalid maxAge (%s)', (maxAge) => {
+    expect(() => cors({ maxAge })).toThrow()
+  })
 })

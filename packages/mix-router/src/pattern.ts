@@ -7,7 +7,7 @@ type Segment =
 
 export type Pattern = readonly Segment[]
 
-// 分割代入で受け取れる名前に限定する
+// Only names that can be destructured
 const PARAM_NAME = /^[A-Za-z_$][\w$]*$/
 
 export function splitPath(path: string): string[] {
@@ -20,25 +20,25 @@ export function compilePattern(path: string): Pattern {
   return parts.map((part, index): Segment => {
     if (part === '*') {
       if (index !== parts.length - 1) {
-        throw new Error(`"*" はパスの末尾にしか置けません: ${path}`)
+        throw new Error(`"*" can only be the last segment of a path: ${path}`)
       }
       return { kind: 'wildcard' }
     }
     if (part.startsWith(':')) {
       const name = part.slice(1)
       if (!PARAM_NAME.test(name)) {
-        throw new Error(`パラメータ名が不正です: "${part}" in ${path}`)
+        throw new Error(`Invalid parameter name: "${part}" in ${path}`)
       }
       if (names.has(name)) {
-        throw new Error(`パラメータ名が重複しています: "${part}" in ${path}`)
+        throw new Error(`Duplicate parameter name: "${part}" in ${path}`)
       }
       names.add(name)
       return { kind: 'param', name }
     }
-    // リクエスト側はデコードして比べるので、パターン側の固定パスも同じ規則でデコードしておく
+    // Requests are compared after decoding, so decode the literal segments of the pattern the same way
     const value = decodeSegment(part)
     if (typeof value !== 'string') {
-      throw new Error(`パスのエンコーディングが不正です: "${part}" in ${path}`)
+      throw new Error(`Invalid percent-encoding in path: "${part}" in ${path}`)
     }
     return { kind: 'literal', value }
   })
@@ -52,7 +52,7 @@ const MALFORMED = Symbol('malformed')
 const FORBIDDEN = Symbol('forbidden')
 
 /**
- * デコード後に `/`・NUL を含むセグメントは、パストラバーサル等の入り口になるので FORBIDDEN として扱う
+ * Segments that contain `/` or NUL after decoding can lead to path traversal, so they are treated as FORBIDDEN
  */
 function decodeSegment(
   segment: string,
@@ -68,8 +68,8 @@ function decodeSegment(
 }
 
 /**
- * リクエストのパスをセグメントごとにデコードする。
- * 不正なエンコーディングはクライアントの誤りなので 400、禁止文字を含むものはどのルートにもマッチさせない
+ * Decodes the request path segment by segment.
+ * Malformed encoding is a client error (400); segments with forbidden characters match no route
  */
 export function decodePath(pathname: string): string[] | undefined {
   const rawSegments = requestSegments(pathname)
@@ -87,9 +87,9 @@ export function decodePath(pathname: string): string[] | undefined {
 }
 
 /**
- * 先頭と末尾の / は許すが、途中の空のセグメント（`//`）を含むパスはどのルートにもマッチさせない。
- * 空のセグメントを無視すると `//admin/x` が `/admin/x` のルートに届き、
- * 生のパスの前方一致で認可する別の層と解釈が食い違うため
+ * Leading and trailing slashes are allowed, but a path with an empty segment in the middle (`//`) matches no route.
+ * Ignoring empty segments would let `//admin/x` reach the `/admin/x` route,
+ * which disagrees with other layers that authorize by a prefix of the raw path
  */
 function requestSegments(pathname: string): string[] | undefined {
   const parts = pathname.split('/').slice(1)

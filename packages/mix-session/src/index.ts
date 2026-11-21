@@ -12,24 +12,24 @@ export {
 } from './store.js'
 
 export interface SessionOptions {
-  /** 既定は新しい MemoryStore */
+  /** Defaults to a new MemoryStore */
   store?: SessionStore
-  /** Cookie の名前（既定 `sid`） */
+  /** Cookie name (defaults to `sid`) */
   name?: string
-  /** セッションの有効期間（秒、既定 86400）。Cookie の Max-Age とストアの期限に使う */
+  /** Session lifetime in seconds (defaults to 86400). Used for the cookie's Max-Age and the store's expiry */
   ttl?: number
-  /** 読むだけのリクエストでも期限を延ばす */
+  /** Extend the expiry even on requests that only read the session */
   rolling?: boolean
-  /** Cookie の属性。既定は mixer の ctx.cookies と同じ（HttpOnly・Secure・SameSite=Lax） */
+  /** Cookie attributes. Defaults to the same as mixer's ctx.cookies (HttpOnly, Secure, SameSite=Lax) */
   cookie?: Omit<CookieOptions, 'maxAge' | 'expires'>
 }
 
-/** `ctx.state` に入る値の型。`Mixer<SessionState>` のように使う */
+/** Type of the value added to `ctx.state`. Use it as `Mixer<SessionState>` */
 export type SessionState<D extends SessionData = SessionData> = {
   session: Session<D>
 }
 
-// 32 バイトの乱数を base64url にしたもの（43 文字）
+// 32 random bytes in base64url (43 characters)
 const ID_PATTERN = /^[A-Za-z0-9_-]{43}$/
 
 export function session<D extends SessionData = SessionData>(
@@ -41,15 +41,13 @@ export function session<D extends SessionData = SessionData>(
   const rolling = options.rolling ?? false
   const cookie = options.cookie ?? {}
   if (!Number.isInteger(ttl) || ttl < 1) {
-    throw new Error(
-      `mix-session: ttl は 1 以上の整数で指定してください: ${ttl}`,
-    )
+    throw new Error(`mix-session: ttl must be an integer of 1 or more: ${ttl}`)
   }
 
   return async (ctx) => {
     const loadedId = readSessionId(ctx, name)
     const data = loadedId ? await store.get(loadedId) : undefined
-    // ストアにない ID は採用しない。そのまま使うと、攻撃者が決めた ID で被害者のセッションを作らせられる
+    // Never adopt an ID that is not in the store. Otherwise an attacker could make a victim use an ID the attacker chose
     const session = new Session<D>(
       (data ?? {}) as Partial<D>,
       data ? loadedId : undefined,
@@ -81,7 +79,7 @@ export function session<D extends SessionData = SessionData>(
     }
 
     if (currentId && (change === 'modified' || rolling)) {
-      // 並行して破棄・再生成されていたら保存しない（古い ID を復活させない）
+      // Do not save if the session was destroyed or regenerated concurrently (never bring an old ID back)
       const updated = await store.update(currentId, data as SessionData, ttl)
       if (updated) issueCookie(ctx, currentId)
     }
@@ -89,14 +87,14 @@ export function session<D extends SessionData = SessionData>(
 
   function issueCookie(ctx: Context, id: string): void {
     ctx.cookies.set(name, id, { ...cookie, maxAge: ttl })
-    // Set-Cookie 付きの応答が共有キャッシュに保存されると、他の利用者に同じセッションが配られる
+    // If a response with Set-Cookie were stored in a shared cache, other users would receive the same session
     ctx.res.setHeader('Cache-Control', 'private, no-store')
   }
 }
 
 function readSessionId(ctx: Context, name: string): string | undefined {
   const values = ctx.cookies.getAll(name)
-  // 同じ名前が複数あるのは、サブドメインなどから Cookie を仕込まれた可能性があるので信用しない
+  // More than one cookie with the same name may mean one was planted from a subdomain, so trust none of them
   if (values.length !== 1) return undefined
   const [id] = values
   return id !== undefined && ID_PATTERN.test(id) ? id : undefined

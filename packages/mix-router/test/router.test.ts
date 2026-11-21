@@ -16,15 +16,15 @@ import {
 } from '../src/index.js'
 import { serve } from './helpers.js'
 
-describe('メソッド', () => {
-  it('get はパスとメソッドが一致したときだけ応答する', async () => {
+describe('methods', () => {
+  it('get responds only when the path and method match', async () => {
     const url = await serve(get('/hello', () => 'hello'))
     expect(await (await fetch(`${url}/hello`)).text()).toBe('hello')
     expect((await fetch(`${url}/hello`, { method: 'POST' })).status).toBe(404)
     expect((await fetch(`${url}/other`)).status).toBe(404)
   })
 
-  it('get は HEAD にも応答する', async () => {
+  it('get also responds to HEAD', async () => {
     const url = await serve(get('/hello', () => 'hello'))
     const res = await fetch(`${url}/hello`, { method: 'HEAD' })
     expect(res.status).toBe(200)
@@ -38,13 +38,16 @@ describe('メソッド', () => {
     ['DELETE', del],
     ['HEAD', head],
     ['OPTIONS', options],
-  ] as const)('%s 用の関数はそのメソッドにだけ応答する', async (method, fn) => {
-    const url = await serve(fn('/x', () => null))
-    expect((await fetch(`${url}/x`, { method })).status).toBe(204)
-    expect((await fetch(`${url}/x`)).status).toBe(404)
-  })
+  ] as const)(
+    'the %s function responds only to that method',
+    async (method, fn) => {
+      const url = await serve(fn('/x', () => null))
+      expect((await fetch(`${url}/x`, { method })).status).toBe(204)
+      expect((await fetch(`${url}/x`)).status).toBe(404)
+    },
+  )
 
-  it('all はすべてのメソッドに応答する', async () => {
+  it('all responds to every method', async () => {
     const url = await serve(all('/x', (ctx) => ctx.method))
     expect(await (await fetch(`${url}/x`, { method: 'PUT' })).text()).toBe(
       'PUT',
@@ -52,7 +55,7 @@ describe('メソッド', () => {
     expect(await (await fetch(`${url}/x`)).text()).toBe('GET')
   })
 
-  it('route は任意のメソッドを配列でも指定できる', async () => {
+  it('route accepts any method, including an array of methods', async () => {
     const url = await serve(
       route(['propfind', 'MKCOL'], '/dav', (ctx) => ctx.method),
     )
@@ -66,8 +69,8 @@ describe('メソッド', () => {
   })
 })
 
-describe('パスパターン', () => {
-  it(':name をパラメータとして第2引数に渡す', async () => {
+describe('path patterns', () => {
+  it('passes :name as a parameter in the second argument', async () => {
     const url = await serve(
       get('/users/:userId/posts/:postId', (_ctx, params) => params),
     )
@@ -77,30 +80,30 @@ describe('パスパターン', () => {
     })
   })
 
-  it('パラメータを URL デコードする', async () => {
+  it('URL-decodes parameters', async () => {
     const url = await serve(get('/mix/:fruit', (_ctx, { fruit }) => fruit))
     expect(
       await (await fetch(`${url}/mix/${encodeURIComponent('りんご')}`)).text(),
     ).toBe('りんご')
   })
 
-  it('日本語を含む固定パスにもマッチする', async () => {
+  it('matches literal paths that contain non-ASCII characters', async () => {
     const url = await serve(get('/ジュース', () => 'ok'))
     expect(await (await fetch(`${url}/ジュース`)).text()).toBe('ok')
   })
 
-  it('末尾のスラッシュの有無を区別しない', async () => {
+  it('ignores a trailing slash', async () => {
     const url = await serve(get('/hello', () => 'ok'))
     expect(await (await fetch(`${url}/hello/`)).text()).toBe('ok')
   })
 
-  it('セグメント数が違えばマッチしない', async () => {
+  it('does not match when the number of segments differs', async () => {
     const url = await serve(get('/a/:b', () => 'ok'))
     expect((await fetch(`${url}/a`)).status).toBe(404)
     expect((await fetch(`${url}/a/b/c`)).status).toBe(404)
   })
 
-  it('* は残りのパスすべてにマッチし、params["*"] に入れる', async () => {
+  it('* matches the rest of the path and puts it in params["*"]', async () => {
     const url = await serve(get('/files/*', (_ctx, params) => params))
     expect(await (await fetch(`${url}/files/a/b/c.txt`)).json()).toEqual({
       '*': 'a/b/c.txt',
@@ -108,31 +111,31 @@ describe('パスパターン', () => {
     expect(await (await fetch(`${url}/files`)).json()).toEqual({ '*': '' })
   })
 
-  it('/* はすべてのパスにマッチする', async () => {
+  it('/* matches every path', async () => {
     const url = await serve(all('/*', () => 'fallback'))
     expect(await (await fetch(`${url}/`)).text()).toBe('fallback')
     expect(await (await fetch(`${url}/a/b`)).text()).toBe('fallback')
   })
 
-  it('* を末尾以外に置くと定義時にエラーになる', () => {
+  it('throws at definition when * is not the last segment', () => {
     expect(() => get('/a/*/b', () => null)).toThrow()
   })
 
   it.each(['/users/:', '/a/:id/b/:id', '/a/:user-id', '/a/:1st'])(
-    '不正なパラメータ名（%s）は定義時にエラーになる',
+    'throws at definition for an invalid parameter name (%s)',
     (path) => {
       expect(() => get(path, () => null)).toThrow()
     },
   )
 
-  it('パーセントエンコードされた固定パスも同じパスとして扱う', async () => {
+  it('treats a percent-encoded literal path as the same path', async () => {
     const url = await serve(
       get(`/${encodeURIComponent('ジュース')}`, () => 'encoded'),
     )
     expect(await (await fetch(`${url}/ジュース`)).text()).toBe('encoded')
   })
 
-  it('クエリは ctx.url.searchParams で読める', async () => {
+  it('reads the query through ctx.url.searchParams', async () => {
     const url = await serve(
       get('/search', (ctx) => ctx.url.searchParams.get('q')),
     )
@@ -140,8 +143,8 @@ describe('パスパターン', () => {
   })
 })
 
-describe('安全性', () => {
-  it('デコード後に / を含むセグメントにはマッチしない', async () => {
+describe('safety', () => {
+  it('does not match a segment that contains / after decoding', async () => {
     const url = await serve(
       get('/files/:name', (_ctx, { name }) => name),
       get('/raw/*', (_ctx, params) => params['*']),
@@ -151,7 +154,7 @@ describe('安全性', () => {
   })
 
   it.each(['//admin/secret', '/admin//secret'])(
-    '途中に空のセグメントがあるパス（%s）にはマッチしない',
+    'does not match a path with an empty segment in the middle (%s)',
     async (path) => {
       const url = await serve(get('/admin/secret', () => 'secret'))
       const { hostname, port } = new URL(url)
@@ -167,24 +170,24 @@ describe('安全性', () => {
     },
   )
 
-  it('NUL 文字を含むセグメントにはマッチしない', async () => {
+  it('does not match a segment that contains NUL', async () => {
     const url = await serve(get('/files/:name', (_ctx, { name }) => name))
     expect((await fetch(`${url}/files/a%00b`)).status).toBe(404)
   })
 
-  it('不正なエンコーディングには 400 を返す', async () => {
+  it('returns 400 for malformed percent-encoding', async () => {
     const url = await serve(get('/files/:name', (_ctx, { name }) => name))
     expect((await fetch(`${url}/files/%E3%81`)).status).toBe(400)
   })
 
-  it('params はプロトタイプを持たない', async () => {
+  it('params has no prototype', async () => {
     const url = await serve(
       get('/:name', (_ctx, params) => Object.getPrototypeOf(params) === null),
     )
     expect(await (await fetch(`${url}/x`)).json()).toBe(true)
   })
 
-  it('マッチしなかったルートのパラメータが後続に漏れない', async () => {
+  it('does not leak parameters from routes that did not match', async () => {
     const url = await serve(
       get('/a/:x/b', (_ctx, params) => params),
       get('/a/:y/c', (_ctx, params) => params),
@@ -193,8 +196,8 @@ describe('安全性', () => {
   })
 })
 
-describe('ハンドラの連結', () => {
-  it('複数のハンドラを順に実行し、値を返したところで止まる', async () => {
+describe('chaining handlers', () => {
+  it('runs handlers in order and stops at the first returned value', async () => {
     const calls: string[] = []
     const url = await serve(
       get(
@@ -215,7 +218,7 @@ describe('ハンドラの連結', () => {
     expect(calls).toEqual(['a', 'b'])
   })
 
-  it('ハンドラが値を返さなければ次のコンポーネントへ進む', async () => {
+  it('moves on to the next component when no handler returns a value', async () => {
     const url = await serve(
       get('/x', () => {}),
       () => 'next component',
@@ -223,7 +226,7 @@ describe('ハンドラの連結', () => {
     expect(await (await fetch(`${url}/x`)).text()).toBe('next component')
   })
 
-  it('0 や空文字も応答として扱う', async () => {
+  it('treats 0 and an empty string as responses', async () => {
     const url = await serve(
       get('/zero', () => 0),
       () => 'next',
@@ -231,7 +234,7 @@ describe('ハンドラの連結', () => {
     expect(await (await fetch(`${url}/zero`)).json()).toBe(0)
   })
 
-  it('ctx.send で応答したら後続のハンドラを実行しない', async () => {
+  it('does not run later handlers after ctx.send', async () => {
     let reached = false
     const url = await serve(
       get(
@@ -247,7 +250,7 @@ describe('ハンドラの連結', () => {
     expect(reached).toBe(false)
   })
 
-  it('普通の Component もハンドラとして並べられる', async () => {
+  it('accepts plain Components as handlers', async () => {
     const setHeader = (ctx: Context) => {
       ctx.res.setHeader('x-mixed', 'yes')
     }
@@ -257,21 +260,21 @@ describe('ハンドラの連結', () => {
 })
 
 describe('namespace', () => {
-  it('ルートの先頭にパスを付ける', async () => {
+  it('adds a prefix to the routes', async () => {
     const api = namespace('/api/v1')
     const url = await serve(api(get('/users/:id', (_ctx, { id }) => id)))
     expect(await (await fetch(`${url}/api/v1/users/42`)).text()).toBe('42')
     expect((await fetch(`${url}/users/42`)).status).toBe(404)
   })
 
-  it('入れ子にするとパスを連結する', async () => {
+  it('joins paths when nested', async () => {
     const url = await serve(
       namespace('/api')(namespace('/v2')(get('/', () => 'v2 root'))),
     )
     expect(await (await fetch(`${url}/api/v2`)).text()).toBe('v2 root')
   })
 
-  it('どのルートも応答しなければ次のコンポーネントへ進む', async () => {
+  it('moves on to the next component when no route responds', async () => {
     const url = await serve(
       namespace('/api')(get('/a', () => 'a')),
       () => 'next',
@@ -279,14 +282,14 @@ describe('namespace', () => {
     expect(await (await fetch(`${url}/api/b`)).text()).toBe('next')
   })
 
-  it('namespace のパスにパラメータやワイルドカードは使えない', () => {
+  it('rejects parameters and wildcards in a namespace path', () => {
     expect(() => namespace('/users/:id')).toThrow()
     expect(() => namespace('/files/*')).toThrow()
   })
 })
 
-describe('型', () => {
-  it('パスからパラメータの型を推論する', () => {
+describe('types', () => {
+  it('infers parameter types from the path', () => {
     expectTypeOf<Params<'/users/:id/posts/:postId'>>().toEqualTypeOf<{
       id: string
       postId: string
@@ -298,7 +301,7 @@ describe('型', () => {
     expectTypeOf<Params<'/static'>>().toEqualTypeOf<Record<never, never>>()
   })
 
-  it('存在しないパラメータを参照すると型エラーになる', () => {
+  it('reports a type error for a parameter that does not exist', () => {
     get('/users/:id', (_ctx, params) => {
       // @ts-expect-error
       return params.name

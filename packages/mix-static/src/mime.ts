@@ -1,4 +1,4 @@
-// 依存を増やさないため、Web で配信されることが多い型だけを内蔵する
+// To avoid a dependency, only the types commonly served on the web are built in
 const TYPES: Record<string, string> = {
   html: 'text/html',
   htm: 'text/html',
