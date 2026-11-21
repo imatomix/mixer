@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import type { Component, Context, CookieOptions } from '@imatomix/mixer'
 import { Session } from './session.js'
 import { MemoryStore, type SessionData, type SessionStore } from './store.js'
@@ -88,7 +87,7 @@ export function session<D extends SessionData = SessionData>(
   function issueCookie(ctx: Context, id: string): void {
     ctx.cookies.set(name, id, { ...cookie, maxAge: ttl })
     // If a response with Set-Cookie were stored in a shared cache, other users would receive the same session
-    ctx.res.setHeader('Cache-Control', 'private, no-store')
+    ctx.headers.set('Cache-Control', 'private, no-store')
   }
 }
 
@@ -101,7 +100,11 @@ function readSessionId(ctx: Context, name: string): string | undefined {
 }
 
 function generateId(): string {
-  return randomBytes(32).toString('base64url')
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
 }
 
 function isEmpty(data: object): boolean {
