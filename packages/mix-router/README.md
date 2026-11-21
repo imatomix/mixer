@@ -73,6 +73,7 @@ get('/users/:userId/posts/:postId', (ctx, params) => {
 
 - 不正な URL エンコーディング（`/files/%E3%81` など）は `400 Bad Request` になる（mixer の `HttpError` を投げるので、`onError` で差し替えられる）
 - デコードすると `/` や NUL 文字になるセグメント（`/files/..%2F..%2Fetc` など）は、どのルートにもマッチしない（最終的に mixer の 404 になる）
+- 途中に空のセグメントを含むパス（`//admin/secret`、`/admin//secret`）もマッチしない。`/admin/secret` として扱うと、生のパスの前方一致で認可する別の層と解釈が食い違うため（末尾の `/` は区別しない）
 
 `..` などのドットセグメントは、URL の解析時に正規化されている。
 params はプロトタイプを持たないオブジェクト。

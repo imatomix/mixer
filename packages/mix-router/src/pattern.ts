@@ -72,8 +72,10 @@ function decodeSegment(
  * 不正なエンコーディングはクライアントの誤りなので 400、禁止文字を含むものはどのルートにもマッチさせない
  */
 export function decodePath(pathname: string): string[] | undefined {
+  const rawSegments = requestSegments(pathname)
+  if (!rawSegments) return undefined
   const segments: string[] = []
-  for (const raw of splitPath(pathname)) {
+  for (const raw of rawSegments) {
     const decoded = decodeSegment(raw)
     if (decoded === MALFORMED) {
       throw new HttpError(400, 'Malformed URL')
@@ -82,6 +84,17 @@ export function decodePath(pathname: string): string[] | undefined {
     segments.push(decoded)
   }
   return segments
+}
+
+/**
+ * 先頭と末尾の / は許すが、途中の空のセグメント（`//`）を含むパスはどのルートにもマッチさせない。
+ * 空のセグメントを無視すると `//admin/x` が `/admin/x` のルートに届き、
+ * 生のパスの前方一致で認可する別の層と解釈が食い違うため
+ */
+function requestSegments(pathname: string): string[] | undefined {
+  const parts = pathname.split('/').slice(1)
+  if (parts.at(-1) === '') parts.pop()
+  return parts.includes('') ? undefined : parts
 }
 
 export function matchPattern(

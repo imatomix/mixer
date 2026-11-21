@@ -1,3 +1,4 @@
+import { request } from 'node:http'
 import type { Context } from '@imatomix/mixer'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
@@ -148,6 +149,23 @@ describe('安全性', () => {
     expect((await fetch(`${url}/files/..%2F..%2Fetc`)).status).toBe(404)
     expect((await fetch(`${url}/raw/a/..%2Fetc`)).status).toBe(404)
   })
+
+  it.each(['//admin/secret', '/admin//secret'])(
+    '途中に空のセグメントがあるパス（%s）にはマッチしない',
+    async (path) => {
+      const url = await serve(get('/admin/secret', () => 'secret'))
+      const { hostname, port } = new URL(url)
+      const status = await new Promise<number>((resolve, reject) => {
+        request({ hostname, port, path }, (res) => {
+          res.resume()
+          resolve(res.statusCode ?? 0)
+        })
+          .on('error', reject)
+          .end()
+      })
+      expect(status).toBe(404)
+    },
+  )
 
   it('NUL 文字を含むセグメントにはマッチしない', async () => {
     const url = await serve(get('/files/:name', (_ctx, { name }) => name))
