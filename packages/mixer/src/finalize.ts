@@ -139,9 +139,12 @@ function cookieKey(setCookie: string, fallbackPath: string): string {
   let path = fallbackPath
   let domain = ''
   for (const attribute of attributes) {
-    const [key = '', value = ''] = attribute
-      .split('=')
-      .map((part) => part.trim())
+    // Split only at the first `=`, because attribute values such as Path may contain `=`
+    const separator = attribute.indexOf('=')
+    const key = (
+      separator === -1 ? attribute : attribute.slice(0, separator)
+    ).trim()
+    const value = separator === -1 ? '' : attribute.slice(separator + 1).trim()
     if (key.toLowerCase() === 'path' && value.startsWith('/')) path = value
     if (key.toLowerCase() === 'domain') domain = value.toLowerCase()
   }

@@ -189,6 +189,20 @@ describe('cookies without a Path on a returned Response', () => {
     warn.mockRestore()
   })
 
+  it('compares whole Path values that contain =', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('sid', 'draft', { path: '/a=b' })
+      return new Response('ok', {
+        headers: { 'Set-Cookie': 'sid=returned; Path=/a=c' },
+      })
+    })
+    const cookies = (await call(app)).headers.getSetCookie()
+    expect(cookies).toHaveLength(2)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it('treats a missing Path at the root as Path=/', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const app = new Mixer().mix((ctx) => {
