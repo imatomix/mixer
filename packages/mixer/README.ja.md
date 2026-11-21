@@ -26,7 +26,6 @@ npm install @imatomix/mixer
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
-import { serve } from '@imatomix/mixer/node'
 
 const app = new Mixer().mix(() => 'Hello Mixer')
 
@@ -359,7 +358,7 @@ app.mix(() => {
 
 | v0.1 | v0.2 |
 | --- | --- |
-| `await serve(app, { port: 3000 })` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
+| `await app.listen(3000)` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
 | `app.close()`、`app.address` | `server.close()`、`server.port` |
 | `app.handler`（`(req, res)`） | `app.fetch`（`(request) => Response`） |
 | `ctx.req` | `ctx.request`（Web 標準の `Request`） |
