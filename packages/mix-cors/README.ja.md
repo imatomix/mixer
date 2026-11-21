@@ -17,13 +17,14 @@ npm install @imatomix/mixer @imatomix/mix-cors
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { cors } from '@imatomix/mix-cors'
 
 const app = new Mixer()
 
 app.mix(cors(), () => 'cors is mixed!')
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 ルーターなどより**前に** mix する。
@@ -68,7 +69,11 @@ cors({
 
 - preflight は後続のコンポーネントに流れないので、アプリ側で OPTIONS を意識しなくてよい
 - preflight ではない `OPTIONS` は横取りしない（mix-router の `options()` などがそのまま動く）
-- 付けたヘッダは、後続で `HttpError` になったときのエラー応答にも残る（ブラウザからエラー内容を読める）
+- 付けたヘッダは、後続で `HttpError` になったときのエラー応答にも残り（ブラウザからエラー内容を読める）、後続のコンポーネントが返した `Response` にも付く
+
+## v0.1 からの移行
+
+オプションと動作は変わらない。自分のコードで CORS ヘッダを `ctx.res` から読んでいた場合は、`ctx.headers` から読む。
 
 ## v0.0.x からの移行
 

@@ -17,20 +17,22 @@ npm install @imatomix/mixer @imatomix/mix-router
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { all, get } from '@imatomix/mix-router'
 
 const app = new Mixer()
 
 app.mix(
   get('/mix/:fruit', (ctx, { fruit }) => `${fruit} juice`),
-  all('/*', (ctx) => ctx.send(404, 'Not found route')),
+  all('/*', () => new Response('Not found route', { status: 404 })),
 )
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 ルートは mixer の Component なので、そのまま `mix()` に渡せる。
 パスとメソッドが一致しなければ何もせず、次のコンポーネントへ進む。
+ルートは mixer の `ctx.path` と照合するので、`new Mixer({ basePath: '/api' })` では `/api` より下のパスを書く。
 
 ## メソッド
 
@@ -89,7 +91,7 @@ params はプロトタイプを持たないオブジェクト。
 import { HttpError } from '@imatomix/mixer'
 
 const requireAuth = (ctx) => {
-  if (!ctx.req.headers.authorization) throw new HttpError(401, 'Unauthorized')
+  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
 }
 
 get('/admin/users/:id', requireAuth, (ctx, { id }) => findUser(id))
@@ -131,6 +133,14 @@ const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined
 ```
 
+## v0.1 からの移行
+
+ルーターの API は変わらない。ハンドラは [mixer の移行表](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#v01-からの移行)に沿って直す。
+
+- ルートは `ctx.url.pathname` ではなく `ctx.path` と照合するので、`basePath` の下でも動く
+- `ctx.send(status, body)` の代わりに、（`ctx.status` を設定して）値を返すか `Response` を返す
+- リクエストのパスは、ルートがいくつあってもリクエストごとに 1 回だけデコードする
+
 ## v0.0.x からの移行
 
 | v0.0.x | v0.1 |
@@ -141,4 +151,4 @@ app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefin
 | `req.query.q` | `ctx.url.searchParams.get('q')` |
 | `namespace(prefix)(...routes)` | 同じ（入れ子でもパスが正しく連結されるようになった） |
 | `mkcalendar()` などのその他のメソッド | `route('MKCALENDAR', path, handler)` |
-| `res.post(200, x)` | `return x` または `ctx.send(200, x)` |
+| `res.post(200, x)` | `return x` |
