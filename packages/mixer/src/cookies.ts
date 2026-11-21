@@ -1,17 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
 export interface CookieOptions {
-  /** 秒数。0 以下ですぐに失効する */
+  /** In seconds. Zero or less expires the cookie immediately */
   maxAge?: number
   expires?: Date
-  /** 既定 `/` */
+  /** Defaults to `/` */
   path?: string
   domain?: string
-  /** 既定 true。JavaScript から読ませない */
+  /** Defaults to true. Hides the cookie from JavaScript */
   httpOnly?: boolean
-  /** 既定 true。http の localhost で開発するときは false を指定する */
+  /** Defaults to true. Set to false when developing on http://localhost */
   secure?: boolean
-  /** 既定 `Lax` */
+  /** Defaults to `Lax` */
   sameSite?: 'Strict' | 'Lax' | 'None'
   partitioned?: boolean
   priority?: 'Low' | 'Medium' | 'High'
@@ -22,9 +22,9 @@ export type CookieDeleteOptions = Pick<
   'path' | 'domain' | 'httpOnly' | 'secure' | 'sameSite' | 'partitioned'
 >
 
-// RFC 6265 の cookie-name（RFC 7230 の token）
+// cookie-name from RFC 6265 (token from RFC 7230)
 const COOKIE_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
-// ; や制御文字が入ると属性やヘッダを差し込まれるので、; 以外の印字可能な ASCII に限る
+// `;` and control characters would allow injecting attributes or headers, so allow printable ASCII except `;`
 const COOKIE_PATH = /^\/[\x20-\x3a\x3c-\x7e]*$/
 const COOKIE_DOMAIN = /^\.?[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/
 const SAME_SITE = new Set(['Strict', 'Lax', 'None'])
@@ -35,7 +35,7 @@ export class Cookies {
   readonly #req: IncomingMessage
   readonly #res: ServerResponse
   #parsed: Map<string, string[]> | undefined
-  /** 同じ名前・Path・Domain の Cookie を設定し直したときに置き換えるため、自分が出したものを覚えておく */
+  /** Remembers the cookies set here so that setting the same name, Path, and Domain again replaces them */
   readonly #pending = new Map<string, string>()
   #written = new Set<string>()
 
@@ -44,7 +44,7 @@ export class Cookies {
     this.#res = res
   }
 
-  /** 同じ名前が複数あるときは最初の値（ブラウザはより具体的な Path のものを先に送る） */
+  /** The first value when the name appears more than once (browsers send the most specific Path first) */
   get(name: string): string | undefined {
     return this.getAll(name)[0]
   }
@@ -72,7 +72,9 @@ export class Cookies {
 
   #queue(name: string, options: ResolvedOptions, header: string): void {
     if (this.#res.headersSent) {
-      throw new Error(`応答を送った後は Cookie を設定できません: ${name}`)
+      throw new Error(
+        `Cannot set cookies after the response has been sent: ${name}`,
+      )
     }
     this.#pending.set(
       `${name}\n${options.path}\n${options.domain ?? ''}`,
@@ -106,35 +108,36 @@ function withDefaults(options: CookieOptions): ResolvedOptions {
 
 function validate(name: string, options: ResolvedOptions): void {
   const fail = (reason: string) => {
-    throw new TypeError(`Cookie "${name}" の設定が不正です: ${reason}`)
+    throw new TypeError(`Invalid options for cookie "${name}": ${reason}`)
   }
-  if (!COOKIE_NAME.test(name)) fail('名前に使えない文字が含まれています')
+  if (!COOKIE_NAME.test(name))
+    fail('the name contains characters that are not allowed')
   if (!COOKIE_PATH.test(options.path)) fail(`path: ${options.path}`)
   if (options.domain !== undefined && !COOKIE_DOMAIN.test(options.domain)) {
     fail(`domain: ${options.domain}`)
   }
   if (options.maxAge !== undefined && !Number.isInteger(options.maxAge)) {
-    fail(`maxAge は整数で指定してください: ${options.maxAge}`)
+    fail(`maxAge must be an integer: ${options.maxAge}`)
   }
   if (
     options.expires !== undefined &&
     Number.isNaN(options.expires.getTime())
   ) {
-    fail('expires が不正な日付です')
+    fail('expires is an invalid date')
   }
   if (!SAME_SITE.has(options.sameSite)) fail(`sameSite: ${options.sameSite}`)
   if (options.priority !== undefined && !PRIORITY.has(options.priority)) {
     fail(`priority: ${options.priority}`)
   }
-  // ブラウザが拒否する組み合わせは、黙って無視される前に気づけるようにする
+  // Fail loudly on combinations that browsers would silently reject
   if (options.sameSite === 'None' && !options.secure) {
-    fail('SameSite=None には Secure が必要です')
+    fail('SameSite=None requires Secure')
   }
   if (options.partitioned && !options.secure) {
-    fail('Partitioned には Secure が必要です')
+    fail('Partitioned requires Secure')
   }
   if (name.startsWith('__Secure-') && !options.secure) {
-    fail('__Secure- で始まる名前には Secure が必要です')
+    fail('names starting with __Secure- require Secure')
   }
   if (name.startsWith('__Host-')) {
     if (
@@ -142,7 +145,7 @@ function validate(name: string, options: ResolvedOptions): void {
       options.path !== '/' ||
       options.domain !== undefined
     ) {
-      fail('__Host- で始まる名前には Secure・Path=/・Domain なしが必要です')
+      fail('names starting with __Host- require Secure, Path=/, and no Domain')
     }
   }
 }

@@ -1,6 +1,6 @@
 import type { SessionData } from './store.js'
 
-/** 保存時にどうするか */
+/** What to do when saving */
 export type SessionChange = 'none' | 'modified' | 'regenerated' | 'destroyed'
 
 export class Session<D extends SessionData = SessionData> {
@@ -13,7 +13,7 @@ export class Session<D extends SessionData = SessionData> {
     this.#loadedId = loadedId
   }
 
-  /** ストアから読み込んだセッションの ID。新しいセッションでは、保存されるまで undefined */
+  /** ID of the session loaded from the store. undefined for a new session until it is saved */
   get id(): string | undefined {
     return this.#loadedId
   }
@@ -37,20 +37,20 @@ export class Session<D extends SessionData = SessionData> {
   }
 
   /**
-   * データを保ったまま ID を作り直す。ログインなど権限が変わるときに呼び、
-   * 攻撃者があらかじめ知っている ID を使い続けさせない（セッション固定化の対策）
+   * Issues a new ID while keeping the data. Call it whenever privileges change, such as on login,
+   * so that an ID known to an attacker in advance cannot be used (protection against session fixation)
    */
   regenerate(): void {
     if (this.#change !== 'destroyed') this.#change = 'regenerated'
   }
 
-  /** ストアから削除し、Cookie も消す */
+  /** Deletes the session from the store and removes the cookie */
   destroy(): void {
     this.#data = {}
     this.#change = 'destroyed'
   }
 
-  /** @internal 保存処理用 */
+  /** @internal Used when saving */
   snapshot(): { data: Partial<D>; change: SessionChange } {
     return { data: this.#data, change: this.#change }
   }

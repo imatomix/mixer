@@ -5,13 +5,13 @@ export class HttpError extends Error {
   constructor(status: number, message?: string, options?: ErrorOptions) {
     if (!Number.isInteger(status) || status < 400 || status > 599) {
       throw new RangeError(
-        `HttpError の status は 400〜599 の整数で指定してください: ${status}`,
+        `HttpError status must be an integer between 400 and 599: ${status}`,
       )
     }
     super(message ?? defaultMessage(status), options)
     this.name = 'HttpError'
     this.status = status
-    // 5xx のメッセージは内部情報を含みうるのでクライアントには見せない
+    // 5xx messages may contain internal details, so they are not shown to clients
     this.expose = status < 500
   }
 }

@@ -24,7 +24,7 @@ export function readBuffer(
       received += chunk.length
       if (received > limit) {
         cleanup()
-        // req.destroy() はソケットごと閉じて 413 を返せなくなるので、残りは読み捨てる
+        // req.destroy() would close the socket and make the 413 response impossible, so drain the rest instead
         req.resume()
         reject(new HttpError(413))
         return
@@ -79,7 +79,7 @@ export function parseBody(
 }
 
 function parseForm(text: string): FormBody {
-  // 通常のオブジェクトだと __proto__ でプロトタイプが書き換わり、constructor などの継承値と混ざる
+  // With a plain object, __proto__ would replace the prototype and keys would mix with inherited values such as constructor
   const form: FormBody = Object.create(null)
   for (const [key, value] of new URLSearchParams(text)) {
     const existing = form[key]

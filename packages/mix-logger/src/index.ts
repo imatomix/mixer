@@ -1,25 +1,25 @@
 import type { Component } from '@imatomix/mixer'
 
 export interface LogEntry {
-  /** リクエストを受け取った時刻 */
+  /** When the request was received */
   time: Date
   method: string
-  /** パスのみ。クエリはキーにも秘密が入りうるので含めない */
+  /** Path only. The query is left out because even its keys may contain secrets */
   path: string
   status: number
   durationMs: number
-  /** 応答の Content-Length ヘッダの値（宣言値。ストリームなどで未設定なら undefined） */
+  /** Value of the response's Content-Length header (as declared; undefined when not set, such as for streams) */
   contentLength?: number
-  /** 応答を送り終える前に接続が切れた */
+  /** The connection closed before the response was fully sent */
   aborted: boolean
 }
 
 export interface LoggerOptions {
-  /** 記録の出力先。既定は formatLogEntry した 1 行を標準出力に書く */
+  /** Where entries are written. Defaults to one formatLogEntry line on standard output */
   write?: (entry: LogEntry) => void | Promise<void>
 }
 
-/** できるだけ前に mix する（処理時間はこのコンポーネントが実行された時点から計る） */
+/** Mix it in as early as possible (the duration is measured from when this component runs) */
 export function logger(options: LoggerOptions = {}): Component {
   const write = options.write ?? writeToStdout
 
@@ -29,7 +29,7 @@ export function logger(options: LoggerOptions = {}): Component {
     const { res } = ctx
     let recorded = false
 
-    // finish と close はどちらも来うるので、先に来た方で 1 回だけ記録する
+    // Both finish and close can fire, so record once on whichever comes first
     const record = () => {
       if (recorded) return
       recorded = true
@@ -68,7 +68,7 @@ function writeToStdout(entry: LogEntry): void {
   process.stdout.write(`${formatLogEntry(entry)}\n`)
 }
 
-/** ログの出力に失敗しても、応答やサーバには影響させない */
+/** Failing to write a log entry must not affect the response or the server */
 function safely(run: () => void | Promise<void>): void {
   try {
     const result = run()
@@ -86,7 +86,7 @@ const ESCAPES: Record<string, string> = {
   '\t': '\\t',
 }
 
-/** 改行やエスケープシーケンスで、偽の行や色付けをログに差し込ませない */
+/** Keep newlines and escape sequences from forging lines or colors in the log */
 function escapeControlCharacters(value: string): string {
   let escaped = ''
   for (const char of value) {

@@ -23,7 +23,7 @@ type Dispatch<S extends State> = (
   prefix: string,
 ) => Promise<unknown>
 
-/** mixer の Component としてそのまま `mix()` でき、namespace にも入れられるルート */
+/** A route that can be passed to `mix()` as a mixer Component and nested in a namespace */
 export interface Route<S extends State = State> {
   (ctx: Context<S>): Promise<unknown>
   readonly [dispatch]: Dispatch<S>
@@ -60,7 +60,7 @@ function createMatcher<Path extends string, S extends State>(
   handlers: RouteHandler<Params<Path>, S>[],
   acceptsMethod: (method: string) => boolean,
 ): Route<S> {
-  // namespace の prefix ごとにパターンを作り直さないようキャッシュする
+  // Cache the compiled pattern per namespace prefix instead of compiling it on every request
   const patterns = new Map<string, Pattern>()
   compilePattern(path)
 
@@ -95,20 +95,22 @@ function methodRoute(method: string): MethodRoute {
   return (path, ...handlers) => route(method, path, ...handlers)
 }
 
-/** HEAD にも応答する */
+/** Also responds to HEAD */
 export const get = methodRoute('GET')
 export const post = methodRoute('POST')
 export const put = methodRoute('PUT')
 export const patch = methodRoute('PATCH')
-/** `delete` は予約語なので `del` */
+/** `del`, because `delete` is a reserved word */
 export const del = methodRoute('DELETE')
 export const head = methodRoute('HEAD')
 export const options = methodRoute('OPTIONS')
 
 export function namespace(prefix: string) {
-  // prefix のパラメータは各ハンドラの params の型に現れないため、型と実行時の値がずれないよう禁止する
+  // Prefix parameters would not appear in the handlers' params type, so they are forbidden to keep types and runtime values in sync
   if (hasDynamicSegment(prefix)) {
-    throw new Error(`namespace のパスに :param や * は使えません: ${prefix}`)
+    throw new Error(
+      `:param and * cannot be used in a namespace path: ${prefix}`,
+    )
   }
   const normalized = splitPath(prefix)
     .map((segment) => `/${segment}`)
@@ -130,7 +132,7 @@ type MethodRouteOf<S extends State> = <Path extends string>(
   ...handlers: RouteHandler<Params<Path>, S>[]
 ) => Route<S>
 
-/** State の型を固定したルート関数一式 */
+/** A set of route functions with a fixed State type */
 export interface Router<S extends State> {
   get: MethodRouteOf<S>
   post: MethodRouteOf<S>
@@ -149,8 +151,8 @@ export interface Router<S extends State> {
 }
 
 /**
- * `const { get } = createRouter<AppState>()` のように使うと、
- * ハンドラの `ctx.state` に型が付く（`get<'/path', AppState>(...)` と書かずに済む）
+ * With `const { get } = createRouter<AppState>()`, handlers get a typed `ctx.state`
+ * (no need to write `get<'/path', AppState>(...)`)
  */
 export function createRouter<S extends State = State>(): Router<S> {
   return { get, post, put, patch, del, head, options, all, route, namespace }
