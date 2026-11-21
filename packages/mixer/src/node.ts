@@ -184,9 +184,12 @@ function createHostCheck(
   return (host) => allowed.has(host) || host.endsWith('.localhost')
 }
 
-/** The form URL gives an IP address (IPv6 in brackets), so that both spellings compare equal */
+/**
+ * The form URL gives an IP address (IPv6 in brackets), so that both spellings compare equal. A zone such as
+ * `%eth0` is dropped: Node can listen on a scoped address, but URL rejects one and Host never carries it
+ */
 function canonicalIp(value: string): string | undefined {
-  const bare = value.replace(/^\[(.*)\]$/, '$1')
+  const bare = value.replace(/^\[(.*)\]$/, '$1').replace(/%.*$/, '')
   if (!isIP(bare)) return undefined
   return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}`).hostname
 }

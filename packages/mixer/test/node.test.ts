@@ -372,6 +372,22 @@ describe('allowed hosts', () => {
     ).rejects.toThrow()
   })
 
+  it('accepts a scoped IPv6 address as hostname', async () => {
+    const loopback = Object.entries(networkInterfaces()).find(([, infos]) =>
+      infos?.some((info) => info.address === '::1'),
+    )?.[0]
+    if (!loopback) return
+    const server = await serve(
+      new Mixer().mix(() => 'ok'),
+      {
+        port: 0,
+        hostname: `::1%${loopback}`,
+      },
+    )
+    servers.push(server)
+    expect(server.port).toBeGreaterThan(0)
+  })
+
   it('listens on the loopback address when hostname is omitted', async () => {
     const server = await serve(
       new Mixer().mix(() => 'ok'),
