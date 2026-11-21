@@ -11,6 +11,7 @@ Minimal & asynchronous web module と、その周辺モジュールの monorepo�
 | [@imatomix/mix-cors](packages/mix-cors) | CORS |
 | [@imatomix/mix-static](packages/mix-static) | 静的ファイルの配信 |
 | [@imatomix/mix-session](packages/mix-session) | サーバ側セッション |
+| [@imatomix/mix-logger](packages/mix-logger) | アクセスログ |
 
 ## Development
 
