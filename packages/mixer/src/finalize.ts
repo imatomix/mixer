@@ -25,10 +25,12 @@ export function toResponse(value: unknown, draft: Draft): Response {
     headers.set('Content-Length', String(length))
   }
   const status = draft.status
-  return new Response(NULL_BODY_STATUSES.has(status) ? null : body, {
-    status,
-    headers,
-  })
+  if (NULL_BODY_STATUSES.has(status)) {
+    // The body is discarded, so release whatever the stream holds (for example, an open file)
+    if (value instanceof ReadableStream) void value.cancel().catch(() => {})
+    return new Response(null, { status, headers })
+  }
+  return new Response(body, { status, headers })
 }
 
 function encode(value: unknown): {

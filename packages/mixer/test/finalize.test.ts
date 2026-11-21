@@ -56,6 +56,21 @@ describe('return values', () => {
     expect(await res.text()).toBe('')
   })
 
+  it.each([204, 205, 304])(
+    'cancels a stream returned with the bodyless status %s',
+    async (status) => {
+      const { stream, state } = trackedStream(['never'])
+      const app = new Mixer().mix((ctx) => {
+        ctx.status = status
+        return stream
+      })
+      const res = await call(app)
+      expect(res.status).toBe(status)
+      expect(await res.text()).toBe('')
+      expect(state.cancelled).toBe(true)
+    },
+  )
+
   it('returns bytes as octet-stream', async () => {
     const res = await call(respondWith(new Uint8Array([1, 2, 3])))
     expect(res.headers.get('content-type')).toBe('application/octet-stream')
