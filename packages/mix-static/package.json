@@ -37,6 +37,10 @@
     "url": "git+https://github.com/imatomix/mixer.git",
     "directory": "packages/mix-static"
   },
+  "homepage": "https://github.com/imatomix/mixer/tree/master/packages/mix-static#readme",
+  "bugs": {
+    "url": "https://github.com/imatomix/mixer/issues"
+  },
   "peerDependencies": {
     "@imatomix/mixer": "^0.1.0"
   },
