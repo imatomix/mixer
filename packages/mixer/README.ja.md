@@ -8,7 +8,7 @@ Minimal & asynchronous web module.
 仕様は気紛れに変わります。
 
 - TypeScript 製・ESM のみ・依存ゼロ
-- Node.js 24 以上
+- Node.js 24 以上、または Bun 1.4.4 以上
 
 ## Install
 

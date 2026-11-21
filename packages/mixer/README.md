@@ -5,7 +5,7 @@ English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix
 Minimal & asynchronous web module.
 
 - Written in TypeScript, ESM only, zero dependencies
-- Node.js 24 or later
+- Node.js 24 or later, or Bun 1.4.4 or later
 
 > **Note:** mixer is at 0.x, so the API may change between minor versions.
 
