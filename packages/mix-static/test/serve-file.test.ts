@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Context } from '@imatomix/mixer'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { serveFile } from '../src/index.js'
-import { serve } from './helpers.js'
+import { app, call } from './helpers.js'
 
 let dir: string
 let favicon: string
@@ -20,14 +20,14 @@ beforeAll(() => {
 /** Stands in for a router: runs the component only when the path matches */
 const at =
   (path: string, component: (ctx: Context) => unknown) => (ctx: Context) =>
-    ctx.url.pathname === path ? component(ctx) : undefined
+    ctx.path === path ? component(ctx) : undefined
 
 describe('serveFile', () => {
   it('returns the given file with the right headers', async () => {
-    const url = await serve(
+    const target = app(
       at('/favicon.ico', serveFile(favicon, { maxAge: 86400 })),
     )
-    const res = await fetch(`${url}/favicon.ico`)
+    const res = await call(target, `/favicon.ico`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('image/x-icon')
     expect(res.headers.get('content-length')).toBe('4')
@@ -39,19 +39,19 @@ describe('serveFile', () => {
   })
 
   it('returns only headers for HEAD and 304 for conditional requests', async () => {
-    const url = await serve(serveFile(favicon))
-    const head = await fetch(url, { method: 'HEAD' })
+    const target = app(serveFile(favicon))
+    const head = await call(target, '/', { method: 'HEAD' })
     expect(head.status).toBe(200)
     expect(await head.text()).toBe('')
     const etag = head.headers.get('etag') ?? ''
     expect(
-      (await fetch(url, { headers: { 'if-none-match': etag } })).status,
+      (await call(target, '/', { headers: { 'if-none-match': etag } })).status,
     ).toBe(304)
   })
 
   it('moves on to the next component for methods other than GET and HEAD', async () => {
-    const url = await serve(serveFile(favicon), next)
-    expect(await (await fetch(url, { method: 'POST' })).text()).toBe(
+    const target = app(serveFile(favicon), next)
+    expect(await (await call(target, '/', { method: 'POST' })).text()).toBe(
       'next component',
     )
   })
@@ -59,9 +59,9 @@ describe('serveFile', () => {
   it('moves on to the next component when the file disappears at runtime', async () => {
     const temporary = join(dir, 'temporary.txt')
     writeFileSync(temporary, 'x')
-    const url = await serve(serveFile(temporary), next)
+    const target = app(serveFile(temporary), next)
     rmSync(temporary)
-    expect(await (await fetch(url)).text()).toBe('next component')
+    expect(await (await call(target)).text()).toBe('next component')
   })
 
   it('throws at definition for a missing file or a directory', () => {

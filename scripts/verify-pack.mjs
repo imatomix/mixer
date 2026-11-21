@@ -159,6 +159,7 @@ import { mkdtempSync as makeTempDir, symlinkSync, writeFileSync as writeTempFile
 import { tmpdir as osTmpdir } from 'node:os'
 import { join as joinPath } from 'node:path'
 import { Mixer as StaticMixer } from '@imatomix/mixer'
+import { serve as serveStaticApp } from '@imatomix/mixer/node'
 import { serveStatic } from '@imatomix/mix-static'
 
 const publicDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-static-'))
@@ -168,8 +169,8 @@ const outsideDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-outside-'))
 writeTempFile(joinPath(outsideDir, 'secret.txt'), 'secret')
 symlinkSync(joinPath(outsideDir, 'secret.txt'), joinPath(publicDir, 'link.txt'))
 const staticApp = new StaticMixer().mix(serveStatic(publicDir))
-await staticApp.listen(0, '127.0.0.1')
-const staticBase = \`http://127.0.0.1:\${staticApp.address?.port}\`
+const staticServer = await serveStaticApp(staticApp, { hostname: '127.0.0.1' })
+const staticBase = \`http://127.0.0.1:\${staticServer.port}\`
 const file = await fetch(\`\${staticBase}/hello.txt\`)
 const fileText = await file.text()
 const etag = file.headers.get('etag') ?? ''
@@ -179,7 +180,7 @@ const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-n
 await notModified.text()
 const escaped = await fetch(\`\${staticBase}/link.txt\`)
 const escapedText = await escaped.text()
-await staticApp.close()
+await staticServer.close()
 if (
   fileText !== 'hello static' ||
   file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||

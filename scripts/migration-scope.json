@@ -1,1 +1,6 @@
-["@imatomix/mixer", "@imatomix/mix-router", "@imatomix/mix-cors"]
+[
+  "@imatomix/mixer",
+  "@imatomix/mix-router",
+  "@imatomix/mix-cors",
+  "@imatomix/mix-static"
+]
