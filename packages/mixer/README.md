@@ -2,10 +2,12 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md)
 
-Minimal & asynchronous web module.
+Minimal & asynchronous web module, built on the Web standard `Request` and `Response`.
 
 - Written in TypeScript, ESM only, zero dependencies
 - Node.js 24 or later, or Bun 1.4.4 or later
+- `app.fetch(request)` is a plain Web standard handler, so it also runs inside frameworks such as Next.js, Nuxt, SvelteKit, and React Router
+- Safe by default: `X-Content-Type-Options: nosniff` on every response, cookies are `HttpOnly; Secure; SameSite=Lax`, responses that set cookies stay out of shared caches, and error details never reach the client
 
 > **Note:** mixer is at 0.x, so the API may change between minor versions.
 
@@ -22,12 +24,17 @@ A component receives a single `ctx`, and the value it returns becomes the respon
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 
-const app = new Mixer()
+const app = new Mixer().mix(() => 'Hello Mixer')
 
-app.mix(() => 'Hello Mixer')
+await serve(app, { port: 3000 })
+```
 
-await app.listen(3000)
+On Bun, pass `app.fetch` to `Bun.serve`:
+
+```ts
+Bun.serve({ port: 3000, fetch: app.fetch })
 ```
 
 ### mix()
@@ -46,58 +53,83 @@ A component that returns nothing hands over to the next one. If no component res
 
 | Property | Description |
 | --- | --- |
-| `ctx.req` / `ctx.res` | Node.js `IncomingMessage` / `ServerResponse` (mixer adds nothing to them) |
+| `ctx.request` | The Web standard `Request` |
 | `ctx.url` | The request URL as a `URL` object (`ctx.url.pathname`, `ctx.url.searchParams`) |
+| `ctx.path` | The path without `basePath` (see below). Route on this |
 | `ctx.method` | The HTTP method |
-| `ctx.status` | Status code used when responding with a return value (default `200`) |
+| `ctx.status` | Status of the response (default `200`) |
+| `ctx.headers` | Headers of the response (a `Headers` object) |
 | `ctx.state` | A place to pass values to later components |
+| `ctx.env` | The second argument of `app.fetch` (bindings on serverless platforms) |
 | `await ctx.body()` | The body, parsed according to its Content-Type |
-| `await ctx.text()` / `await ctx.buffer()` | The body as a string / Buffer |
-| `ctx.send(status, body?)` | Respond immediately |
-| `ctx.onBeforeSend(fn)` | Register work to run right before the response is sent (see below) |
-| `ctx.cookies` | Read cookies and set Set-Cookie headers (see below) |
+| `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
+| `ctx.cookies` | Read cookies and add Set-Cookie headers (see below) |
+| `ctx.onBeforeSend(fn)` | Run work right before the response is built (see below) |
+| `ctx.onResponse(fn)` | Run work once the response is ready (see below) |
+| `ctx.waitUntil(promise)` | Keep background work alive after the response |
+
+`ctx.status` and `ctx.headers` are a draft of the response. mixer builds the `Response` once, from the draft and the returned value.
 
 ### Responses
 
-The format is chosen from the type of the returned value (or the `body` passed to `ctx.send()`).
-A `Content-Type` set earlier with `ctx.res.setHeader()` takes precedence.
+The format is chosen from the type of the returned value. A `Content-Type` set earlier in `ctx.headers` takes precedence.
 
 | Value | Response |
 | --- | --- |
 | `string` | `text/plain; charset=utf-8` |
-| `Buffer` / `Uint8Array` | `application/octet-stream` |
-| `Readable` stream | Streamed as is (`application/octet-stream`) |
+| `Uint8Array` / `ArrayBuffer` | `application/octet-stream` |
+| `Blob` | Its own type, or `application/octet-stream` |
+| `ReadableStream` | Streamed as is (`application/octet-stream`) |
 | Object, number, boolean | JSON (`application/json; charset=utf-8`) |
-| `null` | `204 No Content` |
+| `null` | `204 No Content` (or `ctx.status` if you set one, such as `304`) |
+| `Response` | Used as is, combined with the draft (see below) |
 
 ```ts
 app.mix((ctx) => {
   ctx.status = 201
+  ctx.headers.set('Location', '/items/1')
   return { created: true }
 })
 ```
 
+A returned `Response` keeps its own status, body, and headers. Draft headers it does not have are added, `Set-Cookie` from both are kept (the `Response` wins for the same cookie), and `Vary` lists from both are joined.
+`Response.error()` and a `Response` whose body was already read become `500`.
+
+Every response gets `X-Content-Type-Options: nosniff`. A response that sets cookies gets `Cache-Control: private` unless it already says `private` or `no-store`. `HEAD` responses and `204` / `205` / `304` have no body.
+
 ### ctx.onBeforeSend()
 
-Registers work to run right before the response is sent. Hooks run in registration order and can change headers and `ctx.status`.
-Use it to apply state that later components changed right before responding, such as a session cookie.
+Registers work to run right before the response is built. Hooks run in registration order and can change `ctx.status`, `ctx.headers`, and cookies.
+Use it to apply state that later components changed, such as a session cookie.
 
 ```ts
 app
   .mix((ctx) => {
     ctx.onBeforeSend(() => {
-      ctx.res.setHeader('Set-Cookie', serialize(ctx.state.session))
+      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
     })
   })
   .mix((ctx) => {
-    ctx.state.session = { user: 'imatomix' }
+    ctx.state.user = 'imatomix'
     return 'ok'
   })
 ```
 
-- Runs for responses from return values, `ctx.send()`, and error responses
+- Runs once, for every response, including `404` and error responses
 - If a hook throws, the response is `500` (hooks are not run again)
-- Does not run when a component responds by writing to `ctx.res` directly
+
+### ctx.onResponse()
+
+Registers work to run once the final response is ready, such as logging. The hook receives a snapshot `{ status, headers }`; changing it has no effect.
+Hooks run before `app.fetch` resolves, so keep them short and pass slow work to `ctx.waitUntil()`. A failing hook is logged and does not affect the response.
+
+```ts
+app.mix((ctx) => {
+  ctx.onResponse(({ status }) => {
+    ctx.waitUntil(sendMetrics(ctx.path, status))
+  })
+})
+```
 
 ### ctx.cookies
 
@@ -119,13 +151,7 @@ ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 - Values are URL-encoded when sent and decoded when read
 - Setting the same name, path, and domain again in one response replaces the earlier value. Set-Cookie headers added in other ways are kept
 - Names, paths, and domains that could inject headers, and combinations that browsers reject (such as `SameSite=None` without Secure, or `__Host-` with a Domain), throw a `TypeError`
-- `set` / `delete` after the response has been sent throw
-
-### Using ctx.res directly
-
-Once a component writes headers to `ctx.res` directly, mixer treats the request as answered and does not run later components.
-mixer does not call `end()` for you, because some responses keep writing, such as Server-Sent Events.
-If you start writing, call `end()` yourself.
+- `set` / `delete` after the response is final throw
 
 ### Request body
 
@@ -136,7 +162,7 @@ If you start writing, call `end()` yourself.
 | `application/json`, `*+json` | The value from `JSON.parse` (`400` if invalid) |
 | `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
 | `text/*` or none | A string |
-| Anything else | A `Buffer` |
+| Anything else | A `Uint8Array` |
 | Empty body | `undefined` |
 
 Bodies over the limit (default 3 MB) get `413`.
@@ -145,12 +171,22 @@ Bodies over the limit (default 3 MB) get `413`.
 const app = new Mixer({ bodyLimit: 1024 * 1024 })
 ```
 
-### ctx.state and types
+### basePath
+
+Mount the app under a path. Requests outside it get `404`, and `ctx.path` is the path below it (`ctx.url` keeps the full URL).
+
+```ts
+const app = new Mixer({ basePath: '/api' })
+// GET /api/users → ctx.path === '/users'
+```
+
+### ctx.state, ctx.env, and types
 
 ```ts
 type State = { user?: string }
+type Env = { DATABASE_URL: string }
 
-const app = new Mixer<State>()
+const app = new Mixer<State, Env>()
 
 app
   .mix((ctx) => {
@@ -172,28 +208,84 @@ app.mix((ctx) => {
 })
 ```
 
-Replace error responses with `onError`. If `onError` does not respond, the default response is sent.
+Error responses start from a fresh draft: only `Access-Control-*`, `Vary`, and `Set-Cookie` are carried over, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error.
+
+Replace error responses with `onError`. It starts with the error's status in `ctx.status`, and its return value becomes the response. If it returns `undefined` or throws, the default response is sent.
 
 ```ts
 const app = new Mixer({
-  onError: (error, ctx) => ctx.send(500, { message: 'Sorry' }),
+  onError: (error, ctx) => ({ message: 'Sorry', status: ctx.status }),
 })
 ```
 
-### Server
+## Running the app
+
+### Node.js
+
+`serve` from `@imatomix/mixer/node` runs the app on Node's `http` module.
 
 ```ts
-const server = await app.listen(3000) // returns an http.Server
-app.address // => { port: 3000, ... }
-await app.close()
+import { serve } from '@imatomix/mixer/node'
+
+const server = await serve(app, { port: 3000, hostname: '127.0.0.1' })
+server.port // the port in use (pass port: 0 for any free port)
+await server.close()
 ```
 
-`app.handler` is `(req, res) => Promise<void>`, so it can be passed to your own `http` / `https` server.
+- The request URL is built from the `Host` header. A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
+- **The host name is not trusted.** It comes from the client, so do not build absolute URLs for emails or redirects from `ctx.url.host`; use a configured origin instead
+- When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
+- When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
+
+### Bun
 
 ```ts
-import { createServer } from 'node:https'
+Bun.serve({ port: 3000, fetch: app.fetch })
+```
 
-createServer({ key, cert }, app.handler).listen(443)
+### Inside frameworks
+
+`app.fetch` takes a `Request` and returns a `Response`, so it can serve a part of an app built with a framework. Set `basePath` to the path where it is mounted.
+Pass only the `Request`: frameworks give their handlers other arguments, which would otherwise become `ctx.env`.
+
+**Next.js** (App Router), `app/api/[[...path]]/route.ts`:
+
+```ts
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+const handler = (request: Request) => app.fetch(request)
+
+export { handler as GET, handler as POST, handler as PUT, handler as PATCH, handler as DELETE }
+```
+
+**Nuxt** (Nuxt 4, h3 v1), `server/api/[...path].ts`:
+
+```ts
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export default defineEventHandler((event) => app.fetch(toWebRequest(event)))
+```
+
+With h3 v2, pass `event.req`, which is already a `Request`.
+
+**SvelteKit**, `src/routes/api/[...path]/+server.ts`:
+
+```ts
+import type { RequestHandler } from './$types'
+
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export const fallback: RequestHandler = ({ request }) => app.fetch(request)
+```
+
+**React Router** (v7, framework mode), a resource route such as `app/routes/api.$.ts`:
+
+```ts
+import type { Route } from './+types/api.$'
+
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export const loader = ({ request }: Route.LoaderArgs) => app.fetch(request)
+export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 ```
 
 # Examples
@@ -201,35 +293,45 @@ createServer({ key, cert }, app.handler).listen(443)
 ### async/await
 
 ```ts
-import { setTimeout as sleep } from 'node:timers/promises'
-import { Mixer } from '@imatomix/mixer'
-
 const app = new Mixer().mix(async () => {
-  await sleep(3000)
+  await new Promise((resolve) => setTimeout(resolve, 3000))
   return 'Good Morning Mixer'
 })
-
-await app.listen(3000)
 ```
 
-### (req, res) handlers such as Nuxt.js
-
-mixer does not modify `req` / `res`, so they can be passed through as is.
+### Streaming
 
 ```ts
-app.mix((ctx) => nuxt.render(ctx.req, ctx.res))
+app.mix(() => {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    async start(controller) {
+      for (const word of ['mix', 'and', 'match']) {
+        controller.enqueue(encoder.encode(`${word}\n`))
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      controller.close()
+    },
+  })
+})
 ```
 
-## Migrating from v0.0.x
+## Migrating from v0.1
 
-| v0.0.x | v0.1 |
+| v0.1 | v0.2 |
 | --- | --- |
-| `require('mixer')` | `import { Mixer } from '@imatomix/mixer'` |
-| `new mixer(fn)` | `new Mixer().mix(fn)` |
-| `(req, res) => {}` | `(ctx) => {}` (`ctx.req`, `ctx.res`) |
-| `req.body` | `await ctx.body()` |
-| `res.send(code, obj)` | `ctx.send(code, obj)` or `ctx.status = code; return obj` |
-| `delete res.send` (for Nuxt.js) | No longer needed |
+| `await app.listen(3000)` | `await serve(app, { port: 3000 })` from `@imatomix/mixer/node` |
+| `app.close()`, `app.address` | `server.close()`, `server.port` |
+| `app.handler` (`(req, res)`) | `app.fetch` (`(request) => Response`) |
+| `ctx.req` | `ctx.request` (a Web standard `Request`) |
+| `ctx.req.headers.origin` | `ctx.request.headers.get('origin')` |
+| `ctx.res.setHeader(name, value)` | `ctx.headers.set(name, value)` |
+| `ctx.send(status, body)` | `ctx.status = status; return body` or `return new Response(body, { status })` |
+| Writing to `ctx.res` directly | Return a `ReadableStream` or a `Response` |
+| `await ctx.buffer()` (`Buffer`) | `await ctx.bytes()` (`Uint8Array`) |
+| Returning a Node `Readable` | Return a `ReadableStream` (`Readable.toWeb(stream)`) |
+| `onError: (error, ctx) => ctx.send(...)` | `onError: (error, ctx) => value` |
+| Routing on `ctx.url.pathname` | Route on `ctx.path` (works with `basePath`) |
 
 ## Modules
 

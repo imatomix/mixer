@@ -19,13 +19,14 @@ npm install @imatomix/mixer @imatomix/mix-static
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { serveStatic } from '@imatomix/mix-static'
 
 const app = new Mixer()
 
 app.mix(serveStatic('./public'))
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 `./public/images` 以下のファイルを `http://localhost:3000/imgs/` から配信する。
@@ -35,6 +36,7 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 ファイルが見つからなければ何もせず次のコンポーネントへ進む（最終的に mixer の 404 になる）。
+ファイルは mixer の `ctx.path` で探すので、`basePath` を使うと公開ディレクトリはその下のパスに対応する。ディレクトリへのリダイレクトでは、`Location` に `basePath` を残す。
 
 ## 単体のファイルを配信する（favicon など）
 
@@ -69,9 +71,11 @@ app.mix(
 ## レスポンス
 
 - `Content-Type`：拡張子から決める（主要な型を内蔵。不明なものは `application/octet-stream`）
-- `X-Content-Type-Options: nosniff`、`Content-Length`、`ETag`（弱い ETag）、`Last-Modified`、`Cache-Control`
+- `Content-Length`、`ETag`（弱い ETag）、`Last-Modified`、`Cache-Control`
 - `If-None-Match` / `If-Modified-Since` が一致すれば `304`（`If-None-Match` を優先）
 - `HEAD` はファイルを読まずにヘッダだけを返す
+- 本文はストリームで送り、応答が終わるかクライアントが切断するとファイルを閉じる
+- `X-Content-Type-Options: nosniff` は mixer がすべての応答に付ける
 - ディレクトリに末尾の `/` がなければ、`/` 付きへ `301` でリダイレクトする（HTML 内の相対リンクを正しく解決させるため）
 - Range リクエスト（動画のシークなど）には未対応
 
@@ -87,6 +91,10 @@ app.mix(
 不正な URL エンコーディングは `400 Bad Request` になる。
 
 **公開ディレクトリは、信頼できない利用者が書き換えられない場所にすること。** 検証してからファイルを開くまでの間にシンボリックリンクを差し替えられる攻撃は、最後の要素については `O_NOFOLLOW` で防いでいるが、途中のディレクトリの差し替えまでは防げない。
+
+## v0.1 からの移行
+
+オプションと動作は変わらない。mix-static は `node:fs` を使うので、Node.js と Bun で動く。
 
 ## v0.0.x からの移行
 

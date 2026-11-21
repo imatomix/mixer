@@ -18,13 +18,14 @@ Serve files under `./public` from `http://localhost:3000/`:
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 import { serveStatic } from '@imatomix/mix-static'
 
 const app = new Mixer()
 
 app.mix(serveStatic('./public'))
 
-await app.listen(3000)
+await serve(app, { port: 3000 })
 ```
 
 Serve files under `./public/images` from `http://localhost:3000/imgs/`:
@@ -34,6 +35,7 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 When a file is not found, it does nothing and hands over to the next component (ending up as mixer's 404).
+Files are looked up by mixer's `ctx.path`, so with `basePath` the public directory maps to the paths below it. The directory redirect keeps `basePath` in `Location`.
 
 ## Serving a single file (favicon and the like)
 
@@ -68,9 +70,11 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 ## Responses
 
 - `Content-Type`: derived from the extension (common types are built in; unknown ones are `application/octet-stream`)
-- `X-Content-Type-Options: nosniff`, `Content-Length`, `ETag` (weak), `Last-Modified`, `Cache-Control`
+- `Content-Length`, `ETag` (weak), `Last-Modified`, `Cache-Control`
 - `304` when `If-None-Match` / `If-Modified-Since` match (`If-None-Match` takes precedence)
 - `HEAD` returns only headers, without reading the file
+- The body is streamed, and the file is closed when the response finishes or the client goes away
+- `X-Content-Type-Options: nosniff` is added by mixer to every response
 - A directory without a trailing `/` is redirected with `301` to the path with `/` (so that relative links in HTML resolve correctly)
 - Range requests (such as seeking in videos) are not supported
 
@@ -86,6 +90,10 @@ The following requests are not served (they hand over to the next component):
 Malformed percent-encoding results in `400 Bad Request`.
 
 **Keep the public directory somewhere untrusted users cannot write to.** Replacing a symbolic link between the checks and opening the file is prevented for the last path component with `O_NOFOLLOW`, but replacing a directory in the middle of the path cannot be prevented.
+
+## Migrating from v0.1
+
+Options and behavior are unchanged. mix-static uses `node:fs`, so it runs on Node.js and Bun.
 
 ## Migrating from v0.0.x
 

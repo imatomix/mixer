@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-A monorepo for mixer, a minimal and asynchronous web module, and its modules.
+A monorepo for mixer, a minimal and asynchronous web module built on the Web standard `Request` and `Response`, and its modules.
 
 Each package is published to npm separately, so you can install only the ones you need.
 
@@ -26,4 +26,4 @@ pnpm build
 pnpm --filter @imatomix/mixer test   # a single package
 ```
 
-Packages run on Node.js 24 or later and Bun 1.4.4 or later. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+Packages run on Node.js 24 or later and Bun 1.4.4 or later, and `app.fetch` can also serve part of a Next.js, Nuxt, SvelteKit, or React Router app. See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.

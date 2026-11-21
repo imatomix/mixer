@@ -45,7 +45,8 @@ app.mix(
 - **No session is created until something is written.** Visiting alone creates nothing in the store or in cookies
 - Only when something changed, the session is saved to the store and the cookie is issued right before the response (`ctx.onBeforeSend`)
 - Responses that send Set-Cookie get `Cache-Control: private, no-store` (so shared caches never hand the same session to other users)
-- Sessions are not saved when a component responds by writing to `ctx.res` directly. Respond with `return` or `ctx.send()`
+- Sessions are saved for every response, including a `Response` returned by a component, `404`, and error responses
+- Session IDs come from Web Crypto (`crypto.getRandomValues`)
 
 ## API
 
@@ -83,12 +84,16 @@ interface SessionStore {
 `update` works "only if it exists" so that a concurrent request holding an old ID cannot bring back a session right after `destroy()` or `regenerate()`.
 
 `MemoryStore` keeps sessions in process memory. It never returns expired sessions, and drops the least recently used ones when `maxEntries` (default 10000) is exceeded.
-To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in.
+To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in. On serverless platforms, where each request may run in a different instance, always use an external store.
 
 ## Invalid IDs
 
 - An ID that is not in the store (expired or forged) is never adopted; a new ID is issued on write
 - Malformed IDs, and multiple cookies with the same name (possibly planted from a subdomain), are not loaded
+
+## Migrating from v0.1
+
+Options, the store interface, and the cookie format are unchanged, so existing sessions stay valid. Respond by returning a value or a `Response` instead of `ctx.send()`.
 
 ## Migrating from v0.0.x
 

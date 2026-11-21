@@ -2,13 +2,15 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md) | 日本語
 
-Minimal & asynchronous web module.
+Minimal & asynchronous web module. Web 標準の `Request` / `Response` で動く。
 
 デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
 仕様は気紛れに変わります。
 
 - TypeScript 製・ESM のみ・依存ゼロ
 - Node.js 24 以上、または Bun 1.4.4 以上
+- `app.fetch(request)` は Web 標準のハンドラそのものなので、Next.js・Nuxt・SvelteKit・React Router などのフレームワークの中でも動く
+- 何もしなくても安全側: すべての応答に `X-Content-Type-Options: nosniff`、Cookie は `HttpOnly; Secure; SameSite=Lax`、Cookie を付けた応答は共有キャッシュに残さない、エラーの詳細はクライアントに見せない
 
 ## Install
 
@@ -23,12 +25,17 @@ npm install @imatomix/mixer
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
 
-const app = new Mixer()
+const app = new Mixer().mix(() => 'Hello Mixer')
 
-app.mix(() => 'Hello Mixer')
+await serve(app, { port: 3000 })
+```
 
-await app.listen(3000)
+Bun では `app.fetch` を `Bun.serve` に渡す。
+
+```ts
+Bun.serve({ port: 3000, fetch: app.fetch })
 ```
 
 ### mix()
@@ -47,111 +54,140 @@ app.mix(fn, fn, fn)
 
 | プロパティ | 説明 |
 | --- | --- |
-| `ctx.req` / `ctx.res` | Node.js 標準の `IncomingMessage` / `ServerResponse`（mixer は何も書き足さない） |
+| `ctx.request` | Web 標準の `Request` |
 | `ctx.url` | リクエスト URL の `URL` オブジェクト（`ctx.url.pathname`, `ctx.url.searchParams`） |
+| `ctx.path` | `basePath`（後述）を除いたパス。ルーティングにはこれを使う |
 | `ctx.method` | HTTP メソッド |
-| `ctx.status` | 戻り値で応答するときのステータスコード（デフォルト `200`） |
+| `ctx.status` | レスポンスのステータス（デフォルト `200`） |
+| `ctx.headers` | レスポンスのヘッダ（`Headers` オブジェクト） |
 | `ctx.state` | 後続のコンポーネントに値を渡すための入れ物 |
+| `ctx.env` | `app.fetch` の第 2 引数（サーバーレス環境のバインディングなど） |
 | `await ctx.body()` | Content-Type に応じて解析したボディ |
-| `await ctx.text()` / `await ctx.buffer()` | ボディを文字列 / Buffer で取得 |
-| `ctx.send(status, body?)` | その場でレスポンスを返す |
-| `ctx.onBeforeSend(fn)` | 応答の直前に実行する処理を登録する（後述） |
-| `ctx.cookies` | Cookie の読み取りと Set-Cookie の設定（後述） |
+| `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で取得 |
+| `ctx.cookies` | Cookie の読み取りと Set-Cookie の追加（後述） |
+| `ctx.onBeforeSend(fn)` | レスポンスを組み立てる直前に実行する処理を登録する（後述） |
+| `ctx.onResponse(fn)` | レスポンスができたあとに実行する処理を登録する（後述） |
+| `ctx.waitUntil(promise)` | 応答のあとも続く処理を最後まで実行させる |
+
+`ctx.status` と `ctx.headers` はレスポンスの下書き。mixer は下書きと戻り値から、`Response` を 1 回だけ組み立てる。
 
 ### レスポンス
 
-戻り値（または `ctx.send()` の `body`）の型で自動的に形式が決まる。
-`Content-Type` を先に `ctx.res.setHeader()` で設定しておけばそちらが優先される。
+戻り値の型で形式が決まる。先に `ctx.headers` で `Content-Type` を設定していればそちらが優先される。
 
 | 値 | レスポンス |
 | --- | --- |
 | `string` | `text/plain; charset=utf-8` |
-| `Buffer` / `Uint8Array` | `application/octet-stream` |
-| `Readable` ストリーム | そのまま流す（`application/octet-stream`） |
+| `Uint8Array` / `ArrayBuffer` | `application/octet-stream` |
+| `Blob` | Blob 自身の type、なければ `application/octet-stream` |
+| `ReadableStream` | そのままストリーミング（`application/octet-stream`） |
 | オブジェクト・数値・真偽値 | JSON（`application/json; charset=utf-8`） |
-| `null` | `204 No Content` |
+| `null` | `204 No Content`（`304` など `ctx.status` を設定していればそのステータス） |
+| `Response` | そのまま使い、下書きと合わせる（後述） |
 
 ```ts
 app.mix((ctx) => {
   ctx.status = 201
+  ctx.headers.set('Location', '/items/1')
   return { created: true }
 })
 ```
 
+返した `Response` は、自身のステータス・本文・ヘッダを保つ。`Response` にない下書きのヘッダは足され、`Set-Cookie` は両方残り（同じ Cookie は `Response` 側が優先）、`Vary` は両方の値を合わせる。
+`Response.error()` と、本文を読み終えた `Response` は `500` になる。
+
+すべての応答に `X-Content-Type-Options: nosniff` が付く。Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になる。`HEAD` の応答と `204` / `205` / `304` には本文が付かない。
+
 ### ctx.onBeforeSend()
 
-応答を送る直前に実行する処理を登録する。登録した順に実行され、ヘッダや `ctx.status` を変更できる。
-後続のコンポーネントが変えた状態を、応答直前にまとめて反映したいとき（セッションの Cookie など）に使う。
+レスポンスを組み立てる直前に実行する処理を登録する。登録順に実行され、`ctx.status`・`ctx.headers`・Cookie を変更できる。
+後続のコンポーネントが変更した状態（セッションの Cookie など）を最後に反映したいときに使う。
 
 ```ts
 app
   .mix((ctx) => {
     ctx.onBeforeSend(() => {
-      ctx.res.setHeader('Set-Cookie', serialize(ctx.state.session))
+      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
     })
   })
   .mix((ctx) => {
-    ctx.state.session = { user: 'imatomix' }
+    ctx.state.user = 'imatomix'
     return 'ok'
   })
 ```
 
-- 戻り値による応答、`ctx.send()`、エラー応答のいずれでも実行される
-- フックが例外を投げると 500 になる（フックは再実行されない）
-- `ctx.res` に直接書き込んで応答した場合は実行されない
+- `404` やエラーを含め、すべての応答で 1 回だけ実行される
+- フックが例外を投げると `500` になる（フックは再実行されない）
+
+### ctx.onResponse()
+
+最終的なレスポンスができたあとに実行する処理（ログなど）を登録する。フックはスナップショット `{ status, headers }` を受け取る。変更しても応答には影響しない。
+フックは `app.fetch` が返る前に実行されるので、短く保ち、時間のかかる処理は `ctx.waitUntil()` に渡す。フックの失敗はログに出るだけで、応答には影響しない。
+
+```ts
+app.mix((ctx) => {
+  ctx.onResponse(({ status }) => {
+    ctx.waitUntil(sendMetrics(ctx.path, status))
+  })
+})
+```
 
 ### ctx.cookies
 
 ```ts
-ctx.cookies.get('theme') // 同じ名前が複数あれば最初の値
+ctx.cookies.get('theme') // 同名が複数あれば最初の値
 ctx.cookies.getAll('theme')
 ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
-ctx.cookies.delete('theme') // 設定時と同じ path / domain を指定すること
+ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 ```
 
-| オプション | 既定値 | 説明 |
+| オプション | デフォルト | 説明 |
 | --- | --- | --- |
-| `httpOnly` | `true` | JavaScript から読ませない |
-| `secure` | `true` | HTTPS でのみ送る。http の localhost で開発するときは `false` を指定する |
+| `httpOnly` | `true` | JavaScript から読めなくする |
+| `secure` | `true` | HTTPS のときだけ送る。http://localhost で開発するときは `false` に |
 | `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
 | `path` | `'/'` | |
 | `maxAge` / `expires` / `domain` / `partitioned` / `priority` | なし | |
 
-- 値は URL エンコードして送り、読み取り時にデコードする
-- 同じ名前・path・domain を 1 つの応答で設定し直すと、後の値で置き換わる。他の方法で付けた Set-Cookie は消さない
-- ヘッダを差し込めてしまう名前・path・domain や、ブラウザが拒否する組み合わせ（`SameSite=None` で Secure なし、`__Host-` で Domain ありなど）は `TypeError` になる
-- 応答を送った後の `set` / `delete` は例外になる
-
-### ctx.res を直接使う
-
-`ctx.res` に直接書き込んでヘッダを送った時点で、mixer は応答済みとみなし、後続のコンポーネントを実行しない。
-Server-Sent Events のように書き続けるケースがあるため、mixer は `end()` を代わりに呼ばない。
-自分で書き始めたら、自分で `end()` すること。
+- 値は送るときに URL エンコードされ、読むときにデコードされる
+- 1 つの応答で同じ name・path・domain を設定し直すと、前の値を置き換える。ほかの方法で足した Set-Cookie はそのまま残る
+- ヘッダを注入できる name・path・domain や、ブラウザが拒否する組み合わせ（Secure なしの `SameSite=None`、Domain 付きの `__Host-` など）は `TypeError` を投げる
+- 応答が確定したあとの `set` / `delete` は例外を投げる
 
 ### リクエストボディ
 
-`ctx.body()` は必要になったときだけボディを読む。何度呼んでも同じ結果を返す。
+`ctx.body()` は必要になったときだけボディを読み、何度呼んでも同じ結果を返す。
 
 | Content-Type | 結果 |
 | --- | --- |
 | `application/json`, `*+json` | `JSON.parse` した値（不正なら `400`） |
-| `application/x-www-form-urlencoded` | `{ key: value }`（重複キーは配列） |
-| `text/*` またはなし | 文字列 |
-| その他 | `Buffer` |
-| ボディが空 | `undefined` |
+| `application/x-www-form-urlencoded` | `{ key: value }`（同じキーは配列） |
+| `text/*` または指定なし | 文字列 |
+| それ以外 | `Uint8Array` |
+| 空のボディ | `undefined` |
 
-上限（デフォルト 3MB）を超えると `413` になる。
+上限（デフォルト 3 MB）を超えると `413` になる。
 
 ```ts
 const app = new Mixer({ bodyLimit: 1024 * 1024 })
 ```
 
-### ctx.state と型
+### basePath
+
+アプリをあるパスの下に置く。その外へのリクエストは `404` になり、`ctx.path` はその下のパスになる（`ctx.url` は URL 全体のまま）。
+
+```ts
+const app = new Mixer({ basePath: '/api' })
+// GET /api/users → ctx.path === '/users'
+```
+
+### ctx.state・ctx.env と型
 
 ```ts
 type State = { user?: string }
+type Env = { DATABASE_URL: string }
 
-const app = new Mixer<State>()
+const app = new Mixer<State, Env>()
 
 app
   .mix((ctx) => {
@@ -162,8 +198,8 @@ app
 
 ### エラー処理
 
-`HttpError` を投げるとそのステータスで `{ "error": message }` を返す（status は 400〜599）。
-それ以外の例外は `500` になり、詳細はクライアントに見せずに `console.error` に出す。
+`HttpError` を投げると、そのステータスと `{ "error": message }` で応答する（ステータスは 400〜599）。
+それ以外のエラーは `500` になり、詳細はクライアントに見せず `console.error` に出す。
 
 ```ts
 import { HttpError, Mixer } from '@imatomix/mixer'
@@ -173,28 +209,84 @@ app.mix((ctx) => {
 })
 ```
 
-`onError` でエラーレスポンスを差し替えられる。`onError` が応答しなかった場合は既定のレスポンスになる。
+エラーの応答は新しい下書きから作る。引き継ぐのは `Access-Control-*`・`Vary`・`Set-Cookie` だけなので、通常の応答のための `Location` や `Cache-Control` がエラーの応答に紛れ込まない。
+
+エラーの応答は `onError` で差し替えられる。`ctx.status` にエラーのステータスが入った状態で呼ばれ、戻り値がレスポンスになる。`undefined` を返すか例外を投げると、デフォルトの応答になる。
 
 ```ts
 const app = new Mixer({
-  onError: (error, ctx) => ctx.send(500, { message: 'ごめんなさい' }),
+  onError: (error, ctx) => ({ message: 'Sorry', status: ctx.status }),
 })
 ```
 
-### サーバ
+## アプリを動かす
+
+### Node.js
+
+`@imatomix/mixer/node` の `serve` で、Node の `http` モジュールの上で動かす。
 
 ```ts
-const server = await app.listen(3000) // http.Server を返す
-app.address // => { port: 3000, ... }
-await app.close()
+import { serve } from '@imatomix/mixer/node'
+
+const server = await serve(app, { port: 3000, hostname: '127.0.0.1' })
+server.port // 使っているポート（port: 0 なら空いているポート）
+await server.close()
 ```
 
-`app.handler` は `(req, res) => Promise<void>` なので、自前の `http` / `https` サーバにも渡せる。
+- リクエストの URL は `Host` ヘッダから作る。`Host` がない、複数ある、単純なホスト名とポート以外のものは `400` になる
+- **ホスト名は信頼できない。** クライアントが送ってくる値なので、メールやリダイレクトに使う絶対 URL を `ctx.url.host` から作らず、設定したオリジンを使う
+- コンポーネントがリクエストボディを読まなかったとき（`413` のあとなど）は、残りを読まずに接続を閉じる
+- クライアントが切断すると `ctx.request.signal` が中断され、ストリーミング中の本文も止まる
+
+### Bun
 
 ```ts
-import { createServer } from 'node:https'
+Bun.serve({ port: 3000, fetch: app.fetch })
+```
 
-createServer({ key, cert }, app.handler).listen(443)
+### フレームワークの中で使う
+
+`app.fetch` は `Request` を受け取って `Response` を返すので、フレームワークで作ったアプリの一部を受け持てる。置いた場所のパスを `basePath` に設定する。
+渡すのは `Request` だけにする。フレームワークはハンドラにほかの引数も渡すので、そのまま渡すと `ctx.env` に入ってしまう。
+
+**Next.js**（App Router）、`app/api/[[...path]]/route.ts`:
+
+```ts
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+const handler = (request: Request) => app.fetch(request)
+
+export { handler as GET, handler as POST, handler as PUT, handler as PATCH, handler as DELETE }
+```
+
+**Nuxt**（Nuxt 4、h3 v1）、`server/api/[...path].ts`:
+
+```ts
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export default defineEventHandler((event) => app.fetch(toWebRequest(event)))
+```
+
+h3 v2 では、すでに `Request` である `event.req` を渡す。
+
+**SvelteKit**、`src/routes/api/[...path]/+server.ts`:
+
+```ts
+import type { RequestHandler } from './$types'
+
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export const fallback: RequestHandler = ({ request }) => app.fetch(request)
+```
+
+**React Router**（v7、フレームワークモード）、`app/routes/api.$.ts` などのリソースルート:
+
+```ts
+import type { Route } from './+types/api.$'
+
+const app = new Mixer({ basePath: '/api' }).mix(/* ... */)
+
+export const loader = ({ request }: Route.LoaderArgs) => app.fetch(request)
+export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 ```
 
 # Examples
@@ -202,46 +294,56 @@ createServer({ key, cert }, app.handler).listen(443)
 ### async/await
 
 ```ts
-import { setTimeout as sleep } from 'node:timers/promises'
-import { Mixer } from '@imatomix/mixer'
-
 const app = new Mixer().mix(async () => {
-  await sleep(3000)
+  await new Promise((resolve) => setTimeout(resolve, 3000))
   return 'Good Morning Mixer'
 })
-
-await app.listen(3000)
 ```
 
-### Nuxt.js などの (req, res) ハンドラ
-
-mixer は `req` / `res` を書き換えないので、そのまま渡せる。
+### ストリーミング
 
 ```ts
-app.mix((ctx) => nuxt.render(ctx.req, ctx.res))
+app.mix(() => {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    async start(controller) {
+      for (const word of ['mix', 'and', 'match']) {
+        controller.enqueue(encoder.encode(`${word}\n`))
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      controller.close()
+    },
+  })
+})
 ```
 
-## v0.0.x からの移行
+## v0.1 からの移行
 
-| v0.0.x | v0.1 |
+| v0.1 | v0.2 |
 | --- | --- |
-| `require('mixer')` | `import { Mixer } from '@imatomix/mixer'` |
-| `new mixer(fn)` | `new Mixer().mix(fn)` |
-| `(req, res) => {}` | `(ctx) => {}`（`ctx.req`, `ctx.res`） |
-| `req.body` | `await ctx.body()` |
-| `res.send(code, obj)` | `ctx.send(code, obj)` または `ctx.status = code; return obj` |
-| `delete res.send`（Nuxt.js 用） | 不要 |
+| `await app.listen(3000)` | `@imatomix/mixer/node` の `await serve(app, { port: 3000 })` |
+| `app.close()`、`app.address` | `server.close()`、`server.port` |
+| `app.handler`（`(req, res)`） | `app.fetch`（`(request) => Response`） |
+| `ctx.req` | `ctx.request`（Web 標準の `Request`） |
+| `ctx.req.headers.origin` | `ctx.request.headers.get('origin')` |
+| `ctx.res.setHeader(name, value)` | `ctx.headers.set(name, value)` |
+| `ctx.send(status, body)` | `ctx.status = status; return body` または `return new Response(body, { status })` |
+| `ctx.res` に直接書く | `ReadableStream` か `Response` を返す |
+| `await ctx.buffer()`（`Buffer`） | `await ctx.bytes()`（`Uint8Array`） |
+| Node の `Readable` を返す | `ReadableStream` を返す（`Readable.toWeb(stream)`） |
+| `onError: (error, ctx) => ctx.send(...)` | `onError: (error, ctx) => value` |
+| `ctx.url.pathname` でルーティング | `ctx.path` でルーティング（`basePath` に対応） |
 
-## モジュール
+## Modules
 
-必要なものだけ選んで導入できる。
+必要なものだけ選んで使う。
 
-- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) : 型安全なルーター
-- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) : CORS
-- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) : 静的ファイルの配信
-- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) : サーバ側セッション
-- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) : アクセスログ
+- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router): 型安全なルーター
+- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors): CORS
+- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static): 静的ファイル配信
+- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session): サーバサイドセッション
+- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger): アクセスログ
 
-## 開発
+## Development
 
-[リポジトリのルート](https://github.com/imatomix/mixer/tree/main) で `pnpm check` を実行する。詳しくは [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md)（英語）を参照。
+[リポジトリのルート](https://github.com/imatomix/mixer/tree/main)で `pnpm check` を実行する。詳しくは [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md) を参照。
