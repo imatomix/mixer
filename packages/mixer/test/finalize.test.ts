@@ -128,6 +128,29 @@ describe('returning a Response', () => {
     expect(await res.text()).toBe('direct')
   })
 
+  it.each([
+    [
+      'joins Vary from both',
+      'Origin',
+      'Accept-Encoding',
+      'Accept-Encoding, Origin',
+    ],
+    [
+      'does not repeat a Vary field',
+      'origin, Cookie',
+      'Origin',
+      'Origin, Cookie',
+    ],
+    ['keeps Vary: * from the Response', 'Origin', '*', '*'],
+    ['keeps Vary: * from the draft', '*', 'Accept-Encoding', '*'],
+  ])('%s', async (_label, draftVary, responseVary, expected) => {
+    const app = new Mixer().mix((ctx) => {
+      ctx.headers.set('Vary', draftVary)
+      return new Response('ok', { headers: { Vary: responseVary } })
+    })
+    expect((await call(app)).headers.get('vary')).toBe(expected)
+  })
+
   it('merges draft headers into a Response whose headers are immutable', async () => {
     const app = new Mixer().mix((ctx) => {
       ctx.headers.set('Access-Control-Allow-Origin', '*')
