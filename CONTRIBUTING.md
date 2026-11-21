@@ -14,9 +14,10 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 Requirements:
 
 - Node.js **26** for development (packages support Node.js `>=24`). The version is pinned in [`.node-version`](.node-version).
-- [pnpm](https://pnpm.io/), enabled through Corepack:
+- [pnpm](https://pnpm.io/), in the version pinned by `packageManager` in [`package.json`](package.json). The easiest way to get it is Corepack. Corepack is no longer bundled with Node.js 25 and later, so install it from npm first:
 
 ```sh
+npm install --global corepack@latest
 corepack enable
 pnpm install
 ```
