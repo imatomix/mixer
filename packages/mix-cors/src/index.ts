@@ -1,4 +1,3 @@
-import type { ServerResponse } from 'node:http'
 import type { Component, Context } from '@imatomix/mixer'
 
 export type OriginMatcher =
@@ -46,46 +45,47 @@ export function cors(options: CorsOptions = {}): Component {
   }
 
   return async (ctx) => {
-    const { res } = ctx
+    const { headers } = ctx
     // When the response depends on the Origin, keep caches from reusing it for another Origin.
     // This also prevents a response without an Origin (and without CORS headers) from being cached and served to an allowed Origin,
     // so add it whether or not the request has an Origin header
-    if (!allowsAnyOrigin) appendVary(res, 'Origin')
+    if (!allowsAnyOrigin) appendVary(headers, 'Origin')
 
-    const requestOrigin = ctx.req.headers.origin
-    if (requestOrigin === undefined) return undefined
+    const requestOrigin = ctx.request.headers.get('origin')
+    if (requestOrigin === null) return undefined
 
     const isPreflight =
       ctx.method === 'OPTIONS' &&
-      ctx.req.headers['access-control-request-method'] !== undefined
+      ctx.request.headers.has('access-control-request-method')
 
     const allowed =
       allowsAnyOrigin || (await matchOrigin(origin, requestOrigin, ctx))
 
     if (allowed) {
-      res.setHeader(
+      headers.set(
         'Access-Control-Allow-Origin',
         allowsAnyOrigin ? '*' : requestOrigin,
       )
-      if (credentials) res.setHeader('Access-Control-Allow-Credentials', 'true')
+      if (credentials) headers.set('Access-Control-Allow-Credentials', 'true')
     }
 
     if (!isPreflight) {
       if (allowed && exposeHeaders) {
-        res.setHeader('Access-Control-Expose-Headers', exposeHeaders)
+        headers.set('Access-Control-Expose-Headers', exposeHeaders)
       }
       return undefined
     }
 
     if (allowed) {
-      res.setHeader('Access-Control-Allow-Methods', methods)
-      const headers =
-        allowHeaders ?? ctx.req.headers['access-control-request-headers']
+      headers.set('Access-Control-Allow-Methods', methods)
+      const requested =
+        allowHeaders ??
+        ctx.request.headers.get('access-control-request-headers')
       if (allowHeaders === undefined) {
-        appendVary(res, 'Access-Control-Request-Headers')
+        appendVary(headers, 'Access-Control-Request-Headers')
       }
-      if (headers) res.setHeader('Access-Control-Allow-Headers', headers)
-      res.setHeader('Access-Control-Max-Age', String(maxAge))
+      if (requested) headers.set('Access-Control-Allow-Headers', requested)
+      headers.set('Access-Control-Max-Age', String(maxAge))
     }
     // Complete preflights from disallowed origins with 204 as well, so they never reach the application's handlers
     return null
@@ -123,9 +123,8 @@ function toFullMatch(matcher: OriginMatcher): OriginMatcher {
   return matcher
 }
 
-function appendVary(res: ServerResponse, field: string): void {
-  const current = res.getHeader('Vary')
-  const fields = String(current ?? '')
+function appendVary(headers: Headers, field: string): void {
+  const fields = (headers.get('Vary') ?? '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
@@ -136,5 +135,5 @@ function appendVary(res: ServerResponse, field: string): void {
   ) {
     return
   }
-  res.setHeader('Vary', [...fields, field].join(', '))
+  headers.set('Vary', [...fields, field].join(', '))
 }

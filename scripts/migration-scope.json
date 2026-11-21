@@ -1,1 +1,1 @@
-["@imatomix/mixer", "@imatomix/mix-router"]
+["@imatomix/mixer", "@imatomix/mix-router", "@imatomix/mix-cors"]

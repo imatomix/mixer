@@ -198,11 +198,12 @@ ${
   dependencies['@imatomix/mix-cors']
     ? `
 import { Mixer as CorsMixer } from '@imatomix/mixer'
+import { serve as serveCors } from '@imatomix/mixer/node'
 import { cors } from '@imatomix/mix-cors'
 
 const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
-await corsApp.listen(0, '127.0.0.1')
-const corsBase = \`http://127.0.0.1:\${corsApp.address?.port}\`
+const corsServer = await serveCors(corsApp, { hostname: '127.0.0.1' })
+const corsBase = \`http://127.0.0.1:\${corsServer.port}\`
 const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })
 await simple.text()
 const preflight = await fetch(corsBase, {
@@ -210,7 +211,7 @@ const preflight = await fetch(corsBase, {
   headers: { origin: 'https://a.example', 'access-control-request-method': 'PUT' },
 })
 await preflight.text()
-await corsApp.close()
+await corsServer.close()
 if (simple.headers.get('access-control-allow-origin') !== '*' || preflight.status !== 204) {
   throw new Error('mixer + mix-cors smoke test failed')
 }
