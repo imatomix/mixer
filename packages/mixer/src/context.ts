@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { parseBody, readBuffer } from './body.js'
+import { Cookies } from './cookies.js'
 import { sendResponse } from './send.js'
 
 export type State = Record<string, unknown>
@@ -17,6 +18,7 @@ export class Context<S extends State = State> {
   #bodyLimit: number
   #buffer: Promise<Buffer> | undefined
   #beforeSendHooks: BeforeSendHook[] = []
+  #cookies: Cookies | undefined
 
   constructor(req: IncomingMessage, res: ServerResponse, bodyLimit: number) {
     this.req = req
@@ -24,6 +26,12 @@ export class Context<S extends State = State> {
     this.url = parseRequestUrl(req.url ?? '/')
     this.method = req.method ?? 'GET'
     this.#bodyLimit = bodyLimit
+  }
+
+  /** リクエストの Cookie の読み取りと、Set-Cookie の設定 */
+  get cookies(): Cookies {
+    this.#cookies ??= new Cookies(this.req, this.res)
+    return this.#cookies
   }
 
   get sent(): boolean {

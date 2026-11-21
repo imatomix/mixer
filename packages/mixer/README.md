@@ -54,6 +54,7 @@ app.mix(fn, fn, fn)
 | `await ctx.text()` / `await ctx.buffer()` | ボディを文字列 / Buffer で取得 |
 | `ctx.send(status, body?)` | その場でレスポンスを返す |
 | `ctx.onBeforeSend(fn)` | 応答の直前に実行する処理を登録する（後述） |
+| `ctx.cookies` | Cookie の読み取りと Set-Cookie の設定（後述） |
 
 ### レスポンス
 
@@ -96,6 +97,28 @@ app
 - 戻り値による応答、`ctx.send()`、エラー応答のいずれでも実行される
 - フックが例外を投げると 500 になる（フックは再実行されない）
 - `ctx.res` に直接書き込んで応答した場合は実行されない
+
+### ctx.cookies
+
+```ts
+ctx.cookies.get('theme') // 同じ名前が複数あれば最初の値
+ctx.cookies.getAll('theme')
+ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
+ctx.cookies.delete('theme') // 設定時と同じ path / domain を指定すること
+```
+
+| オプション | 既定値 | 説明 |
+| --- | --- | --- |
+| `httpOnly` | `true` | JavaScript から読ませない |
+| `secure` | `true` | HTTPS でのみ送る。http の localhost で開発するときは `false` を指定する |
+| `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
+| `path` | `'/'` | |
+| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | なし | |
+
+- 値は URL エンコードして送り、読み取り時にデコードする
+- 同じ名前・path・domain を 1 つの応答で設定し直すと、後の値で置き換わる。他の方法で付けた Set-Cookie は消さない
+- ヘッダを差し込めてしまう名前・path・domain や、ブラウザが拒否する組み合わせ（`SameSite=None` で Secure なし、`__Host-` で Domain ありなど）は `TypeError` になる
+- 応答を送った後の `set` / `delete` は例外になる
 
 ### ctx.res を直接使う
 
