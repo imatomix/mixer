@@ -9,6 +9,11 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: chore(deps)
+    ignore:
+      # Keep the Node.js types on the lowest supported major version (engines.node >=24),
+      # so that APIs that exist only in newer Node.js versions fail the type check.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
