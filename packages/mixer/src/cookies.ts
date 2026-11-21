@@ -31,7 +31,9 @@ const EPOCH = new Date(0)
 
 export class Cookies {
   readonly #requestHeaders: Headers
-  readonly #draft: Headers
+  // A getter, not the Headers object: error responses replace the draft, and a handle captured
+  // earlier (for example, inside an onBeforeSend hook) must keep writing to the current one
+  readonly #draftHeaders: () => Headers
   readonly #isLocked: () => boolean
   #parsed: Map<string, string[]> | undefined
   /** Remembers the cookies set here so that setting the same name, Path, and Domain again replaces them */
@@ -40,11 +42,11 @@ export class Cookies {
 
   constructor(
     requestHeaders: Headers,
-    draft: Headers,
+    draftHeaders: () => Headers,
     isLocked: () => boolean,
   ) {
     this.#requestHeaders = requestHeaders
-    this.#draft = draft
+    this.#draftHeaders = draftHeaders
     this.#isLocked = isLocked
   }
 
@@ -84,14 +86,15 @@ export class Cookies {
       `${name}\n${options.path}\n${options.domain ?? ''}`,
       header,
     )
-    const others = this.#draft
+    const draft = this.#draftHeaders()
+    const others = draft
       .getSetCookie()
       .filter((existing) => !this.#written.has(existing))
     const ours = [...this.#pending.values()]
     this.#written = new Set(ours)
-    this.#draft.delete('Set-Cookie')
+    draft.delete('Set-Cookie')
     for (const cookie of [...others, ...ours]) {
-      this.#draft.append('Set-Cookie', cookie)
+      draft.append('Set-Cookie', cookie)
     }
   }
 }

@@ -210,6 +210,23 @@ describe('onBeforeSend', () => {
     expect(res.headers.getSetCookie()[0]).toMatch(/^saved=1;/)
   })
 
+  it('keeps a captured ctx.cookies handle writing to the error response', async () => {
+    const app = new Mixer().mix(
+      (ctx) => {
+        const cookies = ctx.cookies
+        ctx.onBeforeSend(() => {
+          cookies.delete('token')
+        })
+      },
+      () => {
+        throw new HttpError(401)
+      },
+    )
+    const res = await call(app)
+    expect(res.status).toBe(401)
+    expect(res.headers.getSetCookie()[0]).toMatch(/^token=; Max-Age=0;/)
+  })
+
   it('returns 500 when a hook fails, does not run hooks again, cancels the stream, and keeps earlier cookies', async () => {
     quiet()
     let calls = 0
