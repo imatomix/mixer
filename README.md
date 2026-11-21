@@ -9,6 +9,7 @@ Minimal & asynchronous web module と、その周辺モジュールの monorepo�
 | [@imatomix/mixer](packages/mixer) | 本体 |
 | [@imatomix/mix-router](packages/mix-router) | 型安全なルーター |
 | [@imatomix/mix-cors](packages/mix-cors) | CORS |
+| [@imatomix/mix-static](packages/mix-static) | 静的ファイルの配信 |
 
 ## Development
 
