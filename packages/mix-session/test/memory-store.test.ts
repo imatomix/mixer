@@ -6,7 +6,7 @@ afterEach(() => {
 })
 
 describe('MemoryStore', () => {
-  it('保存したデータを返し、返り値を書き換えてもストアには影響しない', async () => {
+  it('returns stored data, and changing the returned value does not affect the store', async () => {
     const store = new MemoryStore()
     await store.set('a', { user: 'imatomix', tags: ['x'] }, 60)
     const loaded = (await store.get('a')) as { tags: string[] }
@@ -15,7 +15,7 @@ describe('MemoryStore', () => {
     expect(await store.get('a')).toEqual({ user: 'imatomix', tags: ['x'] })
   })
 
-  it('有効期限を過ぎたものは返さない', async () => {
+  it('does not return expired entries', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     const store = new MemoryStore()
@@ -27,7 +27,7 @@ describe('MemoryStore', () => {
     expect(store.size).toBe(0)
   })
 
-  it('update は存在するものだけを更新し、なければ false を返す', async () => {
+  it('update changes only existing entries and returns false otherwise', async () => {
     const store = new MemoryStore()
     expect(await store.update('missing', { v: 1 }, 60)).toBe(false)
     expect(await store.get('missing')).toBeUndefined()
@@ -36,7 +36,7 @@ describe('MemoryStore', () => {
     expect(await store.get('a')).toEqual({ v: 2 })
   })
 
-  it('期限切れのものは update で復活させない', async () => {
+  it('does not bring expired entries back through update', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
     const store = new MemoryStore()
@@ -45,7 +45,7 @@ describe('MemoryStore', () => {
     expect(await store.update('a', { v: 2 }, 60)).toBe(false)
   })
 
-  it('上限を超えたら最も長く使われていないものから捨てる', async () => {
+  it('drops the least recently used entries when over the limit', async () => {
     const store = new MemoryStore({ maxEntries: 2 })
     await store.set('a', { v: 1 }, 60)
     await store.set('b', { v: 2 }, 60)
@@ -56,14 +56,14 @@ describe('MemoryStore', () => {
     expect(await store.get('c')).toEqual({ v: 3 })
   })
 
-  it('delete で消える', async () => {
+  it('removes entries with delete', async () => {
     const store = new MemoryStore()
     await store.set('a', { v: 1 }, 60)
     await store.delete('a')
     expect(await store.get('a')).toBeUndefined()
   })
 
-  it('maxEntries に不正な値は指定できない', () => {
+  it('rejects an invalid maxEntries', () => {
     expect(() => new MemoryStore({ maxEntries: 0 })).toThrow()
     expect(() => new MemoryStore({ maxEntries: 1.5 })).toThrow()
   })

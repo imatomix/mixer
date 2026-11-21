@@ -4,7 +4,7 @@ import { serve } from './helpers.js'
 const setCookies = (res: Response) => res.headers.getSetCookie()
 
 describe('ctx.cookies.get', () => {
-  it('名前が完全一致する Cookie の値を返す', async () => {
+  it('returns the value of the cookie whose name matches exactly', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ({
         sid: ctx.cookies.get('sid') ?? null,
@@ -18,7 +18,7 @@ describe('ctx.cookies.get', () => {
     expect(await res.json()).toEqual({ sid: 'abc', other: 'x', missing: null })
   })
 
-  it('値を URL デコードし、壊れていれば生の値を返す。引用符は外す', async () => {
+  it('URL-decodes values, returns the raw value when decoding fails, and strips quotes', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => [
         ctx.cookies.get('a'),
@@ -34,7 +34,7 @@ describe('ctx.cookies.get', () => {
     expect(await res.json()).toEqual(['りんご; x', '%E3%81', 'quoted'])
   })
 
-  it('同じ名前が複数あれば get は最初の値、getAll はすべてを返す', async () => {
+  it('get returns the first value and getAll returns all values for a repeated name', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ({
         first: ctx.cookies.get('sid'),
@@ -45,7 +45,7 @@ describe('ctx.cookies.get', () => {
     expect(await res.json()).toEqual({ first: '1', all: ['1', '2'] })
   })
 
-  it('__proto__ という名前の Cookie も安全に扱う', async () => {
+  it('handles a cookie named __proto__ safely', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ({
         value: ctx.cookies.get('__proto__'),
@@ -58,7 +58,7 @@ describe('ctx.cookies.get', () => {
 })
 
 describe('ctx.cookies.set', () => {
-  it('安全な既定値で Set-Cookie を付ける', async () => {
+  it('sets Set-Cookie with secure defaults', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.cookies.set('theme', 'dark')
@@ -70,7 +70,7 @@ describe('ctx.cookies.set', () => {
     ])
   })
 
-  it('属性を指定でき、値はエンコードする', async () => {
+  it('accepts attributes and encodes the value', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.cookies.set('pref', 'a b;c', {
@@ -91,7 +91,7 @@ describe('ctx.cookies.set', () => {
     ])
   })
 
-  it('既存の Set-Cookie を消さずに追加する', async () => {
+  it('adds to existing Set-Cookie headers without removing them', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.res.setHeader('Set-Cookie', 'legacy=1')
@@ -104,7 +104,7 @@ describe('ctx.cookies.set', () => {
     expect(cookies[0]).toBe('legacy=1')
   })
 
-  it('同じ名前・Path・Domain を設定し直すと後の値で置き換える', async () => {
+  it('replaces a cookie set again with the same name, Path, and Domain', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.cookies.set('a', '1')
@@ -119,7 +119,7 @@ describe('ctx.cookies.set', () => {
     expect(cookies[1]).toMatch(/^a=3; Path=\/other;/)
   })
 
-  it('エラー応答にも Set-Cookie が残る', async () => {
+  it('keeps Set-Cookie on error responses', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.cookies.set('a', '1')
@@ -133,7 +133,7 @@ describe('ctx.cookies.set', () => {
 })
 
 describe('ctx.cookies.delete', () => {
-  it('同じ Path・Domain で、期限切れの Cookie を送る', async () => {
+  it('sends an expired cookie with the same Path and Domain', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.cookies.delete('sid', { path: '/app', domain: 'example.com' })
@@ -146,50 +146,56 @@ describe('ctx.cookies.delete', () => {
   })
 })
 
-describe('検証', () => {
+describe('validation', () => {
   const cases: [
     string,
     (cookies: import('../src/index.js').Context['cookies']) => void,
   ][] = [
-    ['名前に ; を含む', (c) => c.set('a;b', 'x')],
-    ['名前が空', (c) => c.set('', 'x')],
-    ['名前に改行を含む', (c) => c.set('a\r\nSet-Cookie: evil', 'x')],
-    ['path に ; を含む', (c) => c.set('a', 'x', { path: '/; Domain=evil' })],
-    ['path が / で始まらない', (c) => c.set('a', 'x', { path: 'app' })],
-    ['domain に ; を含む', (c) => c.set('a', 'x', { domain: 'a.com; Secure' })],
-    ['maxAge が小数', (c) => c.set('a', 'x', { maxAge: 1.5 })],
+    ['the name contains ;', (c) => c.set('a;b', 'x')],
+    ['the name is empty', (c) => c.set('', 'x')],
     [
-      'maxAge が無限大',
+      'the name contains a line break',
+      (c) => c.set('a\r\nSet-Cookie: evil', 'x'),
+    ],
+    ['path contains ;', (c) => c.set('a', 'x', { path: '/; Domain=evil' })],
+    ['path does not start with /', (c) => c.set('a', 'x', { path: 'app' })],
+    ['domain contains ;', (c) => c.set('a', 'x', { domain: 'a.com; Secure' })],
+    ['maxAge is not an integer', (c) => c.set('a', 'x', { maxAge: 1.5 })],
+    [
+      'maxAge is infinite',
       (c) => c.set('a', 'x', { maxAge: Number.POSITIVE_INFINITY }),
     ],
     [
-      'expires が不正な日付',
+      'expires is an invalid date',
       (c) => c.set('a', 'x', { expires: new Date('nope') }),
     ],
-    ['sameSite が不正', (c) => c.set('a', 'x', { sameSite: 'Loose' as 'Lax' })],
     [
-      'SameSite=None で Secure でない',
+      'sameSite is invalid',
+      (c) => c.set('a', 'x', { sameSite: 'Loose' as 'Lax' }),
+    ],
+    [
+      'SameSite=None without Secure',
       (c) => c.set('a', 'x', { sameSite: 'None', secure: false }),
     ],
     [
-      'Partitioned で Secure でない',
+      'Partitioned without Secure',
       (c) => c.set('a', 'x', { partitioned: true, secure: false }),
     ],
     [
-      '__Secure- で Secure でない',
+      '__Secure- without Secure',
       (c) => c.set('__Secure-a', 'x', { secure: false }),
     ],
     [
-      '__Host- で Domain を指定',
+      '__Host- with a Domain',
       (c) => c.set('__Host-a', 'x', { domain: 'example.com' }),
     ],
     [
-      '__Host- で Path が / 以外',
+      '__Host- with a Path other than /',
       (c) => c.set('__Host-a', 'x', { path: '/app' }),
     ],
   ]
 
-  it.each(cases)('%s 場合は例外を投げる', async (_label, act) => {
+  it.each(cases)('throws when %s', async (_label, act) => {
     let error: unknown
     const url = await serve((app) =>
       app.mix((ctx) => {
@@ -206,7 +212,7 @@ describe('検証', () => {
     expect(setCookies(res)).toEqual([])
   })
 
-  it('応答を送った後の set は例外を投げる', async () => {
+  it('throws on set after the response has been sent', async () => {
     let error: unknown
     const url = await serve((app) =>
       app.mix(async (ctx) => {

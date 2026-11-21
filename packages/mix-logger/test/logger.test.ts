@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { formatLogEntry, type LogEntry, logger } from '../src/index.js'
 import { serve } from './helpers.js'
 
-/** 応答が終わってから記録されるので、記録が届くのを待つ */
+/** Entries are recorded after the response finishes, so wait for them */
 function collect() {
   const entries: LogEntry[] = []
   let notify: () => void = () => {}
@@ -22,8 +22,8 @@ function collect() {
   }
 }
 
-describe('記録', () => {
-  it('メソッド・パス・ステータス・処理時間・Content-Length を記録する', async () => {
+describe('recording', () => {
+  it('records the method, path, status, duration, and Content-Length', async () => {
     const log = collect()
     const url = await serve(logger({ write: log.write }), () => 'hello')
     const recorded = log.next()
@@ -42,7 +42,7 @@ describe('記録', () => {
     expect(entry?.time).toBeInstanceOf(Date)
   })
 
-  it('クエリは記録しない', async () => {
+  it('does not record the query', async () => {
     const log = collect()
     const url = await serve(logger({ write: log.write }), () => 'ok')
     const recorded = log.next()
@@ -51,7 +51,7 @@ describe('記録', () => {
     expect(log.entries[0]?.path).toBe('/reset')
   })
 
-  it('エラー応答のステータスも記録する', async () => {
+  it('records the status of error responses', async () => {
     const log = collect()
     const url = await serve(logger({ write: log.write }), () => {
       throw new HttpError(403)
@@ -62,7 +62,7 @@ describe('記録', () => {
     expect(log.entries[0]?.status).toBe(403)
   })
 
-  it('並行するリクエストの処理時間を取り違えない', async () => {
+  it('does not mix up durations of concurrent requests', async () => {
     const log = collect()
     const url = await serve(logger({ write: log.write }), async (ctx) => {
       if (ctx.url.pathname === '/slow') {
@@ -82,7 +82,7 @@ describe('記録', () => {
     expect(byPath['/fast']).toBeLessThan(50)
   })
 
-  it('途中で切断された応答は aborted として 1 回だけ記録する', async () => {
+  it('records an interrupted response once, as aborted', async () => {
     const log = collect()
     const url = new URL(
       await serve(logger({ write: log.write }), () =>
@@ -111,8 +111,8 @@ describe('記録', () => {
   })
 })
 
-describe('出力', () => {
-  it('既定では 1 行のテキストを標準出力に書く', async () => {
+describe('output', () => {
+  it('writes one line of text to standard output by default', async () => {
     const written: string[] = []
     const spy = vi
       .spyOn(process.stdout, 'write')
@@ -133,7 +133,7 @@ describe('出力', () => {
     )
   })
 
-  it('write が例外を投げても応答とサーバに影響しない', async () => {
+  it('does not affect the response or the server when write throws', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const url = await serve(
@@ -153,7 +153,7 @@ describe('出力', () => {
     }
   })
 
-  it('write の非同期の失敗も捕まえる', async () => {
+  it('catches asynchronous failures of write', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const unhandled = vi.fn()
     process.on('unhandledRejection', unhandled)
@@ -183,7 +183,7 @@ describe('formatLogEntry', () => {
     aborted: false,
   }
 
-  it('制御文字をエスケープして、ログを偽装させない', () => {
+  it('escapes control characters so that log lines cannot be forged', () => {
     const line = formatLogEntry({
       ...base,
       method: 'GET\u001b[31m',
@@ -199,7 +199,7 @@ describe('formatLogEntry', () => {
     expect(hasControl).toBe(false)
   })
 
-  it('aborted と contentLength を表示する', () => {
+  it('shows aborted and contentLength', () => {
     expect(formatLogEntry({ ...base, contentLength: 10, aborted: true })).toBe(
       '2026-01-01T00:00:00.000Z GET / 200 1.2ms 10B aborted',
     )

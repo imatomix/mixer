@@ -18,7 +18,7 @@ const next = () => 'next component'
 beforeAll(() => {
   const base = mkdtempSync(join(tmpdir(), 'mix-static-'))
   root = join(base, 'public')
-  // 公開ディレクトリと名前の先頭が同じ兄弟ディレクトリ（startsWith だけの判定をすり抜ける）
+  // A sibling directory whose name starts like the public directory (slips past a startsWith-only check)
   const sibling = join(base, 'public-secret')
   mkdirSync(root)
   mkdirSync(sibling)
@@ -50,7 +50,7 @@ beforeAll(() => {
   )
 })
 
-/** fetch はパスを正規化してしまうので、攻撃用のパスはそのまま送る */
+/** fetch normalizes paths, so attack paths are sent as is */
 function raw(
   url: string,
   path: string,
@@ -82,8 +82,8 @@ function raw(
   })
 }
 
-describe('配信', () => {
-  it('ファイルを適切なヘッダ付きで返す', async () => {
+describe('serving', () => {
+  it('returns files with the right headers', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(`${url}/hello.txt`)
     expect(res.status).toBe(200)
@@ -98,7 +98,7 @@ describe('配信', () => {
     )
   })
 
-  it('拡張子から Content-Type を決め、不明なら octet-stream にする', async () => {
+  it('derives Content-Type from the extension and falls back to octet-stream', async () => {
     const url = await serve(serveStatic(root))
     expect((await fetch(`${url}/style.css`)).headers.get('content-type')).toBe(
       'text/css; charset=utf-8',
@@ -108,7 +108,7 @@ describe('配信', () => {
     ).toBe('application/octet-stream')
   })
 
-  it('日本語やスペースを含むファイル名を配信する', async () => {
+  it('serves file names with non-ASCII characters and spaces', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(
       `${url}/${encodeURIComponent('日本語 ファイル.txt')}`,
@@ -116,20 +116,20 @@ describe('配信', () => {
     expect(await res.text()).toBe('にほんご')
   })
 
-  it('ファイルがなければ次のコンポーネントへ進む', async () => {
+  it('moves on to the next component when the file does not exist', async () => {
     const url = await serve(serveStatic(root), next)
     expect(await (await fetch(`${url}/missing.txt`)).text()).toBe(
       'next component',
     )
   })
 
-  it('GET と HEAD 以外は次のコンポーネントへ進む', async () => {
+  it('moves on to the next component for methods other than GET and HEAD', async () => {
     const url = await serve(serveStatic(root), next)
     const res = await fetch(`${url}/hello.txt`, { method: 'POST' })
     expect(await res.text()).toBe('next component')
   })
 
-  it('HEAD にはヘッダだけを返す', async () => {
+  it('returns only headers for HEAD', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(`${url}/hello.txt`, { method: 'HEAD' })
     expect(res.status).toBe(200)
@@ -137,7 +137,7 @@ describe('配信', () => {
     expect(await res.text()).toBe('')
   })
 
-  it('maxAge で Cache-Control を設定する', async () => {
+  it('sets Cache-Control from maxAge', async () => {
     const url = await serve(serveStatic(root, { maxAge: 3600 }))
     expect((await fetch(`${url}/hello.txt`)).headers.get('cache-control')).toBe(
       'public, max-age=3600',
@@ -145,7 +145,7 @@ describe('配信', () => {
   })
 
   it.each(['//hello.txt', '/sub//index.html'])(
-    '途中に空のセグメントがあるパス（%s）は配信しない',
+    'does not serve a path with an empty segment in the middle (%s)',
     async (path) => {
       const url = await serve(serveStatic(root), next)
       expect((await raw(url, path)).body).toBe('next component')
@@ -153,41 +153,41 @@ describe('配信', () => {
   )
 })
 
-describe('ディレクトリ', () => {
-  it('index.html を返す', async () => {
+describe('directories', () => {
+  it('returns index.html', async () => {
     const url = await serve(serveStatic(root))
     expect(await (await fetch(`${url}/`)).text()).toBe('<h1>root</h1>')
     expect(await (await fetch(`${url}/sub/`)).text()).toBe('<h1>sub</h1>')
   })
 
-  it('末尾の / がなければ / 付きへ 301 でリダイレクトし、クエリを保つ', async () => {
+  it('redirects with 301 to the path with a trailing slash and keeps the query', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(`${url}/sub?x=1`, { redirect: 'manual' })
     expect(res.status).toBe(301)
     expect(res.headers.get('location')).toBe('/sub/?x=1')
   })
 
-  it('// で始まるパスでもプロトコル相対 URL にリダイレクトしない', async () => {
+  it('does not redirect to a protocol-relative URL for paths starting with //', async () => {
     const url = await serve(serveStatic(root), next)
     const res = await raw(url, '//evil.example')
     expect(res.headers.location).toBeUndefined()
     expect(res.body).toBe('next component')
   })
 
-  it('index がないディレクトリは次のコンポーネントへ進む', async () => {
+  it('moves on to the next component for a directory without an index', async () => {
     const url = await serve(serveStatic(root), next)
     expect(await (await fetch(`${url}/noindex/`)).text()).toBe('next component')
     expect(await (await fetch(`${url}/noindex`)).text()).toBe('next component')
   })
 
-  it('index: false ならディレクトリを配信しない', async () => {
+  it('does not serve directories with index: false', async () => {
     const url = await serve(serveStatic(root, { index: false }), next)
     expect(await (await fetch(`${url}/`)).text()).toBe('next component')
   })
 })
 
 describe('prefix', () => {
-  it('prefix 以下のパスだけを配信する', async () => {
+  it('serves only paths under prefix', async () => {
     const url = await serve(serveStatic(root, { prefix: '/assets' }), next)
     expect(await (await fetch(`${url}/assets/hello.txt`)).text()).toBe('hello')
     expect(await (await fetch(`${url}/hello.txt`)).text()).toBe(
@@ -195,22 +195,22 @@ describe('prefix', () => {
     )
   })
 
-  it('セグメント単位で比べる（/assets は /assetsx に一致しない）', async () => {
+  it('compares segment by segment (/assets does not match /assetsx)', async () => {
     const url = await serve(serveStatic(root, { prefix: '/assets' }), next)
     expect(await (await fetch(`${url}/assetsx/hello.txt`)).text()).toBe(
       'next component',
     )
   })
 
-  it('prefix そのものへのアクセスは / 付きへリダイレクトする', async () => {
+  it('redirects the prefix itself to the path with a trailing slash', async () => {
     const url = await serve(serveStatic(root, { prefix: '/assets' }))
     const res = await fetch(`${url}/assets`, { redirect: 'manual' })
     expect(res.headers.get('location')).toBe('/assets/')
   })
 })
 
-describe('条件付きリクエスト', () => {
-  it('If-None-Match が一致すれば 304 を返す', async () => {
+describe('conditional requests', () => {
+  it('returns 304 when If-None-Match matches', async () => {
     const url = await serve(serveStatic(root))
     const etag = (await fetch(`${url}/hello.txt`)).headers.get('etag') ?? ''
     const res = await fetch(`${url}/hello.txt`, {
@@ -221,7 +221,7 @@ describe('条件付きリクエスト', () => {
     expect(res.headers.get('etag')).toBe(etag)
   })
 
-  it('If-Modified-Since が更新日時以降なら 304 を返す', async () => {
+  it('returns 304 when If-Modified-Since is at or after the modification time', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(`${url}/hello.txt`, {
       headers: { 'if-modified-since': 'Thu, 01 Jan 2026 00:00:00 GMT' },
@@ -229,7 +229,7 @@ describe('条件付きリクエスト', () => {
     expect(res.status).toBe(304)
   })
 
-  it('If-None-Match があれば If-Modified-Since より優先する', async () => {
+  it('gives If-None-Match precedence over If-Modified-Since', async () => {
     const url = await serve(serveStatic(root))
     const res = await fetch(`${url}/hello.txt`, {
       headers: {
@@ -241,7 +241,7 @@ describe('条件付きリクエスト', () => {
   })
 })
 
-describe('安全性', () => {
+describe('safety', () => {
   it.each([
     '/../outside.txt',
     '/../public-secret/secret.txt',
@@ -249,24 +249,24 @@ describe('安全性', () => {
     '/..%2Foutside.txt',
     '/..%5Coutside.txt',
     '/sub/..%2F..%2Foutside.txt',
-  ])('公開ディレクトリの外には出られない: %s', async (path) => {
+  ])('cannot escape the public directory: %s', async (path) => {
     const url = await serve(serveStatic(root), next)
     const res = await raw(url, path)
     expect(res.body).not.toContain('OUTSIDE')
     expect(res.body).not.toContain('SECRET')
   })
 
-  it('NUL 文字を含むパスは配信しない', async () => {
+  it('does not serve paths that contain NUL', async () => {
     const url = await serve(serveStatic(root), next)
     expect((await raw(url, '/hello.txt%00.png')).body).toBe('next component')
   })
 
-  it('不正なエンコーディングには 400 を返す', async () => {
+  it('returns 400 for malformed percent-encoding', async () => {
     const url = await serve(serveStatic(root))
     expect((await raw(url, '/%E3%81')).status).toBe(400)
   })
 
-  it('既定ではドットファイルとドットディレクトリを配信しない', async () => {
+  it('does not serve dotfiles and dot directories by default', async () => {
     const url = await serve(serveStatic(root), next)
     expect(await (await fetch(`${url}/.env`)).text()).toBe('next component')
     expect(await (await fetch(`${url}/.well-known/x.txt`)).text()).toBe(
@@ -274,21 +274,21 @@ describe('安全性', () => {
     )
   })
 
-  it('dotfiles: true ならドットファイルも配信する', async () => {
+  it('serves dotfiles with dotfiles: true', async () => {
     const url = await serve(serveStatic(root, { dotfiles: true }))
     expect(await (await fetch(`${url}/.well-known/x.txt`)).text()).toBe(
       'dot dir',
     )
   })
 
-  it('公開ディレクトリの外を指すシンボリックリンクは配信しない', async () => {
+  it('does not serve symbolic links that point outside the public directory', async () => {
     const url = await serve(serveStatic(root), next)
     expect(await (await fetch(`${url}/link-out.txt`)).text()).toBe(
       'next component',
     )
   })
 
-  it('ドットファイルを指すシンボリックリンクは配信しない', async () => {
+  it('does not serve symbolic links that point to dotfiles', async () => {
     const url = await serve(serveStatic(root), next)
     expect(await (await fetch(`${url}/alias-to-dotfile.txt`)).text()).toBe(
       'next component',
@@ -298,27 +298,27 @@ describe('安全性', () => {
     )
   })
 
-  it('公開ディレクトリの中を指すシンボリックリンクは配信する', async () => {
+  it('serves symbolic links that point inside the public directory', async () => {
     const url = await serve(serveStatic(root))
     expect(await (await fetch(`${url}/link-in.txt`)).text()).toBe('hello')
   })
 })
 
-describe('設定の検証', () => {
-  it('存在しないディレクトリを root にすると定義時にエラーになる', () => {
+describe('configuration validation', () => {
+  it('throws at definition when root does not exist or is not a directory', () => {
     expect(() => serveStatic(join(root, 'nope'))).toThrow()
     expect(() => serveStatic(join(root, 'hello.txt'))).toThrow()
   })
 
   it.each(['', '.', '..', 'a/index.html', '..\\x', 'a\0b', '.index.html'])(
-    'index に不正な値（%j）は指定できない',
+    'rejects an invalid index (%j)',
     (index) => {
       expect(() => serveStatic(root, { index })).toThrow()
     },
   )
 
   it.each([-1, 1.5, Number.POSITIVE_INFINITY])(
-    'maxAge に不正な値（%s）は指定できない',
+    'rejects an invalid maxAge (%s)',
     (maxAge) => {
       expect(() => serveStatic(root, { maxAge })).toThrow()
     },

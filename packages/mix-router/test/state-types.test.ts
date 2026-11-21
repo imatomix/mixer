@@ -5,7 +5,7 @@ import { serve } from './helpers.js'
 
 type AppState = { user?: string }
 
-it('createRouter で State の型を指定したルートを作れる', async () => {
+it('createRouter creates routes with a typed State', async () => {
   const { get, namespace } = createRouter<AppState>()
   const app = new Mixer<AppState>()
   app.mix(

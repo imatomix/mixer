@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { HttpError, Mixer } from '../src/index.js'
 import { serve } from './helpers.js'
 
-describe('レスポンス', () => {
-  it('戻り値の文字列を text/plain で返す', async () => {
+describe('responses', () => {
+  it('returns a returned string as text/plain', async () => {
     const url = await serve((app) => app.mix(() => 'Hello Mixer'))
     const res = await fetch(url)
     expect(res.status).toBe(200)
@@ -13,7 +13,7 @@ describe('レスポンス', () => {
     expect(await res.text()).toBe('Hello Mixer')
   })
 
-  it('戻り値のオブジェクトを JSON で返す', async () => {
+  it('returns a returned object as JSON', async () => {
     const url = await serve((app) => app.mix(() => ({ ok: true })))
     const res = await fetch(url)
     expect(res.headers.get('content-type')).toBe(
@@ -22,7 +22,7 @@ describe('レスポンス', () => {
     expect(await res.json()).toEqual({ ok: true })
   })
 
-  it('0 や false や空文字も値として返す', async () => {
+  it('returns 0, false, and an empty string as values', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         const value = ctx.url.searchParams.get('v')
@@ -38,7 +38,7 @@ describe('レスポンス', () => {
     expect(await empty.text()).toBe('')
   })
 
-  it('ctx.status で戻り値のステータスを変えられる', async () => {
+  it('uses ctx.status for the status of a returned value', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.status = 201
@@ -48,14 +48,14 @@ describe('レスポンス', () => {
     expect((await fetch(url)).status).toBe(201)
   })
 
-  it('null を返すと 204 になる', async () => {
+  it('returns 204 for null', async () => {
     const url = await serve((app) => app.mix(() => null))
     const res = await fetch(url)
     expect(res.status).toBe(204)
     expect(await res.text()).toBe('')
   })
 
-  it('Buffer はステータスを保ったまま octet-stream で返す', async () => {
+  it('returns a Buffer as octet-stream and keeps the status', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ctx.send(202, Buffer.from([1, 2, 3]))),
     )
@@ -67,12 +67,12 @@ describe('レスポンス', () => {
     )
   })
 
-  it('Readable ストリームをそのまま流す', async () => {
+  it('streams a Readable as is', async () => {
     const url = await serve((app) => app.mix(() => Readable.from(['a', 'b'])))
     expect(await (await fetch(url)).text()).toBe('ab')
   })
 
-  it('先に設定された Content-Type を上書きしない', async () => {
+  it('does not override a Content-Type that was set earlier', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -84,7 +84,7 @@ describe('レスポンス', () => {
     )
   })
 
-  it('マルチバイト文字の Content-Length をバイト数で設定する', async () => {
+  it('sets Content-Length in bytes for multibyte characters', async () => {
     const url = await serve((app) => app.mix(() => 'こんにちは'))
     const res = await fetch(url)
     expect(res.headers.get('content-length')).toBe('15')
@@ -92,8 +92,8 @@ describe('レスポンス', () => {
   })
 })
 
-describe('コンポーネントの連結', () => {
-  it('mix した順に実行し、値を返したところで止まる', async () => {
+describe('chaining components', () => {
+  it('runs components in mix order and stops at the first returned value', async () => {
     const calls: string[] = []
     const url = await serve((app) =>
       app
@@ -114,7 +114,7 @@ describe('コンポーネントの連結', () => {
     expect(calls).toEqual(['a', 'b'])
   })
 
-  it('ctx.state で後続のコンポーネントに値を渡せる', async () => {
+  it('passes values to later components through ctx.state', async () => {
     const url = await serve<{ user?: string }>((app) =>
       app
         .mix((ctx) => {
@@ -125,7 +125,7 @@ describe('コンポーネントの連結', () => {
     expect(await (await fetch(url)).text()).toBe('hello imatomix')
   })
 
-  it('res を直接使って応答したら後続を実行しない', async () => {
+  it('does not run later components after responding through res directly', async () => {
     const after = vi.fn()
     const url = await serve((app) =>
       app
@@ -141,7 +141,7 @@ describe('コンポーネントの連結', () => {
     expect(after).not.toHaveBeenCalled()
   })
 
-  it('req と res に独自プロパティを追加しない', async () => {
+  it('does not add properties to req and res', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ({
         reqHasBody: 'body' in ctx.req,
@@ -154,7 +154,7 @@ describe('コンポーネントの連結', () => {
     })
   })
 
-  it('誰も応答しなければ 404 を返す', async () => {
+  it('returns 404 when no component responds', async () => {
     const url = await serve((app) => app.mix(() => {}))
     const res = await fetch(url)
     expect(res.status).toBe(404)
@@ -162,8 +162,8 @@ describe('コンポーネントの連結', () => {
   })
 })
 
-describe('エラー処理', () => {
-  it('HttpError のステータスとメッセージを返す', async () => {
+describe('error handling', () => {
+  it('returns the status and message of an HttpError', async () => {
     const url = await serve((app) =>
       app.mix(() => {
         throw new HttpError(403, 'Forbidden')
@@ -174,7 +174,7 @@ describe('エラー処理', () => {
     expect(await res.json()).toEqual({ error: 'Forbidden' })
   })
 
-  it('想定外の例外は 500 にして詳細を隠す', async () => {
+  it('turns unexpected errors into 500 and hides the details', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const url = await serve((app) =>
       app.mix(() => {
@@ -188,7 +188,7 @@ describe('エラー処理', () => {
     consoleError.mockRestore()
   })
 
-  it('onError でエラーレスポンスを差し替えられる', async () => {
+  it('lets onError replace the error response', async () => {
     const url = await serve(
       (app) =>
         app.mix(() => {
@@ -203,7 +203,7 @@ describe('エラー処理', () => {
     expect(res.status).toBe(503)
     expect(await res.json()).toEqual({ message: 'boom' })
   })
-  it('onError が応答しなければ既定のエラーレスポンスを返す', async () => {
+  it('returns the default error response when onError does not respond', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const url = await serve(
       (app) =>
@@ -218,18 +218,18 @@ describe('エラー処理', () => {
   })
 
   it.each([200, 302, 99, 600, 404.5])(
-    'HttpError は 4xx・5xx 以外のステータス（%s）を受け付けない',
+    'HttpError rejects a status that is not 4xx or 5xx (%s)',
     (status) => {
       expect(() => new HttpError(status)).toThrow(RangeError)
     },
   )
 })
 
-describe('リクエストボディ', () => {
+describe('request body', () => {
   const echoBody = (app: Mixer) =>
     app.mix(async (ctx) => ({ body: await ctx.body() }))
 
-  it('application/json を JSON として解析する', async () => {
+  it('parses application/json as JSON', async () => {
     const url = await serve(echoBody)
     const res = await fetch(url, {
       method: 'POST',
@@ -239,7 +239,7 @@ describe('リクエストボディ', () => {
     expect(await res.json()).toEqual({ body: { name: 'ミキサー' } })
   })
 
-  it('フォームを解析し、重複キーは配列にする', async () => {
+  it('parses forms and turns repeated keys into arrays', async () => {
     const url = await serve(echoBody)
     const res = await fetch(url, {
       method: 'POST',
@@ -248,7 +248,7 @@ describe('リクエストボディ', () => {
     expect(await res.json()).toEqual({ body: { a: '1', b: ['2', '3'] } })
   })
 
-  it('__proto__ や constructor もただのキーとして扱う', async () => {
+  it('treats __proto__ and constructor as plain keys', async () => {
     const url = await serve((app) =>
       app.mix(async (ctx) => {
         const body = (await ctx.body()) as Record<string, unknown>
@@ -270,13 +270,13 @@ describe('リクエストボディ', () => {
     })
   })
 
-  it('text/* は文字列として扱う', async () => {
+  it('treats text/* as a string', async () => {
     const url = await serve(echoBody)
     const res = await fetch(url, { method: 'POST', body: 'plain text' })
     expect(await res.json()).toEqual({ body: 'plain text' })
   })
 
-  it('ボディが空なら undefined になる', async () => {
+  it('returns undefined for an empty body', async () => {
     const url = await serve((app) =>
       app.mix(async (ctx) => ({
         isUndefined: (await ctx.body()) === undefined,
@@ -285,7 +285,7 @@ describe('リクエストボディ', () => {
     expect(await (await fetch(url)).json()).toEqual({ isUndefined: true })
   })
 
-  it('body() と text() を何度呼んでも同じ内容を返す', async () => {
+  it('returns the same content however many times body() and text() are called', async () => {
     const url = await serve((app) =>
       app.mix(async (ctx) => ({
         text: await ctx.text(),
@@ -305,7 +305,7 @@ describe('リクエストボディ', () => {
     })
   })
 
-  it('チャンクの境目で分断されたマルチバイト文字を正しく復元する', async () => {
+  it('restores multibyte characters split across chunks', async () => {
     const url = await serve((app) => app.mix((ctx) => ctx.text()))
     const encoded = Buffer.from('あいう')
     const body = new ReadableStream<Uint8Array>({
@@ -319,7 +319,7 @@ describe('リクエストボディ', () => {
     expect(await res.text()).toBe('あいう')
   })
 
-  it('不正な JSON は 400 を返す', async () => {
+  it('returns 400 for invalid JSON', async () => {
     const url = await serve(echoBody)
     const res = await fetch(url, {
       method: 'POST',
@@ -329,13 +329,13 @@ describe('リクエストボディ', () => {
     expect(res.status).toBe(400)
   })
 
-  it('上限を超えたボディは 413 を返す', async () => {
+  it('returns 413 for a body over the limit', async () => {
     const url = await serve(echoBody, { bodyLimit: 10 })
     const res = await fetch(url, { method: 'POST', body: 'x'.repeat(100) })
     expect(res.status).toBe(413)
   })
 
-  it('Content-Length がなくても上限を超えたら 413 を返す', async () => {
+  it('returns 413 when the body exceeds the limit without Content-Length', async () => {
     const url = await serve(echoBody, { bodyLimit: 10 })
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -348,8 +348,8 @@ describe('リクエストボディ', () => {
   })
 })
 
-describe('サーバ', () => {
-  it('インスタンスごとに独立したサーバを持つ', async () => {
+describe('server', () => {
+  it('gives each instance its own server', async () => {
     const urlA = await serve((app) => app.mix(() => 'A'))
     const urlB = await serve((app) => app.mix(() => 'B'))
     expect(urlA).not.toBe(urlB)
@@ -357,7 +357,7 @@ describe('サーバ', () => {
     expect(await (await fetch(urlB)).text()).toBe('B')
   })
 
-  it('handler を任意の http サーバに渡せる', async () => {
+  it('can pass handler to any http server', async () => {
     const { createServer } = await import('node:http')
     const app = new Mixer().mix(() => 'via handler')
     const server = createServer(app.handler)
@@ -373,7 +373,7 @@ describe('サーバ', () => {
     }
   })
 
-  it('二重に listen するとエラーになる', async () => {
+  it('throws when listen is called twice', async () => {
     const app = new Mixer()
     await app.listen(0, '127.0.0.1')
     try {
@@ -387,7 +387,7 @@ describe('サーバ', () => {
 })
 
 describe('onBeforeSend', () => {
-  it('応答の直前に登録順で実行し、ヘッダを追加できる', async () => {
+  it('runs hooks in registration order right before responding and lets them add headers', async () => {
     const url = await serve((app) =>
       app
         .mix((ctx) => {
@@ -406,7 +406,7 @@ describe('onBeforeSend', () => {
     expect(await res.text()).toBe('ok')
   })
 
-  it('後続のコンポーネントが変えた状態をフックで参照できる', async () => {
+  it('lets hooks see state changed by later components', async () => {
     const url = await serve<{ visits?: number }>((app) =>
       app
         .mix((ctx) => {
@@ -422,7 +422,7 @@ describe('onBeforeSend', () => {
     expect((await fetch(url)).headers.get('x-visits')).toBe('3')
   })
 
-  it('フックで ctx.status を変更できる', async () => {
+  it('lets hooks change ctx.status', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.onBeforeSend(() => {
@@ -434,7 +434,7 @@ describe('onBeforeSend', () => {
     expect((await fetch(url)).status).toBe(202)
   })
 
-  it('エラー応答の前にも実行する', async () => {
+  it('runs before error responses as well', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => {
         ctx.onBeforeSend(() => {
@@ -448,7 +448,7 @@ describe('onBeforeSend', () => {
     expect(res.headers.get('x-hooked')).toBe('yes')
   })
 
-  it('フックが失敗したら 500 を返し、フックを再実行しない', async () => {
+  it('returns 500 when a hook fails and does not run the hooks again', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     let calls = 0
     const url = await serve((app) =>
@@ -467,8 +467,8 @@ describe('onBeforeSend', () => {
   })
 })
 
-describe('onBeforeSend の失敗', () => {
-  it('フックが失敗したら、返そうとしていたストリームを破棄する', async () => {
+describe('onBeforeSend failures', () => {
+  it('destroys the stream that was about to be sent when a hook fails', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     let destroyed = false
     const url = await serve((app) =>
@@ -492,7 +492,7 @@ describe('onBeforeSend の失敗', () => {
 })
 
 describe('ctx.url', () => {
-  it('// で始まるパスをホスト名として解釈しない', async () => {
+  it('does not treat a path starting with // as a host name', async () => {
     const url = await serve((app) =>
       app.mix((ctx) => ({ host: ctx.url.host, pathname: ctx.url.pathname })),
     )
@@ -502,7 +502,7 @@ describe('ctx.url', () => {
       pathname: '//admin/secret',
     })
   })
-  it('解析できないリクエストターゲットには 400 を返す', async () => {
+  it('returns 400 for an unparsable request target', async () => {
     const url = new URL(await serve((app) => app.mix(() => 'ok')))
     const response = await new Promise<string>((resolve, reject) => {
       const socket = connect(Number(url.port), url.hostname, () => {
@@ -522,7 +522,7 @@ describe('ctx.url', () => {
 })
 
 describe('HEAD', () => {
-  it('ストリームの body を読まずに破棄し、ヘッダだけを返す', async () => {
+  it('destroys a stream body without reading it and sends only the headers', async () => {
     let read = false
     let destroyed = false
     const url = await serve((app) =>
