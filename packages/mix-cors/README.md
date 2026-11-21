@@ -1,9 +1,10 @@
 # @imatomix/mix-cors
 
-CORS for [mixer](../mixer).
+English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix-cors/README.ja.md)
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+CORS for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+
+> **Note:** This package is at 0.x, so the API may change between minor versions.
 
 ## Install
 
@@ -24,7 +25,7 @@ app.mix(cors(), () => 'cors is mixed!')
 await app.listen(3000)
 ```
 
-ルーターなどより**前に** mix する。
+Mix it in **before** the router and other components.
 
 ## Options
 
@@ -36,46 +37,46 @@ cors({
 })
 ```
 
-| オプション | 初期値 | 説明 |
+| Option | Default | Description |
 | --- | --- | --- |
-| `origin` | `'*'` | 許可する Origin。文字列・正規表現・それらの配列・関数 `(origin, ctx) => boolean \| Promise<boolean>` |
-| `credentials` | `false` | Cookie などの資格情報付きリクエストを許可する |
-| `methods` | `['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']` | preflight で許可するメソッド |
-| `allowHeaders` | リクエストされたヘッダをそのまま許可 | preflight で許可するリクエストヘッダ |
-| `exposeHeaders` | なし | ブラウザの JavaScript から読めるようにするレスポンスヘッダ |
-| `maxAge` | `600` | preflight の結果をブラウザがキャッシュする秒数（Chrome は 7200 秒が上限） |
+| `origin` | `'*'` | Allowed origins: a string, a regular expression, an array of them, or a function `(origin, ctx) => boolean \| Promise<boolean>` |
+| `credentials` | `false` | Allow requests with credentials such as cookies |
+| `methods` | `['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']` | Methods allowed in preflights |
+| `allowHeaders` | The requested headers, as is | Request headers allowed in preflights |
+| `exposeHeaders` | none | Response headers that browser JavaScript may read |
+| `maxAge` | `600` | Seconds browsers may cache the preflight result (Chrome caps it at 7200) |
 
-### origin の注意
+### Notes on origin
 
-- 文字列は完全一致で比べる。`'https://example.com'` は `https://example.com.evil` に一致しない
-- 正規表現は **Origin 全体と一致したときだけ**許可する（内部で `^(?:…)$` に包む）。`/example\.com/` や `/^a|b$/` と書いても `https://example.com.evil` には一致しない。`g` / `y` フラグは無視する
-- `'*'` 以外を指定すると、一致した Origin をそのまま返し、`Vary: Origin` を付ける（キャッシュが別の Origin に使い回さないように）
+- Strings are compared exactly. `'https://example.com'` does not match `https://example.com.evil`
+- Regular expressions allow an origin **only when they match the whole origin** (they are wrapped in `^(?:…)$` internally). Even `/example\.com/` or `/^a|b$/` do not match `https://example.com.evil`. The `g` / `y` flags are ignored
+- With anything other than `'*'`, the matched origin is returned as is, and `Vary: Origin` is added (so caches do not reuse the response for another origin)
 
-### `origin: '*'` と `credentials: true` は併用できない
+### `origin: '*'` cannot be combined with `credentials: true`
 
-ブラウザはこの組み合わせを拒否する。送られてきた Origin をそのまま返して回避すると、どのサイトからでも資格情報付きでレスポンスを読めてしまう。
-そのため `cors()` を呼んだ時点でエラーにしている。資格情報を使うときは許可する Origin を明示する。
+Browsers reject this combination. Working around it by echoing the request's origin back would let any site read responses with credentials.
+So `cors()` throws as soon as it is called. Specify the allowed origins when you use credentials.
 
-## 振る舞い
+## Behavior
 
-| リクエスト | 動作 |
+| Request | Behavior |
 | --- | --- |
-| `Origin` ヘッダなし（同一オリジンなど） | 何もせず次へ進む |
-| preflight（`OPTIONS` + `Origin` + `Access-Control-Request-Method`） | その場で `204` を返して完結する。許可しない Origin には CORS ヘッダを付けない |
-| それ以外 | 許可した Origin なら CORS ヘッダを付けて次へ進む |
+| No `Origin` header (such as same-origin requests) | Moves on without CORS headers (only adds `Vary: Origin` when `origin` is restricted) |
+| Preflight (`OPTIONS` + `Origin` + `Access-Control-Request-Method`) | Responds with `204` immediately. Disallowed origins get no CORS headers |
+| Anything else | Adds CORS headers for allowed origins and moves on |
 
-- preflight は後続のコンポーネントに流れないので、アプリ側で OPTIONS を意識しなくてよい
-- preflight ではない `OPTIONS` は横取りしない（mix-router の `options()` などがそのまま動く）
-- 付けたヘッダは、後続で `HttpError` になったときのエラー応答にも残る（ブラウザからエラー内容を読める）
+- Preflights never reach later components, so the application does not need to handle OPTIONS for them
+- `OPTIONS` requests that are not preflights are not intercepted (mix-router's `options()` and similar keep working)
+- The headers are kept on error responses from later `HttpError`s (so browsers can read the error)
 
-## v0.0.x からの移行
+## Migrating from v0.0.x
 
 | v0.0.x | v0.1 |
 | --- | --- |
 | `const cors = require('mix-cors')` | `import { cors } from '@imatomix/mix-cors'` |
-| `allowCredentials`（初期値 `true`） | `credentials`（初期値 `false`） |
-| `allowMethods` | `methods`（`OPTIONS` は不要になったので初期値から外した） |
-| `allowHeaders`（初期値 `['Accept', 'Content-Type']`） | 初期値はリクエストされたヘッダをそのまま許可 |
-| `maxAge`（初期値 86400） | 初期値 600 |
-| `origin` は文字列のみ | 文字列・正規表現・配列・関数 |
-| すべての OPTIONS を preflight 扱い（応答はしない） | 本物の preflight だけを 204 で完結させる |
+| `allowCredentials` (default `true`) | `credentials` (default `false`) |
+| `allowMethods` | `methods` (`OPTIONS` is no longer needed and was removed from the default) |
+| `allowHeaders` (default `['Accept', 'Content-Type']`) | Defaults to allowing the requested headers |
+| `maxAge` (default 86400) | Default 600 |
+| `origin` accepts strings only | Strings, regular expressions, arrays, and functions |
+| Every OPTIONS request treated as a preflight (without responding) | Only real preflights are completed with 204 |

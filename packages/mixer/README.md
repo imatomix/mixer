@@ -1,12 +1,13 @@
 # mixer
 
+English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mixer/README.ja.md)
+
 Minimal & asynchronous web module.
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- Written in TypeScript, ESM only, zero dependencies
+- Node.js 24 or later
 
-- TypeScript 製・ESM のみ・依存ゼロ
-- Node.js 20 以上
+> **Note:** mixer is at 0.x, so the API may change between minor versions.
 
 ## Install
 
@@ -16,8 +17,8 @@ npm install @imatomix/mixer
 
 ## Usage
 
-リクエストを受け取ったときに実行する関数（コンポーネント）を `mix()` で足していく。
-コンポーネントは `ctx` を 1 つ受け取り、値を返すとそれがレスポンスになる。
+Add functions (components) that run on each request with `mix()`.
+A component receives a single `ctx`, and the value it returns becomes the response.
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
@@ -31,42 +32,42 @@ await app.listen(3000)
 
 ### mix()
 
-関数は個別に `mix()` で繋げてもいいし、一つの `mix()` に複数入れてもいい。
+Chain `mix()` calls, or pass several functions to one `mix()`.
 
 ```ts
 app.mix(fn).mix(fn).mix(fn)
 app.mix(fn, fn, fn)
 ```
 
-先に `mix()` した順に実行され、**値を返した（`undefined` 以外）ところで止まる**。
-何も返さなければ次のコンポーネントへ進み、最後まで誰も応答しなければ `404` になる。
+Components run in the order they were mixed in, and **stop at the first one that returns a value (anything other than `undefined`)**.
+A component that returns nothing hands over to the next one. If no component responds, the response is `404`.
 
 ### ctx
 
-| プロパティ | 説明 |
+| Property | Description |
 | --- | --- |
-| `ctx.req` / `ctx.res` | Node.js 標準の `IncomingMessage` / `ServerResponse`（mixer は何も書き足さない） |
-| `ctx.url` | リクエスト URL の `URL` オブジェクト（`ctx.url.pathname`, `ctx.url.searchParams`） |
-| `ctx.method` | HTTP メソッド |
-| `ctx.status` | 戻り値で応答するときのステータスコード（デフォルト `200`） |
-| `ctx.state` | 後続のコンポーネントに値を渡すための入れ物 |
-| `await ctx.body()` | Content-Type に応じて解析したボディ |
-| `await ctx.text()` / `await ctx.buffer()` | ボディを文字列 / Buffer で取得 |
-| `ctx.send(status, body?)` | その場でレスポンスを返す |
-| `ctx.onBeforeSend(fn)` | 応答の直前に実行する処理を登録する（後述） |
-| `ctx.cookies` | Cookie の読み取りと Set-Cookie の設定（後述） |
+| `ctx.req` / `ctx.res` | Node.js `IncomingMessage` / `ServerResponse` (mixer adds nothing to them) |
+| `ctx.url` | The request URL as a `URL` object (`ctx.url.pathname`, `ctx.url.searchParams`) |
+| `ctx.method` | The HTTP method |
+| `ctx.status` | Status code used when responding with a return value (default `200`) |
+| `ctx.state` | A place to pass values to later components |
+| `await ctx.body()` | The body, parsed according to its Content-Type |
+| `await ctx.text()` / `await ctx.buffer()` | The body as a string / Buffer |
+| `ctx.send(status, body?)` | Respond immediately |
+| `ctx.onBeforeSend(fn)` | Register work to run right before the response is sent (see below) |
+| `ctx.cookies` | Read cookies and set Set-Cookie headers (see below) |
 
-### レスポンス
+### Responses
 
-戻り値（または `ctx.send()` の `body`）の型で自動的に形式が決まる。
-`Content-Type` を先に `ctx.res.setHeader()` で設定しておけばそちらが優先される。
+The format is chosen from the type of the returned value (or the `body` passed to `ctx.send()`).
+A `Content-Type` set earlier with `ctx.res.setHeader()` takes precedence.
 
-| 値 | レスポンス |
+| Value | Response |
 | --- | --- |
 | `string` | `text/plain; charset=utf-8` |
 | `Buffer` / `Uint8Array` | `application/octet-stream` |
-| `Readable` ストリーム | そのまま流す（`application/octet-stream`） |
-| オブジェクト・数値・真偽値 | JSON（`application/json; charset=utf-8`） |
+| `Readable` stream | Streamed as is (`application/octet-stream`) |
+| Object, number, boolean | JSON (`application/json; charset=utf-8`) |
 | `null` | `204 No Content` |
 
 ```ts
@@ -78,8 +79,8 @@ app.mix((ctx) => {
 
 ### ctx.onBeforeSend()
 
-応答を送る直前に実行する処理を登録する。登録した順に実行され、ヘッダや `ctx.status` を変更できる。
-後続のコンポーネントが変えた状態を、応答直前にまとめて反映したいとき（セッションの Cookie など）に使う。
+Registers work to run right before the response is sent. Hooks run in registration order and can change headers and `ctx.status`.
+Use it to apply state that later components changed right before responding, such as a session cookie.
 
 ```ts
 app
@@ -94,57 +95,57 @@ app
   })
 ```
 
-- 戻り値による応答、`ctx.send()`、エラー応答のいずれでも実行される
-- フックが例外を投げると 500 になる（フックは再実行されない）
-- `ctx.res` に直接書き込んで応答した場合は実行されない
+- Runs for responses from return values, `ctx.send()`, and error responses
+- If a hook throws, the response is `500` (hooks are not run again)
+- Does not run when a component responds by writing to `ctx.res` directly
 
 ### ctx.cookies
 
 ```ts
-ctx.cookies.get('theme') // 同じ名前が複数あれば最初の値
+ctx.cookies.get('theme') // the first value if the name appears more than once
 ctx.cookies.getAll('theme')
 ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
-ctx.cookies.delete('theme') // 設定時と同じ path / domain を指定すること
+ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 ```
 
-| オプション | 既定値 | 説明 |
+| Option | Default | Description |
 | --- | --- | --- |
-| `httpOnly` | `true` | JavaScript から読ませない |
-| `secure` | `true` | HTTPS でのみ送る。http の localhost で開発するときは `false` を指定する |
+| `httpOnly` | `true` | Hide the cookie from JavaScript |
+| `secure` | `true` | Send only over HTTPS. Set to `false` when developing on http://localhost |
 | `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
 | `path` | `'/'` | |
-| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | なし | |
+| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | none | |
 
-- 値は URL エンコードして送り、読み取り時にデコードする
-- 同じ名前・path・domain を 1 つの応答で設定し直すと、後の値で置き換わる。他の方法で付けた Set-Cookie は消さない
-- ヘッダを差し込めてしまう名前・path・domain や、ブラウザが拒否する組み合わせ（`SameSite=None` で Secure なし、`__Host-` で Domain ありなど）は `TypeError` になる
-- 応答を送った後の `set` / `delete` は例外になる
+- Values are URL-encoded when sent and decoded when read
+- Setting the same name, path, and domain again in one response replaces the earlier value. Set-Cookie headers added in other ways are kept
+- Names, paths, and domains that could inject headers, and combinations that browsers reject (such as `SameSite=None` without Secure, or `__Host-` with a Domain), throw a `TypeError`
+- `set` / `delete` after the response has been sent throw
 
-### ctx.res を直接使う
+### Using ctx.res directly
 
-`ctx.res` に直接書き込んでヘッダを送った時点で、mixer は応答済みとみなし、後続のコンポーネントを実行しない。
-Server-Sent Events のように書き続けるケースがあるため、mixer は `end()` を代わりに呼ばない。
-自分で書き始めたら、自分で `end()` すること。
+Once a component writes headers to `ctx.res` directly, mixer treats the request as answered and does not run later components.
+mixer does not call `end()` for you, because some responses keep writing, such as Server-Sent Events.
+If you start writing, call `end()` yourself.
 
-### リクエストボディ
+### Request body
 
-`ctx.body()` は必要になったときだけボディを読む。何度呼んでも同じ結果を返す。
+`ctx.body()` reads the body only when needed, and returns the same result however many times it is called.
 
-| Content-Type | 結果 |
+| Content-Type | Result |
 | --- | --- |
-| `application/json`, `*+json` | `JSON.parse` した値（不正なら `400`） |
-| `application/x-www-form-urlencoded` | `{ key: value }`（重複キーは配列） |
-| `text/*` またはなし | 文字列 |
-| その他 | `Buffer` |
-| ボディが空 | `undefined` |
+| `application/json`, `*+json` | The value from `JSON.parse` (`400` if invalid) |
+| `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
+| `text/*` or none | A string |
+| Anything else | A `Buffer` |
+| Empty body | `undefined` |
 
-上限（デフォルト 3MB）を超えると `413` になる。
+Bodies over the limit (default 3 MB) get `413`.
 
 ```ts
 const app = new Mixer({ bodyLimit: 1024 * 1024 })
 ```
 
-### ctx.state と型
+### ctx.state and types
 
 ```ts
 type State = { user?: string }
@@ -158,10 +159,10 @@ app
   .mix((ctx) => `hello ${ctx.state.user}`)
 ```
 
-### エラー処理
+### Error handling
 
-`HttpError` を投げるとそのステータスで `{ "error": message }` を返す（status は 400〜599）。
-それ以外の例外は `500` になり、詳細はクライアントに見せずに `console.error` に出す。
+Throwing an `HttpError` responds with its status and `{ "error": message }` (status must be 400–599).
+Any other error becomes `500`, and the details are logged with `console.error` instead of being shown to the client.
 
 ```ts
 import { HttpError, Mixer } from '@imatomix/mixer'
@@ -171,23 +172,23 @@ app.mix((ctx) => {
 })
 ```
 
-`onError` でエラーレスポンスを差し替えられる。`onError` が応答しなかった場合は既定のレスポンスになる。
+Replace error responses with `onError`. If `onError` does not respond, the default response is sent.
 
 ```ts
 const app = new Mixer({
-  onError: (error, ctx) => ctx.send(500, { message: 'ごめんなさい' }),
+  onError: (error, ctx) => ctx.send(500, { message: 'Sorry' }),
 })
 ```
 
-### サーバ
+### Server
 
 ```ts
-const server = await app.listen(3000) // http.Server を返す
+const server = await app.listen(3000) // returns an http.Server
 app.address // => { port: 3000, ... }
 await app.close()
 ```
 
-`app.handler` は `(req, res) => Promise<void>` なので、自前の `http` / `https` サーバにも渡せる。
+`app.handler` is `(req, res) => Promise<void>`, so it can be passed to your own `http` / `https` server.
 
 ```ts
 import { createServer } from 'node:https'
@@ -211,40 +212,35 @@ const app = new Mixer().mix(async () => {
 await app.listen(3000)
 ```
 
-### Nuxt.js などの (req, res) ハンドラ
+### (req, res) handlers such as Nuxt.js
 
-mixer は `req` / `res` を書き換えないので、そのまま渡せる。
+mixer does not modify `req` / `res`, so they can be passed through as is.
 
 ```ts
 app.mix((ctx) => nuxt.render(ctx.req, ctx.res))
 ```
 
-## v0.0.x からの移行
+## Migrating from v0.0.x
 
 | v0.0.x | v0.1 |
 | --- | --- |
 | `require('mixer')` | `import { Mixer } from '@imatomix/mixer'` |
 | `new mixer(fn)` | `new Mixer().mix(fn)` |
-| `(req, res) => {}` | `(ctx) => {}`（`ctx.req`, `ctx.res`） |
+| `(req, res) => {}` | `(ctx) => {}` (`ctx.req`, `ctx.res`) |
 | `req.body` | `await ctx.body()` |
-| `res.send(code, obj)` | `ctx.send(code, obj)` または `ctx.status = code; return obj` |
-| `delete res.send`（Nuxt.js 用） | 不要 |
+| `res.send(code, obj)` | `ctx.send(code, obj)` or `ctx.status = code; return obj` |
+| `delete res.send` (for Nuxt.js) | No longer needed |
+
+## Modules
+
+Pick only the ones you need.
+
+- [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/master/packages/mix-router): type-safe router
+- [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/master/packages/mix-cors): CORS
+- [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/master/packages/mix-static): static file serving
+- [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/master/packages/mix-session): server-side sessions
+- [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/master/packages/mix-logger): access logging
 
 ## Development
 
-```sh
-npm test          # vitest
-npm run typecheck # tsc
-npm run lint      # biome
-npm run build     # tsup + 型定義
-```
-
-## mix modules
-
-※ 以下は v0.0.x の `(req, res)` 形式のため、v0.1 では未対応。
-
-- [mix-router](https://github.com/imatomix/mix-router) : ルーティング機能
-- [mix-static](https://github.com/imatomix/mix-static) : 静的ファイルのサーブ
-- [mix-logger](https://github.com/imatomix/mix-logger) : logger
-- [mix-favicon](https://github.com/imatomix/mix-favicon) : faviconのサーブ
-- [mix-cors](https://github.com/imatomix/mix-cors) : cors処理
+Run `pnpm check` at the [repository root](https://github.com/imatomix/mixer/tree/master). See [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/master/CONTRIBUTING.md) for details.

@@ -1,9 +1,10 @@
 # @imatomix/mix-logger
 
-Request logger for [mixer](../mixer).
+English | [日本語](https://github.com/imatomix/mixer/blob/master/packages/mix-logger/README.ja.md)
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+Request logger for [mixer](https://github.com/imatomix/mixer/tree/master/packages/mixer).
+
+> **Note:** This package is at 0.x, so the API may change between minor versions.
 
 ## Install
 
@@ -28,12 +29,12 @@ await app.listen(3000)
 2026-11-21T00:00:00.000Z GET /hello 200 1.2ms 11B
 ```
 
-処理時間は logger が実行された時点から計るので、**できるだけ前に** mix する。
-記録は応答を送り終えたとき（または接続が切れたとき）に 1 回だけ行う。
+The duration is measured from when the logger runs, so mix it in **as early as possible**.
+Each request is recorded once, when the response has been sent (or the connection closed).
 
-## 出力先を変える
+## Changing the output
 
-`write` には構造化した記録（`LogEntry`）が渡る。JSON で出したり、外部に送ったりできる。
+`write` receives a structured entry (`LogEntry`), so you can output JSON or send entries elsewhere.
 
 ```ts
 app.mix(
@@ -45,30 +46,30 @@ app.mix(
 )
 ```
 
-| プロパティ | 説明 |
+| Property | Description |
 | --- | --- |
-| `time` | リクエストを受け取った時刻（`Date`） |
-| `method` | HTTP メソッド |
-| `path` | パス（**クエリは含めない**） |
-| `status` | ステータスコード |
-| `durationMs` | 処理時間（ミリ秒） |
-| `contentLength` | 応答の `Content-Length` ヘッダの値。ストリームなどで未設定なら `undefined` |
-| `aborted` | 応答を送り終える前に接続が切れた |
+| `time` | When the request was received (`Date`) |
+| `method` | The HTTP method |
+| `path` | The path (**without the query**) |
+| `status` | The status code |
+| `durationMs` | Duration in milliseconds |
+| `contentLength` | Value of the response's `Content-Length` header. `undefined` when not set, such as for streams |
+| `aborted` | The connection closed before the response was fully sent |
 
-`formatLogEntry(entry)` で、既定の 1 行の形式に変換できる。
+`formatLogEntry(entry)` converts an entry to the default one-line format.
 
-## 安全性
+## Safety
 
-- クエリはキーにも値にもトークンやメールアドレスが入りうるので、記録しない
-- 既定の形式では改行やエスケープシーケンスなどの制御文字をエスケープし、偽の行や色付けをログに差し込ませない（`write` で独自に出力する場合は各自で扱うこと）
-- `write` が例外を投げたり Promise が失敗したりしても、`console.error` に出すだけで応答やサーバには影響しない
+- The query is not recorded, because both keys and values can contain tokens or email addresses
+- The default format escapes control characters such as newlines and escape sequences, so fake lines or colors cannot be injected into the log (handle this yourself when writing a custom format with `write`)
+- If `write` throws or its Promise rejects, the error is only reported with `console.error`; the response and the server are not affected
 
-## v0.0.x からの移行
+## Migrating from v0.0.x
 
 | v0.0.x | v0.1 |
 | --- | --- |
 | `const logger = require('mix-logger')` | `import { logger } from '@imatomix/mix-logger'` |
-| `new mixer(logger)` | `app.mix(logger())`（関数を呼ぶ形に変更） |
-| 同時のリクエストで処理時間が混ざっていた | リクエストごとに計測する |
-| メモリ使用量を出力 | 出力しない |
-| URL をクエリごと出力 | パスのみ |
+| `new mixer(logger)` | `app.mix(logger())` (now called as a function) |
+| Durations of concurrent requests were mixed up | Measured per request |
+| Memory usage was printed | Not printed |
+| The URL was printed with its query | Path only |
