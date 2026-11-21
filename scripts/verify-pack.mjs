@@ -73,7 +73,8 @@ writeFileSync(
       module: 'NodeNext',
       moduleResolution: 'NodeNext',
       strict: true,
-      noEmit: true,
+      // 型チェックした smoke.ts をそのまま JS にして実行する
+      outDir: 'out',
       typeRoots: [typesRoot],
       types: ['node'],
     },
@@ -108,13 +109,36 @@ if (body.hello !== 'mixer') throw new Error('mixer + mix-router の動作確認�
 `
     : ''
 }
+${
+  dependencies['@imatomix/mix-session']
+    ? `
+import { Mixer as SessionMixer } from '@imatomix/mixer'
+import { session, type SessionState } from '@imatomix/mix-session'
+
+const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
+  const current = ctx.state.session
+  if (ctx.url.pathname === '/login') {
+    current.set('user', 'mixer')
+    return 'ok'
+  }
+  return { user: current.get('user') }
+})
+await sessionApp.listen(0, '127.0.0.1')
+const base = \`http://127.0.0.1:\${sessionApp.address?.port}\`
+const login = await fetch(\`\${base}/login\`)
+const sid = login.headers.getSetCookie()[0]?.split(';')[0]
+const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
+await sessionApp.close()
+if (me.user !== 'mixer') throw new Error('mixer + mix-session の動作確認に失敗しました')
+`
+    : ''
+}
 console.log('ok')
 `
 writeFileSync(join(consumer, 'smoke.ts'), smoke)
-writeFileSync(join(consumer, 'smoke.mjs'), smoke)
 
 run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', consumer], consumer)
 console.log('型チェック: ok')
 console.log(
-  `実行時の import と動作確認: ${run('node', ['smoke.mjs'], consumer)}`,
+  `実行時の import と動作確認: ${run('node', [join('out', 'smoke.js')], consumer)}`,
 )
