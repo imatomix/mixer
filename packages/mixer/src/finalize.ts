@@ -146,7 +146,9 @@ function cookieKey(setCookie: string, fallbackPath: string): string {
     ).trim()
     const value = separator === -1 ? '' : attribute.slice(separator + 1).trim()
     if (key.toLowerCase() === 'path' && value.startsWith('/')) path = value
-    if (key.toLowerCase() === 'domain') domain = value.toLowerCase()
+    // Browsers ignore a leading dot, so Domain=.example.com and Domain=example.com are the same cookie
+    if (key.toLowerCase() === 'domain')
+      domain = value.toLowerCase().replace(/^\./, '')
   }
   return `${name}\n${path}\n${domain}`
 }
@@ -184,15 +186,18 @@ export function finalizeResponse(response: Response, method: string): Response {
 
   // A response that sets cookies must never be stored by a shared cache and handed to other users
   if (headers.getSetCookie().length > 0) {
-    const cacheControl = headers.get('Cache-Control') ?? ''
-    if (!/\b(private|no-store)\b/i.test(cacheControl)) {
-      const directives = cacheControl
-        .split(',')
-        .map((directive) => directive.trim())
-        .filter(
-          (directive) => directive && directive.toLowerCase() !== 'public',
-        )
-      headers.set('Cache-Control', ['private', ...directives].join(', '))
+    const directives = parseCacheControl(headers.get('Cache-Control') ?? '')
+    // Only an unqualified `private` or `no-store` keeps shared caches away; `private="X"` or a
+    // directive that merely mentions the word (such as no-cache="X-Private") does not
+    const protectedFromSharedCaches = directives.some(
+      ({ name, hasValue }) =>
+        (name === 'private' && !hasValue) || name === 'no-store',
+    )
+    if (!protectedFromSharedCaches) {
+      const kept = directives
+        .filter(({ name }) => name !== 'public')
+        .map(({ raw }) => raw)
+      headers.set('Cache-Control', ['private', ...kept].join(', '))
     }
   }
 
@@ -210,4 +215,38 @@ export function finalizeResponse(response: Response, method: string): Response {
     })
   }
   return response
+}
+
+interface CacheDirective {
+  name: string
+  hasValue: boolean
+  raw: string
+}
+
+/** Splits Cache-Control into directives, keeping commas inside quoted values together */
+function parseCacheControl(value: string): CacheDirective[] {
+  const parts: string[] = []
+  let current = ''
+  let quoted = false
+  for (const char of value) {
+    if (char === '"') quoted = !quoted
+    if (char === ',' && !quoted) {
+      parts.push(current)
+      current = ''
+    } else {
+      current += char
+    }
+  }
+  parts.push(current)
+
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((raw) => {
+      const separator = raw.indexOf('=')
+      const name = (separator === -1 ? raw : raw.slice(0, separator))
+        .trim()
+        .toLowerCase()
+      return { name, hasValue: separator !== -1, raw }
+    })
 }

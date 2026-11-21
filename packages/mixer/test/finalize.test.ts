@@ -203,6 +203,19 @@ describe('cookies without a Path on a returned Response', () => {
     warn.mockRestore()
   })
 
+  it('ignores a leading dot in Domain when deduplicating', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const app = new Mixer().mix((ctx) => {
+      ctx.cookies.set('sid', 'draft', { domain: 'example.com' })
+      return new Response('ok', {
+        headers: { 'Set-Cookie': 'sid=returned; Path=/; Domain=.example.com' },
+      })
+    })
+    const cookies = (await call(app)).headers.getSetCookie()
+    expect(cookies).toEqual(['sid=returned; Path=/; Domain=.example.com'])
+    warn.mockRestore()
+  })
+
   it('treats a missing Path at the root as Path=/', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const app = new Mixer().mix((ctx) => {
@@ -244,6 +257,31 @@ describe('finalizing', () => {
     expect(cacheControl).toContain('private')
     expect(cacheControl).not.toContain('public')
   })
+
+  it.each([
+    'public, max-age=60, no-cache="X-Private"',
+    'public, private="X-Other"',
+    'public, x-no-store-hint=1',
+  ])(
+    'enforces privacy when Cache-Control only mentions private or no-store inside other directives: %s',
+    async (cacheControl) => {
+      const res = await call(
+        respondWith(
+          new Response('x', {
+            headers: {
+              'Set-Cookie': 'sid=1; Path=/',
+              'Cache-Control': cacheControl,
+            },
+          }),
+        ),
+      )
+      const directives = (res.headers.get('cache-control') ?? '')
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+      expect(directives).toContain('private')
+      expect(directives).not.toContain('public')
+    },
+  )
 
   it('keeps Cache-Control: no-store on responses that set cookies', async () => {
     const app = new Mixer().mix((ctx) => {
