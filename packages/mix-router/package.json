@@ -1,6 +1,6 @@
 {
   "name": "@imatomix/mix-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Type-safe router for mixer",
   "type": "module",
   "exports": {
@@ -42,7 +42,7 @@
     "url": "https://github.com/imatomix/mixer/issues"
   },
   "peerDependencies": {
-    "@imatomix/mixer": "^0.1.0"
+    "@imatomix/mixer": "^0.2.0"
   },
   "devDependencies": {
     "@imatomix/mixer": "workspace:*",
