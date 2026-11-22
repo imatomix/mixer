@@ -395,6 +395,10 @@ describe('precompressed files', () => {
     ['identity', 'console.log(1)', null],
     ['deflate', 'console.log(1)', null],
     ['br;q=0, gzip;q=0', 'console.log(1)', null],
+    ['identity;q=1, br;q=0.1', 'console.log(1)', null],
+    ['br;q=0.4, gzip;q=0.3, *;q=0.5', 'console.log(1)', null],
+    ['identity;q=0.5, br', 'BR', 'br'],
+    ['identity, br', 'BR', 'br'],
   ])(
     'chooses by Accept-Encoding: %s',
     async (acceptEncoding, body, encoding) => {

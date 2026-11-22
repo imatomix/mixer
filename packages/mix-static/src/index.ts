@@ -375,7 +375,10 @@ async function openVariant(
   return undefined
 }
 
-/** The encodings we can serve that Accept-Encoding allows, most preferred first (Brotli on a tie) */
+/**
+ * The encodings we can serve that Accept-Encoding allows and ranks at least as high as no encoding, most preferred
+ * first (Brotli on a tie)
+ */
 function acceptedEncodings(header: string | null): Encoding[] {
   if (header === null) return []
   const weights = new Map<string, number>()
@@ -386,9 +389,11 @@ function acceptedEncodings(header: string | null): Encoding[] {
     weights.set(name.toLowerCase(), Number.isFinite(weight) ? weight : 0)
   }
   const any = weights.get('*') ?? 0
+  // An uncompressed response the client ranks higher wins; on a tie, the smaller compressed file is sent
+  const identity = weights.get('identity') ?? weights.get('*') ?? 0
   return (['br', 'gzip'] as const)
     .map((encoding) => ({ encoding, weight: weights.get(encoding) ?? any }))
-    .filter(({ weight }) => weight > 0)
+    .filter(({ weight }) => weight > 0 && weight >= identity)
     .sort((a, b) => b.weight - a.weight)
     .map(({ encoding }) => encoding)
 }

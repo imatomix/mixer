@@ -84,7 +84,7 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 
 With `precompressed: true`, a build that writes `app.js.br` and `app.js.gz` next to `app.js` saves compressing on every request:
 
-- The encoding is chosen by `Accept-Encoding` (q-values respected; Brotli first on a tie). Without an acceptable one, the original is sent
+- The encoding is chosen by `Accept-Encoding` (q-values respected, including a higher preference for no encoding through `identity` or `*`; Brotli first on a tie). Without an acceptable one, the original is sent
 - The response keeps the original's `Content-Type`, adds `Content-Encoding`, and has its own `ETag`; `Vary: Accept-Encoding` is added to every response of a `precompressed` static handler
 - A compressed file older than the original is not used, so a stale build never serves outdated content
 - It is opened next to the real path of the original after all the checks below, and never through a symbolic link
