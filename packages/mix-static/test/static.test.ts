@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
@@ -44,6 +45,12 @@ beforeAll(() => {
   }
   writeFileSync(join(sibling, 'secret.br'), 'SECRET')
   symlinkSync(join(sibling, 'secret.br'), join(root, 'linked.js.br'))
+  writeFileSync(join(root, 'fifo.js'), 'console.log(4)')
+  utimesSync(join(root, 'fifo.js'), past, past)
+  // A named pipe: opening it for reading would wait for a writer
+  if (process.platform !== 'win32') {
+    execFileSync('mkfifo', [join(root, 'fifo.js.br')])
+  }
   writeFileSync(join(root, 'style.css'), 'body{}')
   writeFileSync(join(root, 'data.unknownext'), 'x')
   writeFileSync(join(root, '日本語 ファイル.txt'), 'にほんご')
@@ -415,6 +422,16 @@ describe('precompressed files', () => {
     expect(await res.text()).toBe('console.log(3)')
     expect(res.headers.get('content-encoding')).toBeNull()
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'skips a compressed candidate that is not a regular file, without waiting on it',
+    { timeout: 2_000 },
+    async () => {
+      const res = await get('/fifo.js', 'br')
+      expect(await res.text()).toBe('console.log(4)')
+      expect(res.headers.get('content-encoding')).toBeNull()
+    },
+  )
 
   it('applies Range, HEAD, and 304 to the compressed file', async () => {
     const part = await get('/app.js', 'br', { headers: { range: 'bytes=0-0' } })

@@ -222,6 +222,12 @@ function encodeSafely(segment: string): string {
   )
 }
 
+// O_NOFOLLOW: never follow a symbolic link put in place after the checks. O_NONBLOCK: a named pipe or device
+// would otherwise make open wait (and hold a file system worker) until something writes to it; regular files are
+// not affected, and the descriptor is checked to be a regular file right after opening
+const OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0)
+
 async function sendFile(
   ctx: Context,
   filePath: string,
@@ -233,7 +239,7 @@ async function sendFile(
   let handle: FileHandle
   try {
     // Do not follow a symbolic link even if the last component was replaced with one after the checks
-    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW)
+    handle = await open(filePath, OPEN_FLAGS)
   } catch (error) {
     // Do not serve files that disappeared or were replaced with a symbolic link (ELOOP) after the checks
     if (isNotFound(error) || errorCode(error) === 'ELOOP') return undefined
@@ -355,10 +361,7 @@ async function openVariant(
   )) {
     let handle: FileHandle
     try {
-      handle = await open(
-        filePath + EXTENSIONS[encoding],
-        constants.O_RDONLY | constants.O_NOFOLLOW,
-      )
+      handle = await open(filePath + EXTENSIONS[encoding], OPEN_FLAGS)
     } catch {
       continue
     }
