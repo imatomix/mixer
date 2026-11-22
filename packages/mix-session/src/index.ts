@@ -104,12 +104,13 @@ function readSessionId(ctx: Context, name: string): string | undefined {
 
 /**
  * The strongest cookie prefix the options allow. A `__Host-` cookie cannot be set from another subdomain or an
- * http page, so an attacker cannot plant a session ID that way; `__Host-` forbids Domain, so a shared domain gets
+ * http page, so an attacker cannot plant a session ID that way; `__Host-` forbids Domain and needs Path=/, so a shared domain or a narrower path gets
  * `__Secure-`, which still keeps http pages out. Both need Secure, so `secure: false` gets a plain name
  */
 function defaultCookieName(cookie: SessionOptions['cookie'] & {}): string {
   if (cookie.secure === false) return 'sid'
-  return cookie.domain === undefined ? '__Host-sid' : '__Secure-sid'
+  const hostOnly = cookie.domain === undefined && (cookie.path ?? '/') === '/'
+  return hostOnly ? '__Host-sid' : '__Secure-sid'
 }
 
 /** Fails at definition instead of on the first login, for prefixes that browsers would reject */
@@ -118,9 +119,10 @@ function checkCookiePrefix(
   cookie: SessionOptions['cookie'] & {},
 ): void {
   const secure = cookie.secure !== false
-  if (name.startsWith('__Host-') && (!secure || cookie.domain !== undefined)) {
+  const hostOnly = cookie.domain === undefined && (cookie.path ?? '/') === '/'
+  if (name.startsWith('__Host-') && (!secure || !hostOnly)) {
     throw new Error(
-      `mix-session: a ${name} cookie needs Secure and no domain; remove cookie.domain or choose another name`,
+      `mix-session: a ${name} cookie needs Secure, no domain, and path '/'; change those options or choose another name`,
     )
   }
   if (name.startsWith('__Secure-') && !secure) {

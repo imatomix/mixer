@@ -94,7 +94,7 @@ interface SessionStore {
 | オプション | 既定の名前 | Cookie を上書きできない相手 |
 | --- | --- | --- |
 | 既定のまま | `__Host-sid` | ほかのサブドメインと http のページ |
-| `cookie: { domain: 'example.com' }`（サブドメインで共有） | `__Secure-sid` | http のページ |
+| `cookie: { domain: 'example.com' }`（サブドメインで共有）、または `/` 以外の `path` | `__Secure-sid` | http のページ |
 | `cookie: { secure: false }`（http での開発） | `sid` | なし。開発のときだけに使う |
 
 サブドメインでセッションを共有したいときは、`domain` を指定するだけでよい。`name` を渡せばその名前をそのまま使い、ブラウザが拒否する組み合わせ（`domain` 付きの `__Host-` など）は、`session()` を呼んだ時点で例外を投げる。

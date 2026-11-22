@@ -94,7 +94,7 @@ By default the cookie gets the strongest name prefix your options allow, so that
 | Options | Default name | Who cannot overwrite the cookie |
 | --- | --- | --- |
 | Defaults | `__Host-sid` | Other subdomains and http pages |
-| `cookie: { domain: 'example.com' }` (share across subdomains) | `__Secure-sid` | http pages |
+| `cookie: { domain: 'example.com' }` (share across subdomains), or a `path` other than `/` | `__Secure-sid` | http pages |
 | `cookie: { secure: false }` (http development) | `sid` | Nobody; use only for development |
 
 To share a session across subdomains, set `domain`; that is all. A `name` you pass is used as is, and combinations that browsers reject (such as `__Host-` with a `domain`) make `session()` throw.

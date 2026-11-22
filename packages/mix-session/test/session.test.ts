@@ -292,6 +292,11 @@ describe('default cookie name', () => {
       '__Secure-sid',
     ],
     ['sid with secure: false, for http development', { secure: false }, 'sid'],
+    [
+      '__Secure-sid with a path other than /, as __Host- needs Path=/',
+      { path: '/app' },
+      '__Secure-sid',
+    ],
   ])('uses %s', async (_label, cookie, name) => {
     const res = await call(app(session({ cookie }), writes))
     expect(res.headers.getSetCookie()[0]).toMatch(
@@ -370,6 +375,10 @@ describe('options', () => {
     [
       '__Secure- without Secure',
       { name: '__Secure-sid', cookie: { secure: false } },
+    ],
+    [
+      '__Host- with a path other than /',
+      { name: '__Host-sid', cookie: { path: '/app' } },
     ],
   ])(
     'throws at definition for a cookie name browsers would reject (%s)',
