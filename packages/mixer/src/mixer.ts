@@ -29,7 +29,14 @@ export class Mixer<S extends State = State, E = unknown> {
 
   constructor(options: MixerOptions<S, E> = {}) {
     this.#basePath = normalizeBasePath(options.basePath)
-    this.#bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
+    const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
+    // NaN or Infinity would make every size check pass and silently remove the limit
+    if (!Number.isSafeInteger(bodyLimit) || bodyLimit < 0) {
+      throw new RangeError(
+        `bodyLimit must be an integer of 0 or more (bytes): ${bodyLimit}`,
+      )
+    }
+    this.#bodyLimit = bodyLimit
     this.#onError = options.onError
   }
 
