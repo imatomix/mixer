@@ -121,6 +121,26 @@ app.mix(
 `:param` and `*` cannot be used in a namespace path,
 because those values would not appear in the handlers' params type, and the types would disagree with the actual values.
 
+### Components inside a namespace
+
+A namespace also takes plain components. They run for every request under the prefix, in order with the routes, so an auth check written first protects the whole area, including paths that match no route.
+
+```ts
+const admin = namespace('/admin')
+
+app.mix(
+  admin(
+    requireAuth, // runs for /admin, /admin/users, /admin/unknown, ...
+    get('/users', listUsers),
+    post('/users', createUser),
+  ),
+)
+```
+
+- The prefix is compared like route paths: after decoding, segment by segment (`/admin` does not cover `/administrator`)
+- Components see the full `ctx.path`, not one relative to the namespace
+- Order matters as in `mix()`: a component written after a route that answers does not run
+
 ## Custom State and Env
 
 `createRouter<State>()` returns a set of route functions with a typed `ctx.state`.

@@ -1,7 +1,8 @@
-import { type Context, Mixer } from '@imatomix/mixer'
+import { type Context, HttpError, Mixer } from '@imatomix/mixer'
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import {
   all,
+  createRouter,
   del,
   get,
   head,
@@ -275,6 +276,100 @@ describe('namespace', () => {
   it('rejects parameters and wildcards in a namespace path', () => {
     expect(() => namespace('/users/:id')).toThrow()
     expect(() => namespace('/files/*')).toThrow()
+  })
+})
+
+describe('components inside a namespace', () => {
+  const requireAuth = (ctx: Context) => {
+    if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
+  }
+
+  it('runs plain components for every request under the prefix, before its routes', async () => {
+    const seen: string[] = []
+    const admin = namespace('/admin')
+    const app = new Mixer().mix(
+      admin(
+        (ctx) => {
+          seen.push(ctx.path)
+        },
+        requireAuth,
+        get('/users', () => 'users'),
+      ),
+      () => 'outside',
+    )
+    expect((await call(app, '/admin/users')).status).toBe(401)
+    expect((await call(app, '/admin/unknown')).status).toBe(401)
+    expect((await call(app, '/admin')).status).toBe(401)
+    expect(
+      await (
+        await call(app, '/admin/users', { headers: { authorization: 'x' } })
+      ).text(),
+    ).toBe('users')
+    expect(await (await call(app, '/administrator')).text()).toBe('outside')
+    expect(await (await call(app, '/other')).text()).toBe('outside')
+    // Components see the full path, not one relative to the namespace
+    expect(seen).toEqual([
+      '/admin/users',
+      '/admin/unknown',
+      '/admin',
+      '/admin/users',
+    ])
+  })
+
+  it('answers with the first value a component returns', async () => {
+    const app = new Mixer().mix(
+      namespace('/maintenance')(
+        () => 'closed',
+        get('/status', () => 'open'),
+      ),
+    )
+    expect(await (await call(app, '/maintenance/status')).text()).toBe('closed')
+  })
+
+  it('combines prefixes when nested', async () => {
+    const calls: string[] = []
+    const app = new Mixer().mix(
+      namespace('/api')(
+        () => {
+          calls.push('api')
+        },
+        namespace('/admin')(
+          () => {
+            calls.push('admin')
+          },
+          get('/users', () => 'users'),
+        ),
+        get('/health', () => 'ok'),
+      ),
+    )
+    await call(app, '/api/health')
+    expect(calls).toEqual(['api'])
+    calls.length = 0
+    await call(app, '/api/admin/users')
+    expect(calls).toEqual(['api', 'admin'])
+  })
+
+  it('matches the prefix below basePath, segment by segment, after decoding', async () => {
+    let ran = 0
+    const app = new Mixer({ basePath: '/v1' }).mix(
+      namespace('/ジュース')(() => {
+        ran++
+      }),
+    )
+    await call(app, `/v1/${encodeURIComponent('ジュース')}/x`)
+    await call(app, '/ジュース/x')
+    expect(ran).toBe(1)
+  })
+
+  it('types components with the State and Env of createRouter', () => {
+    const { namespace: typed } = createRouter<
+      { user?: string },
+      { KEY: string }
+    >()
+    typed('/a')((ctx) => {
+      expectTypeOf(ctx.state.user).toEqualTypeOf<string | undefined>()
+      expectTypeOf(ctx.env.KEY).toEqualTypeOf<string>()
+    })
   })
 })
 

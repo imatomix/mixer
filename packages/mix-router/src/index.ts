@@ -1,4 +1,4 @@
-import type { Context, State } from '@imatomix/mixer'
+import type { Component, Context, State } from '@imatomix/mixer'
 import type { Params } from './params.js'
 import {
   compilePattern,
@@ -143,16 +143,47 @@ export function namespace(prefix: string) {
     .map((segment) => `/${segment}`)
     .join('')
 
+  // Matches the prefix itself and everything below it, compared like route paths (decoded, segment by segment)
+  const scopes = new Map<string, Pattern>()
+
   return <S extends State = State, E = unknown>(
-    ...routes: Route<S, E>[]
+    ...items: (Route<S, E> | Component<S, E>)[]
   ): Route<S, E> =>
     createRoute(async (ctx, outerPrefix) => {
-      for (const child of routes) {
-        const result = await child[dispatch](ctx, outerPrefix + normalized)
+      const prefix = outerPrefix + normalized
+      let inScope: boolean | undefined
+      for (const item of items) {
+        let result: unknown
+        if (isRoute(item)) {
+          result = await item[dispatch](ctx, prefix)
+        } else {
+          inScope ??= isUnder(ctx, prefix)
+          if (!inScope) continue
+          result = await item(ctx)
+        }
         if (result !== undefined) return result
       }
       return undefined
     })
+
+  function isUnder<S extends State, E>(
+    ctx: Context<S, E>,
+    prefix: string,
+  ): boolean {
+    let scope = scopes.get(prefix)
+    if (!scope) {
+      scope = compilePattern(`${prefix}/*`)
+      scopes.set(prefix, scope)
+    }
+    const segments = requestSegments(ctx)
+    return segments !== undefined && matchPattern(scope, segments) !== undefined
+  }
+}
+
+function isRoute<S extends State, E>(
+  item: Route<S, E> | Component<S, E>,
+): item is Route<S, E> {
+  return dispatch in item
 }
 
 type MethodRouteOf<S extends State, E> = <Path extends string>(
@@ -175,7 +206,9 @@ export interface Router<S extends State, E = unknown> {
     path: Path,
     ...handlers: RouteHandler<Params<Path>, S, E>[]
   ) => Route<S, E>
-  namespace: (prefix: string) => (...routes: Route<S, E>[]) => Route<S, E>
+  namespace: (
+    prefix: string,
+  ) => (...items: (Route<S, E> | Component<S, E>)[]) => Route<S, E>
 }
 
 /**

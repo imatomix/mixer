@@ -121,6 +121,26 @@ app.mix(
 namespace のパスに `:param` や `*` は使えない。
 ハンドラの params の型にその値が現れず、型と実際の値がずれてしまうため。
 
+### namespace の中のコンポーネント
+
+namespace には普通のコンポーネントも並べられる。プレフィックスの下へのすべてのリクエストで、ルートと並んだ順に実行されるので、認証を先頭に書けば、どのルートにも当たらないパスも含めて領域全体を守れる。
+
+```ts
+const admin = namespace('/admin')
+
+app.mix(
+  admin(
+    requireAuth, // /admin、/admin/users、/admin/unknown などで実行される
+    get('/users', listUsers),
+    post('/users', createUser),
+  ),
+)
+```
+
+- プレフィックスはルートのパスと同じく、デコードしたうえで区切りごとに比べる（`/admin` は `/administrator` を含まない）
+- コンポーネントから見える `ctx.path` は、namespace からの相対ではなくパス全体
+- 順番は `mix()` と同じ意味を持つ。応答したルートより後ろに書いたコンポーネントは実行されない
+
 ## 独自の State と Env を使う
 
 `createRouter<State>()` で、`ctx.state` に型が付いたルート関数一式を作れる。
