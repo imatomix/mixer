@@ -58,7 +58,7 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.status` / `ctx.headers` | Status (default `200`) and headers of the response being built |
 | `ctx.state` | Values passed to later components |
 | `ctx.env` | Bindings and settings passed as the second argument of `app.fetch` |
-| `await ctx.body()` | The request body, parsed by Content-Type ([details](#request-body)) |
+| `await ctx.body()` | The request body, parsed by Content-Type, including forms and file uploads ([details](#request-body)) |
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
@@ -291,12 +291,13 @@ ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 
 ### Request body
 
-`ctx.body()` reads the body only when asked, and returns the same result however many times it is called.
+`ctx.body()` reads the body only when asked, and returns the same result however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
 
 | Content-Type | Result |
 | --- | --- |
 | `application/json`, `*+json` | The parsed value (`400` if invalid) |
 | `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
+| `multipart/form-data` | The same shape; uploaded files are `File` objects (`400` if malformed) |
 | `text/*` or none | A string |
 | Anything else | A `Uint8Array` |
 | Empty body | `undefined` |

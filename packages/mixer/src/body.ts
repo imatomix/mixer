@@ -4,6 +4,9 @@ export const DEFAULT_BODY_LIMIT = 1024 * 1024 * 3
 
 export type FormBody = Record<string, string | string[]>
 
+/** A multipart/form-data body: fields are strings and uploads are Files, repeated names become arrays */
+export type MultipartBody = Record<string, string | File | (string | File)[]>
+
 export async function readBytes(
   request: Request,
   limit = DEFAULT_BODY_LIMIT,
@@ -40,10 +43,10 @@ export async function readBytes(
   return bytes
 }
 
-export function parseBody(
+export async function parseBody(
   bytes: Uint8Array,
   contentType: string | null,
-): unknown {
+): Promise<unknown> {
   if (bytes.length === 0) return undefined
   const text = () => new TextDecoder().decode(bytes)
 
@@ -58,7 +61,11 @@ export function parseBody(
   }
 
   if (mimeType === 'application/x-www-form-urlencoded') {
-    return parseForm(text())
+    return collectFields(new URLSearchParams(text()))
+  }
+
+  if (mimeType === 'multipart/form-data') {
+    return parseMultipart(bytes, contentType ?? '')
   }
 
   if (mimeType === '' || mimeType.startsWith('text/')) {
@@ -68,10 +75,28 @@ export function parseBody(
   return bytes
 }
 
-function parseForm(text: string): FormBody {
+// The bytes were read within bodyLimit, so the Web standard parser cannot be made to buffer more than that
+async function parseMultipart(
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<MultipartBody> {
+  let form: FormData
+  try {
+    form = await new Response(bytes, {
+      headers: { 'content-type': contentType },
+    }).formData()
+  } catch (error) {
+    throw new HttpError(400, 'Invalid multipart body', { cause: error })
+  }
+  return collectFields(form)
+}
+
+function collectFields<V>(
+  entries: Iterable<[string, V]>,
+): Record<string, V | V[]> {
   // With a plain object, __proto__ would replace the prototype and keys would mix with inherited values such as constructor
-  const form: FormBody = Object.create(null)
-  for (const [key, value] of new URLSearchParams(text)) {
+  const form: Record<string, V | V[]> = Object.create(null)
+  for (const [key, value] of entries) {
     const existing = form[key]
     if (existing === undefined) {
       form[key] = value

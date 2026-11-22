@@ -184,3 +184,65 @@ describe('bodyLimit option', () => {
     expect(res.status).toBe(413)
   })
 })
+
+describe('multipart/form-data', () => {
+  const upload = () => {
+    const form = new FormData()
+    form.append('title', 'ミキサー')
+    form.append('tag', 'a')
+    form.append('tag', 'b')
+    form.append(
+      'file',
+      new File(['hello'], 'hello.txt', { type: 'text/plain' }),
+    )
+    return form
+  }
+
+  it('parses fields and files into the same shape as urlencoded forms', async () => {
+    const app = new Mixer().mix(async (ctx) => {
+      const body = (await ctx.body()) as Record<string, unknown>
+      const file = body.file as File
+      return {
+        title: body.title,
+        tag: body.tag,
+        file: [file instanceof File, file.name, file.type, await file.text()],
+        prototype: Object.getPrototypeOf(body),
+      }
+    })
+    const res = await call(app, '/', { method: 'POST', body: upload() })
+    expect(await res.json()).toEqual({
+      title: 'ミキサー',
+      tag: ['a', 'b'],
+      file: [true, 'hello.txt', 'text/plain', 'hello'],
+      prototype: null,
+    })
+  })
+
+  it('answers 400 for a malformed multipart body', async () => {
+    const res = await call(
+      echoBody(),
+      '/',
+      post('not multipart', {
+        'content-type': 'multipart/form-data; boundary=x',
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('answers 400 when the boundary is missing', async () => {
+    const res = await call(
+      echoBody(),
+      '/',
+      post('--x\r\n', { 'content-type': 'multipart/form-data' }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('applies bodyLimit to uploads', async () => {
+    const res = await call(echoBody({ bodyLimit: 10 }), '/', {
+      method: 'POST',
+      body: upload(),
+    })
+    expect(res.status).toBe(413)
+  })
+})
