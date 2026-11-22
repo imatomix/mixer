@@ -421,6 +421,20 @@ describe('absolute lifetime', () => {
     expect(res.headers.getSetCookie()[0]).toMatch(/Max-Age=3600;/)
   })
 
+  it('gives a new session its full lifetime even if the clock moves while saving', async () => {
+    let clock = Date.parse('2026-01-01T00:00:00Z')
+    vi.spyOn(Date, 'now').mockImplementation(() => clock++)
+    const store = new RecordingStore()
+    const res = await call(
+      app(session({ store, absoluteTtl: 1 }), (ctx) => {
+        ;(ctx.state as State).session.set('v', 1)
+        return 'ok'
+      }),
+    )
+    expect(store.calls).toEqual(['set:1'])
+    expect(res.headers.getSetCookie()[0]).toMatch(/Max-Age=1;/)
+  })
+
   it('restarts the clock on regenerate', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     at(0)

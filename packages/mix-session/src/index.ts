@@ -61,11 +61,9 @@ export function session<D extends SessionData = SessionData>(
   }
 
   /** Seconds this session may still live: the shorter of ttl and the time left before absoluteTtl */
-  const lifetime = (createdAt: number): number => {
+  const lifetime = (createdAt: number, now = Date.now()): number => {
     if (absoluteTtl === false) return ttl
-    const left = Math.floor(
-      (createdAt + absoluteTtl * 1000 - Date.now()) / 1000,
-    )
+    const left = Math.floor((createdAt + absoluteTtl * 1000 - now) / 1000)
     return Math.min(ttl, left)
   }
 
@@ -117,7 +115,8 @@ export function session<D extends SessionData = SessionData>(
       // A new or regenerated session (such as on login) starts its absolute lifetime now
       const now = Date.now()
       const newId = generateId()
-      const seconds = lifetime(now)
+      // The same clock reading for both, so that the new session gets its full lifetime
+      const seconds = lifetime(now, now)
       await store.set(newId, { createdAt: now, data }, seconds)
       issueCookie(ctx, newId, seconds)
       return
