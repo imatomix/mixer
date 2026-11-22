@@ -3,7 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import { type AddressInfo, isIP } from 'node:net'
+import { type AddressInfo, isIP, type Socket } from 'node:net'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -59,14 +59,22 @@ export async function serve(
     )
   }
 
-  // Responses still being handled, so that close() can tell their connections not to stay open
-  const active = new Set<ServerResponse>()
+  // Requests still being handled on each connection. While closing, a connection ends when its last one is
+  // answered: ending it earlier would cut a pipelined request, and leaving it to Connection: close fails when
+  // the headers are already sent (a stream) or the app answered with its own Connection header
+  const inProgress = new Map<Socket, Set<ServerResponse>>()
   let closing = false
 
   const server = createServer((req, res) => {
-    active.add(res)
-    res.once('close', () => active.delete(res))
-    if (closing) res.shouldKeepAlive = false
+    const socket = req.socket
+    const responses = inProgress.get(socket) ?? new Set()
+    inProgress.set(socket, responses.add(res))
+    res.once('close', () => {
+      responses.delete(res)
+      if (responses.size > 0) return
+      inProgress.delete(socket)
+      if (closing) socket.end()
+    })
     handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
       console.error(error)
       if (!res.headersSent) {
@@ -94,15 +102,10 @@ export async function serve(
             )
           }
           closing = true
-          for (const res of active) {
-            if (!res.headersSent) {
-              res.shouldKeepAlive = false
-            } else {
-              // Too late for Connection: close (a stream already sending), so end the connection once it finishes
-              // The socket is detached from the response when it finishes, so keep a reference now
-              const socket = res.socket
-              res.once('finish', () => socket?.end())
-            }
+          // Tell clients the connection will not stay open, where the last response has not been sent yet
+          for (const responses of inProgress.values()) {
+            const last = [...responses].at(-1)
+            if (last && !last.headersSent) last.shouldKeepAlive = false
           }
           return new Promise<void>((done, fail) => {
             // Cutting the connections aborts ctx.request.signal of the requests still in progress

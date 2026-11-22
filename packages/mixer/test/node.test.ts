@@ -499,6 +499,87 @@ describe('close', () => {
     socket.destroy()
   })
 
+  it('does not cut a pipelined request on the same connection when an earlier response finishes', async () => {
+    let finishStream: () => void = () => {}
+    let release: () => void = () => {}
+    let secondAborted = false
+    let ready = 0
+    let bothStarted: () => void = () => {}
+    const started = new Promise<void>((resolve) => {
+      bothStarted = resolve
+    })
+    const server = await serve(
+      new Mixer().mix(async (ctx) => {
+        if (ctx.path === '/stream') {
+          return new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('first'))
+              finishStream = () => controller.close()
+              if (++ready === 2) bothStarted()
+            },
+          })
+        }
+        ctx.request.signal.addEventListener('abort', () => {
+          secondAborted = true
+        })
+        if (++ready === 2) bothStarted()
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return 'second'
+      }),
+      { port: 0, hostname: '127.0.0.1' },
+    )
+    let received = ''
+    const socket = connect(server.port, '127.0.0.1')
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk) => {
+      received += chunk
+    })
+    const ended = new Promise((resolve) => socket.once('end', resolve))
+    socket.write(
+      'GET /stream HTTP/1.1\r\nHost: localhost\r\n\r\nGET /held HTTP/1.1\r\nHost: localhost\r\n\r\n',
+    )
+    await started
+    const closing = server.close({ timeout: 2_000 })
+    finishStream()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    release()
+    await closing
+    await ended
+    expect(secondAborted).toBe(false)
+    expect(received).toContain('second')
+    socket.destroy()
+  })
+
+  it('ends the connection even if the app answers with Connection: keep-alive', async () => {
+    let release: () => void = () => {}
+    let started: () => void = () => {}
+    const handling = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const server = await serve(
+      new Mixer().mix(async () => {
+        started()
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return new Response('ok', { headers: { Connection: 'keep-alive' } })
+      }),
+      { port: 0, hostname: '127.0.0.1' },
+    )
+    const socket = connect(server.port, '127.0.0.1')
+    socket.on('data', () => {})
+    socket.write('GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+    await handling
+    const start = performance.now()
+    const closing = server.close({ timeout: 2_000 })
+    release()
+    await closing
+    expect(performance.now() - start).toBeLessThan(1_000)
+    socket.destroy()
+  })
+
   it('stops accepting new connections once closing', async () => {
     const { server, release, handling } = await startHeld()
     const response = request(server.port)
