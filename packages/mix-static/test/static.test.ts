@@ -31,6 +31,7 @@ beforeAll(() => {
   writeFileSync(join(root, 'data.unknownext'), 'x')
   writeFileSync(join(root, '日本語 ファイル.txt'), 'にほんご')
   writeFileSync(join(root, '.env'), 'SECRET=1')
+  writeFileSync(join(root, '..dotdot.txt'), 'two dots')
   mkdirSync(join(root, '.well-known'))
   writeFileSync(join(root, '.well-known', 'x.txt'), 'dot dir')
   mkdirSync(join(root, 'sub'))
@@ -272,6 +273,11 @@ describe('safety', () => {
     expect(await (await call(target, `/.well-known/x.txt`)).text()).toBe(
       'dot dir',
     )
+  })
+
+  it('serves a file whose name starts with two dots with dotfiles: true', async () => {
+    const target = app(serveStatic(root, { dotfiles: true }))
+    expect(await (await call(target, '/..dotdot.txt')).text()).toBe('two dots')
   })
 
   it('does not serve symbolic links that point outside the public directory', async () => {
