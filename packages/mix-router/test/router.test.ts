@@ -1,10 +1,12 @@
-import { type Context, Mixer } from '@imatomix/mixer'
+import { type Context, HttpError, Mixer } from '@imatomix/mixer'
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import {
   all,
+  createRouter,
   del,
   get,
   head,
+  methodNotAllowed,
   namespace,
   options,
   type Params,
@@ -275,6 +277,174 @@ describe('namespace', () => {
   it('rejects parameters and wildcards in a namespace path', () => {
     expect(() => namespace('/users/:id')).toThrow()
     expect(() => namespace('/files/*')).toThrow()
+  })
+})
+
+describe('components inside a namespace', () => {
+  const requireAuth = (ctx: Context) => {
+    if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
+  }
+
+  it('runs plain components for every request under the prefix, before its routes', async () => {
+    const seen: string[] = []
+    const admin = namespace('/admin')
+    const app = new Mixer().mix(
+      admin(
+        (ctx) => {
+          seen.push(ctx.path)
+        },
+        requireAuth,
+        get('/users', () => 'users'),
+      ),
+      () => 'outside',
+    )
+    expect((await call(app, '/admin/users')).status).toBe(401)
+    expect((await call(app, '/admin/unknown')).status).toBe(401)
+    expect((await call(app, '/admin')).status).toBe(401)
+    expect(
+      await (
+        await call(app, '/admin/users', { headers: { authorization: 'x' } })
+      ).text(),
+    ).toBe('users')
+    expect(await (await call(app, '/administrator')).text()).toBe('outside')
+    expect(await (await call(app, '/other')).text()).toBe('outside')
+    // Components see the full path, not one relative to the namespace
+    expect(seen).toEqual([
+      '/admin/users',
+      '/admin/unknown',
+      '/admin',
+      '/admin/users',
+    ])
+  })
+
+  it('answers with the first value a component returns', async () => {
+    const app = new Mixer().mix(
+      namespace('/maintenance')(
+        () => 'closed',
+        get('/status', () => 'open'),
+      ),
+    )
+    expect(await (await call(app, '/maintenance/status')).text()).toBe('closed')
+  })
+
+  it('combines prefixes when nested', async () => {
+    const calls: string[] = []
+    const app = new Mixer().mix(
+      namespace('/api')(
+        () => {
+          calls.push('api')
+        },
+        namespace('/admin')(
+          () => {
+            calls.push('admin')
+          },
+          get('/users', () => 'users'),
+        ),
+        get('/health', () => 'ok'),
+      ),
+    )
+    await call(app, '/api/health')
+    expect(calls).toEqual(['api'])
+    calls.length = 0
+    await call(app, '/api/admin/users')
+    expect(calls).toEqual(['api', 'admin'])
+  })
+
+  it('matches the prefix below basePath, segment by segment, after decoding', async () => {
+    let ran = 0
+    const app = new Mixer({ basePath: '/v1' }).mix(
+      namespace('/ジュース')(() => {
+        ran++
+      }),
+    )
+    await call(app, `/v1/${encodeURIComponent('ジュース')}/x`)
+    await call(app, '/ジュース/x')
+    expect(ran).toBe(1)
+  })
+
+  it('types components with the State and Env of createRouter', () => {
+    const { namespace: typed } = createRouter<
+      { user?: string },
+      { KEY: string }
+    >()
+    typed('/a')((ctx) => {
+      expectTypeOf(ctx.state.user).toEqualTypeOf<string | undefined>()
+      expectTypeOf(ctx.env.KEY).toEqualTypeOf<string>()
+    })
+  })
+})
+
+describe('methodNotAllowed', () => {
+  const users = () => [
+    get('/users', () => 'list'),
+    post('/users', () => 'created'),
+  ]
+
+  it('answers 405 with Allow when the path matches but no route takes the method', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    const res = await call(app, '/users', { method: 'DELETE' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD, POST')
+    expect(await res.json()).toEqual({ error: 'Method Not Allowed' })
+  })
+
+  it('leaves unknown paths to 404', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    expect((await call(app, '/nothing')).status).toBe(404)
+  })
+
+  it('changes nothing when it is not mixed in', async () => {
+    const app = new Mixer().mix(...users())
+    expect((await call(app, '/users', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it('answers 404 when a route took the method but returned nothing', async () => {
+    const app = new Mixer().mix(
+      get('/users', () => undefined),
+      post('/users', () => 'created'),
+      methodNotAllowed(),
+    )
+    expect((await call(app, '/users')).status).toBe(404)
+  })
+
+  it('does not answer 405 when an all() route matches the path', async () => {
+    const app = new Mixer().mix(
+      get('/users', () => 'list'),
+      all('/users', () => undefined),
+      methodNotAllowed(),
+    )
+    expect((await call(app, '/users', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it('lets a later component handle the method first', async () => {
+    const app = new Mixer().mix(
+      ...users(),
+      (ctx) => (ctx.method === 'DELETE' ? 'custom' : undefined),
+      methodNotAllowed(),
+    )
+    expect(await (await call(app, '/users', { method: 'DELETE' })).text()).toBe(
+      'custom',
+    )
+  })
+
+  it('collects methods from namespaced routes and lists each once', async () => {
+    const app = new Mixer().mix(
+      namespace('/api')(
+        get('/users', () => 'a'),
+        get('/users', () => 'b'),
+      ),
+      methodNotAllowed(),
+    )
+    const res = await call(app, '/api/users', { method: 'POST' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD')
+  })
+
+  it('does not answer OPTIONS by itself', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    const res = await call(app, '/users', { method: 'OPTIONS' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD, POST')
   })
 })
 

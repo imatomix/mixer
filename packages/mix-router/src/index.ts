@@ -1,4 +1,9 @@
-import type { Context, State } from '@imatomix/mixer'
+import {
+  type Component,
+  type Context,
+  HttpError,
+  type State,
+} from '@imatomix/mixer'
 import type { Params } from './params.js'
 import {
   compilePattern,
@@ -50,28 +55,26 @@ export function route<
     ),
   )
   if (allowed.has('GET')) allowed.add('HEAD')
-  return createMatcher(path, handlers, (method) => allowed.has(method))
+  return createMatcher(path, handlers, allowed)
 }
 
 export function all<Path extends string, S extends State = State, E = unknown>(
   path: Path,
   ...handlers: RouteHandler<Params<Path>, S, E>[]
 ): Route<S, E> {
-  return createMatcher(path, handlers, () => true)
+  return createMatcher(path, handlers, 'any')
 }
 
 function createMatcher<Path extends string, S extends State, E>(
   path: Path,
   handlers: RouteHandler<Params<Path>, S, E>[],
-  acceptsMethod: (method: string) => boolean,
+  methods: ReadonlySet<string> | 'any',
 ): Route<S, E> {
   // Cache the compiled pattern per namespace prefix instead of compiling it on every request
   const patterns = new Map<string, Pattern>()
   compilePattern(path)
 
   return createRoute(async (ctx, prefix) => {
-    if (!acceptsMethod(ctx.method)) return undefined
-
     let pattern = patterns.get(prefix)
     if (!pattern) {
       pattern = compilePattern(prefix + path)
@@ -81,6 +84,13 @@ function createMatcher<Path extends string, S extends State, E>(
     if (!segments) return undefined
     const params = matchPattern(pattern, segments)
     if (!params) return undefined
+
+    const record = methodRecord(ctx)
+    if (methods !== 'any' && !methods.has(ctx.method)) {
+      for (const method of methods) record.allowed.add(method)
+      return undefined
+    }
+    record.taken = true
 
     for (const handler of handlers) {
       const result = await handler(ctx, params as Params<Path>)
@@ -113,6 +123,43 @@ function requestSegments<S extends State, E>(
   return decoded.segments
 }
 
+/** What the routes whose path matched found out about the method, for methodNotAllowed */
+interface MethodRecord {
+  allowed: Set<string>
+  /** A route that takes this method (or any method) matched, so the answer is not 405 */
+  taken: boolean
+}
+
+const methodRecords = new WeakMap<Context<State>, MethodRecord>()
+
+function methodRecord<S extends State, E>(ctx: Context<S, E>): MethodRecord {
+  const key = ctx as unknown as Context<State>
+  let record = methodRecords.get(key)
+  if (!record) {
+    record = { allowed: new Set(), taken: false }
+    methodRecords.set(key, record)
+  }
+  return record
+}
+
+/**
+ * Mix it in after the routes. When a route's path matched but no route takes the request method, it answers
+ * 405 with an Allow header listing the methods that are taken; otherwise it hands over (to 404).
+ * OPTIONS is not answered by itself: add an options() route, or let mix-cors answer preflights
+ */
+export function methodNotAllowed<
+  S extends State = State,
+  E = unknown,
+>(): Component<S, E> {
+  return (ctx) => {
+    const record = methodRecords.get(ctx as unknown as Context<State>)
+    if (!record || record.taken || record.allowed.size === 0) return undefined
+    throw new HttpError(405, 'Method Not Allowed', {
+      headers: { Allow: [...record.allowed].join(', ') },
+    })
+  }
+}
+
 type MethodRoute = <Path extends string, S extends State = State, E = unknown>(
   path: Path,
   ...handlers: RouteHandler<Params<Path>, S, E>[]
@@ -143,16 +190,47 @@ export function namespace(prefix: string) {
     .map((segment) => `/${segment}`)
     .join('')
 
+  // Matches the prefix itself and everything below it, compared like route paths (decoded, segment by segment)
+  const scopes = new Map<string, Pattern>()
+
   return <S extends State = State, E = unknown>(
-    ...routes: Route<S, E>[]
+    ...items: (Route<S, E> | Component<S, E>)[]
   ): Route<S, E> =>
     createRoute(async (ctx, outerPrefix) => {
-      for (const child of routes) {
-        const result = await child[dispatch](ctx, outerPrefix + normalized)
+      const prefix = outerPrefix + normalized
+      let inScope: boolean | undefined
+      for (const item of items) {
+        let result: unknown
+        if (isRoute(item)) {
+          result = await item[dispatch](ctx, prefix)
+        } else {
+          inScope ??= isUnder(ctx, prefix)
+          if (!inScope) continue
+          result = await item(ctx)
+        }
         if (result !== undefined) return result
       }
       return undefined
     })
+
+  function isUnder<S extends State, E>(
+    ctx: Context<S, E>,
+    prefix: string,
+  ): boolean {
+    let scope = scopes.get(prefix)
+    if (!scope) {
+      scope = compilePattern(`${prefix}/*`)
+      scopes.set(prefix, scope)
+    }
+    const segments = requestSegments(ctx)
+    return segments !== undefined && matchPattern(scope, segments) !== undefined
+  }
+}
+
+function isRoute<S extends State, E>(
+  item: Route<S, E> | Component<S, E>,
+): item is Route<S, E> {
+  return dispatch in item
 }
 
 type MethodRouteOf<S extends State, E> = <Path extends string>(
@@ -175,7 +253,9 @@ export interface Router<S extends State, E = unknown> {
     path: Path,
     ...handlers: RouteHandler<Params<Path>, S, E>[]
   ) => Route<S, E>
-  namespace: (prefix: string) => (...routes: Route<S, E>[]) => Route<S, E>
+  namespace: (
+    prefix: string,
+  ) => (...items: (Route<S, E> | Component<S, E>)[]) => Route<S, E>
 }
 
 /**
