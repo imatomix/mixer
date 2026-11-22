@@ -140,7 +140,10 @@ ${
   dependencies['@imatomix/mix-session']
     ? `
 import { Mixer as SessionMixer } from '@imatomix/mixer'
-import { session, type SessionState } from '@imatomix/mix-session'
+import { MemoryStore, session, type SessionState } from '@imatomix/mix-session'
+import { checkSessionStore } from '@imatomix/mix-session/testing'
+
+await checkSessionStore(() => new MemoryStore(), { expiry: false })
 
 const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   const current = ctx.state.session
