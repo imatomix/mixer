@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
@@ -28,6 +29,28 @@ beforeAll(() => {
   writeFileSync(join(root, 'index.html'), '<h1>root</h1>')
   writeFileSync(join(root, 'hello.txt'), 'hello')
   writeFileSync(join(root, 'digits.txt'), '0123456789')
+  // Precompressed variants: fresh ones for app.js, a stale one for stale.js, a symbolic link for linked.js
+  const past = new Date('2026-01-01')
+  const later = new Date('2026-01-02')
+  for (const [name, body, time] of [
+    ['app.js', 'console.log(1)', past],
+    ['app.js.br', 'BR', later],
+    ['app.js.gz', 'GZ', later],
+    ['stale.js', 'console.log(2)', later],
+    ['stale.js.br', 'OLD', past],
+    ['linked.js', 'console.log(3)', past],
+  ] as const) {
+    writeFileSync(join(root, name), body)
+    utimesSync(join(root, name), time, time)
+  }
+  writeFileSync(join(sibling, 'secret.br'), 'SECRET')
+  symlinkSync(join(sibling, 'secret.br'), join(root, 'linked.js.br'))
+  writeFileSync(join(root, 'fifo.js'), 'console.log(4)')
+  utimesSync(join(root, 'fifo.js'), past, past)
+  // A named pipe: opening it for reading would wait for a writer
+  if (process.platform !== 'win32') {
+    execFileSync('mkfifo', [join(root, 'fifo.js.br')])
+  }
   writeFileSync(join(root, 'style.css'), 'body{}')
   writeFileSync(join(root, 'data.unknownext'), 'x')
   writeFileSync(join(root, '日本語 ファイル.txt'), 'にほんご')
@@ -325,6 +348,110 @@ describe('range requests', () => {
     })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-length')).toBe('10')
+  })
+})
+
+describe('precompressed files', () => {
+  const get = (
+    path: string,
+    acceptEncoding?: string,
+    init: RequestInit = {},
+    precompressed = true,
+  ) =>
+    call(app(serveStatic(root, { precompressed })), path, {
+      ...init,
+      headers: {
+        ...(acceptEncoding === undefined
+          ? {}
+          : { 'accept-encoding': acceptEncoding }),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+    })
+
+  it('serves the original without the option', async () => {
+    const res = await get('/app.js', 'br, gzip', {}, false)
+    expect(await res.text()).toBe('console.log(1)')
+    expect(res.headers.get('content-encoding')).toBeNull()
+  })
+
+  it('serves the .br file with Content-Encoding, the original type, and Vary', async () => {
+    const original = await get('/app.js')
+    const res = await get('/app.js', 'gzip, deflate, br')
+    expect(await res.text()).toBe('BR')
+    expect(res.headers.get('content-encoding')).toBe('br')
+    expect(res.headers.get('content-type')).toBe(
+      original.headers.get('content-type'),
+    )
+    expect(res.headers.get('content-length')).toBe('2')
+    expect(res.headers.get('vary')).toBe('Accept-Encoding')
+    expect(res.headers.get('etag')).not.toBe(original.headers.get('etag'))
+  })
+
+  it.each([
+    ['gzip', 'GZ', 'gzip'],
+    ['gzip;q=1, br;q=0.5', 'GZ', 'gzip'],
+    ['br;q=0, gzip', 'GZ', 'gzip'],
+    ['*', 'BR', 'br'],
+    ['identity', 'console.log(1)', null],
+    ['deflate', 'console.log(1)', null],
+    ['br;q=0, gzip;q=0', 'console.log(1)', null],
+    ['identity;q=1, br;q=0.1', 'console.log(1)', null],
+    ['br;q=0.4, gzip;q=0.3, *;q=0.5', 'console.log(1)', null],
+    ['identity;q=0.5, br', 'BR', 'br'],
+    ['identity, br', 'BR', 'br'],
+  ])(
+    'chooses by Accept-Encoding: %s',
+    async (acceptEncoding, body, encoding) => {
+      const res = await get('/app.js', acceptEncoding)
+      expect(await res.text()).toBe(body)
+      expect(res.headers.get('content-encoding')).toBe(encoding)
+      expect(res.headers.get('vary')).toBe('Accept-Encoding')
+    },
+  )
+
+  it('serves the original, with Vary, without Accept-Encoding', async () => {
+    const res = await get('/app.js')
+    expect(await res.text()).toBe('console.log(1)')
+    expect(res.headers.get('vary')).toBe('Accept-Encoding')
+  })
+
+  it('does not serve a compressed file older than the original', async () => {
+    const res = await get('/stale.js', 'br')
+    expect(await res.text()).toBe('console.log(2)')
+    expect(res.headers.get('content-encoding')).toBeNull()
+  })
+
+  it('does not follow a symbolic link for the compressed file', async () => {
+    const res = await get('/linked.js', 'br')
+    expect(await res.text()).toBe('console.log(3)')
+    expect(res.headers.get('content-encoding')).toBeNull()
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'skips a compressed candidate that is not a regular file, without waiting on it',
+    { timeout: 2_000 },
+    async () => {
+      const res = await get('/fifo.js', 'br')
+      expect(await res.text()).toBe('console.log(4)')
+      expect(res.headers.get('content-encoding')).toBeNull()
+    },
+  )
+
+  it('applies Range, HEAD, and 304 to the compressed file', async () => {
+    const part = await get('/app.js', 'br', { headers: { range: 'bytes=0-0' } })
+    expect(part.status).toBe(206)
+    expect(await part.text()).toBe('B')
+    expect(part.headers.get('content-range')).toBe('bytes 0-0/2')
+
+    const head = await get('/app.js', 'br', { method: 'HEAD' })
+    expect(head.headers.get('content-length')).toBe('2')
+    expect(head.headers.get('content-encoding')).toBe('br')
+
+    const etag = head.headers.get('etag') ?? ''
+    const cached = await get('/app.js', 'br', {
+      headers: { 'if-none-match': etag },
+    })
+    expect(cached.status).toBe(304)
   })
 })
 

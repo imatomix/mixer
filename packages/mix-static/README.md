@@ -67,6 +67,7 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 | `index` | `'index.html'` | File name returned for directory requests. `false` disables it |
 | `maxAge` | `0` | Seconds for `Cache-Control: public, max-age=N` |
 | `dotfiles` | `false` | Serve files and directories whose names start with a dot, such as `.env` or `.git/` |
+| `precompressed` | `false` | Serve `file.br` or `file.gz` next to a file when the client accepts that encoding ([details](#precompressed-files)) |
 
 ## Responses
 
@@ -78,6 +79,16 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 - The body is streamed, and the file is closed when the response finishes or the client goes away
 - `X-Content-Type-Options: nosniff` is added by mixer to every response
 - A directory without a trailing `/` is redirected with `301` to the path with `/` (so that relative links in HTML resolve correctly)
+
+## Precompressed files
+
+With `precompressed: true`, a build that writes `app.js.br` and `app.js.gz` next to `app.js` saves compressing on every request:
+
+- The encoding is chosen by `Accept-Encoding` (q-values respected, including a higher preference for no encoding through `identity` or `*`; Brotli first on a tie). Without an acceptable one, the original is sent
+- The response keeps the original's `Content-Type`, adds `Content-Encoding`, and has its own `ETag`; `Vary: Accept-Encoding` is added to every response of a `precompressed` static handler
+- A compressed file older than the original is not used, so a stale build never serves outdated content
+- It is opened next to the real path of the original after all the checks below, and never through a symbolic link
+- Range requests and `304` apply to the file that is sent
 
 ## Safety
 

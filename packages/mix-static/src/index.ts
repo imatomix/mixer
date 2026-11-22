@@ -1,4 +1,4 @@
-import { constants, realpathSync, statSync } from 'node:fs'
+import { constants, realpathSync, type Stats, statSync } from 'node:fs'
 import { type FileHandle, open, realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
@@ -14,6 +14,11 @@ export interface StaticOptions {
   maxAge?: number
   /** Serve files and directories whose names start with a dot, such as `.env` or `.git/` */
   dotfiles?: boolean
+  /**
+   * Serve `file.br` or `file.gz` next to a file instead of it when the client accepts that encoding and the
+   * compressed file is not older than the original (defaults to false)
+   */
+  precompressed?: boolean
 }
 
 export function serveStatic(
@@ -28,6 +33,7 @@ export function serveStatic(
   const index = options.index ?? 'index.html'
   const maxAge = options.maxAge ?? 0
   const dotfiles = options.dotfiles ?? false
+  const precompressed = options.precompressed ?? false
   validateMaxAge(maxAge)
   if (index !== false && !isValidIndexName(index)) {
     throw new Error(`mix-static: index must be a file name only: ${index}`)
@@ -75,7 +81,7 @@ export function serveStatic(
       return undefined
     }
 
-    return sendFile(ctx, realFilePath, { maxAge })
+    return sendFile(ctx, realFilePath, { maxAge, precompressed })
   }
 }
 
@@ -216,15 +222,24 @@ function encodeSafely(segment: string): string {
   )
 }
 
+// O_NOFOLLOW: never follow a symbolic link put in place after the checks. O_NONBLOCK: a named pipe or device
+// would otherwise make open wait (and hold a file system worker) until something writes to it; regular files are
+// not affected, and the descriptor is checked to be a regular file right after opening
+const OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0)
+
 async function sendFile(
   ctx: Context,
   filePath: string,
-  { maxAge }: { maxAge: number },
+  {
+    maxAge,
+    precompressed = false,
+  }: { maxAge: number; precompressed?: boolean },
 ) {
   let handle: FileHandle
   try {
     // Do not follow a symbolic link even if the last component was replaced with one after the checks
-    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW)
+    handle = await open(filePath, OPEN_FLAGS)
   } catch (error) {
     // Do not serve files that disappeared or were replaced with a symbolic link (ELOOP) after the checks
     if (isNotFound(error) || errorCode(error) === 'ELOOP') return undefined
@@ -232,15 +247,28 @@ async function sendFile(
   }
   try {
     // Return the metadata of the file that was actually opened, even if the path was replaced after the checks
-    const stats = await handle.stat()
+    let stats = await handle.stat()
     if (!stats.isFile()) {
       await handle.close()
       return undefined
     }
-    const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`
-    const lastModified = new Date(Math.floor(stats.mtimeMs / 1000) * 1000)
 
     const { headers } = ctx
+    let encoding: Encoding | undefined
+    if (precompressed) {
+      // The response depends on Accept-Encoding whichever file is sent
+      addVary(headers, 'Accept-Encoding')
+      const variant = await openVariant(ctx, filePath, stats)
+      if (variant) {
+        await handle.close()
+        ;({ handle, stats, encoding } = variant)
+        headers.set('Content-Encoding', encoding)
+      }
+    }
+    const tag = `${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}`
+    const etag = `W/"${encoding ? `${tag}-${encoding}` : tag}"`
+    const lastModified = new Date(Math.floor(stats.mtimeMs / 1000) * 1000)
+
     headers.set('ETag', etag)
     headers.set('Last-Modified', lastModified.toUTCString())
     headers.set('Cache-Control', `public, max-age=${maxAge}`)
@@ -312,6 +340,77 @@ function requestedRange(
   if (start >= size) return 'unsatisfiable'
   const end = last === '' ? size - 1 : Math.min(Number(last), size - 1)
   return { start, end }
+}
+
+type Encoding = 'br' | 'gzip'
+const EXTENSIONS: Record<Encoding, string> = { br: '.br', gzip: '.gz' }
+
+/**
+ * Opens the compressed file to send instead of the original, if the client accepts one. It sits next to the real
+ * path of the original, which passed every safety check, and is opened without following a symbolic link
+ */
+async function openVariant(
+  ctx: Context,
+  filePath: string,
+  original: Stats,
+): Promise<
+  { handle: FileHandle; stats: Stats; encoding: Encoding } | undefined
+> {
+  for (const encoding of acceptedEncodings(
+    ctx.request.headers.get('accept-encoding'),
+  )) {
+    let handle: FileHandle
+    try {
+      handle = await open(filePath + EXTENSIONS[encoding], OPEN_FLAGS)
+    } catch {
+      continue
+    }
+    const stats = await handle.stat().catch(() => undefined)
+    // A compressed file older than the original would send outdated content
+    if (stats?.isFile() && stats.mtimeMs >= original.mtimeMs) {
+      return { handle, stats, encoding }
+    }
+    await handle.close()
+  }
+  return undefined
+}
+
+/**
+ * The encodings we can serve that Accept-Encoding allows and ranks at least as high as no encoding, most preferred
+ * first (Brotli on a tie)
+ */
+function acceptedEncodings(header: string | null): Encoding[] {
+  if (header === null) return []
+  const weights = new Map<string, number>()
+  for (const item of header.split(',')) {
+    const [name = '', ...params] = item.split(';').map((part) => part.trim())
+    const q = params.find((param) => /^q=/i.test(param))
+    const weight = q === undefined ? 1 : Number(q.slice(2))
+    weights.set(name.toLowerCase(), Number.isFinite(weight) ? weight : 0)
+  }
+  const any = weights.get('*') ?? 0
+  // An uncompressed response the client ranks higher wins; on a tie, the smaller compressed file is sent
+  const identity = weights.get('identity') ?? weights.get('*') ?? 0
+  return (['br', 'gzip'] as const)
+    .map((encoding) => ({ encoding, weight: weights.get(encoding) ?? any }))
+    .filter(({ weight }) => weight > 0 && weight >= identity)
+    .sort((a, b) => b.weight - a.weight)
+    .map(({ encoding }) => encoding)
+}
+
+function addVary(headers: Headers, field: string): void {
+  const fields = (headers.get('Vary') ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+  if (
+    fields.some(
+      (value) => value === '*' || value.toLowerCase() === field.toLowerCase(),
+    )
+  ) {
+    return
+  }
+  headers.set('Vary', [...fields, field].join(', '))
 }
 
 function isNotModified(
