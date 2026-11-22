@@ -30,8 +30,8 @@ export interface CloseOptions {
 export interface Server {
   readonly port: number
   /**
-   * Stops accepting connections, closes idle ones, and resolves once the requests in progress have been
-   * answered (with `Connection: close`) or the timeout has cut them
+   * Stops accepting connections, closes idle ones, ends each connection once its requests have been answered,
+   * and resolves when all are closed or the timeout has cut the rest
    */
   close(options?: CloseOptions): Promise<void>
 }
@@ -101,12 +101,10 @@ export async function serve(
               ),
             )
           }
+          // No Connection: close on responses: Node would close after that response and cut a request that
+          // arrives on the same connection meanwhile. A request arriving just as the connection ends is lost,
+          // which HTTP/1.1 clients handle by retrying (RFC 9112, 9.3.1)
           closing = true
-          // Tell clients the connection will not stay open, where the last response has not been sent yet
-          for (const responses of inProgress.values()) {
-            const last = [...responses].at(-1)
-            if (last && !last.headersSent) last.shouldKeepAlive = false
-          }
           return new Promise<void>((done, fail) => {
             // Cutting the connections aborts ctx.request.signal of the requests still in progress
             const timer = setTimeout(

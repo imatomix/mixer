@@ -449,7 +449,7 @@ describe('close', () => {
       'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n',
     )
 
-  it('waits for requests in progress, and answers them with Connection: close', async () => {
+  it('waits for requests in progress before closing', async () => {
     const { server, release, handling } = await startHeld()
     const response = request(server.port)
     await handling
@@ -462,7 +462,6 @@ describe('close', () => {
     release()
     const res = await response
     expect(status(res)).toBe(200)
-    expect(res).toMatch(/\r\nconnection: close\r\n/i)
     await closing
     expect(closed).toBe(true)
   })
@@ -550,6 +549,44 @@ describe('close', () => {
     expect(secondAborted).toBe(false)
     expect(received).toContain('second')
     socket.destroy()
+  })
+
+  it('serves a request that arrives on an open connection while closing', async () => {
+    const releases: (() => void)[] = []
+    let aStarted: () => void = () => {}
+    const aHandling = new Promise<void>((resolve) => {
+      aStarted = resolve
+    })
+    let bStarted: () => void = () => {}
+    const bHandling = new Promise<void>((resolve) => {
+      bStarted = resolve
+    })
+    const server = await serve(
+      new Mixer().mix(async (ctx) => {
+        if (ctx.path === '/a') aStarted()
+        else bStarted()
+        await new Promise<void>((resolve) => releases.push(resolve))
+        return ctx.path
+      }),
+      { port: 0, hostname: '127.0.0.1' },
+    )
+    let received = ''
+    const socket = connect(server.port, '127.0.0.1')
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk) => {
+      received += chunk
+    })
+    const ended = new Promise((resolve) => socket.once('end', resolve))
+    socket.write('GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n')
+    await aHandling
+    const closing = server.close({ timeout: 2_000 })
+    socket.write('GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n')
+    await bHandling
+    for (const release of releases.splice(0)) release()
+    await closing
+    await ended
+    expect(received).toContain('/a')
+    expect(received).toContain('/b')
   })
 
   it('ends the connection even if the app answers with Connection: keep-alive', async () => {

@@ -170,7 +170,7 @@ await serve(app, {
 - `X-Forwarded-*` headers are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
-- `server.close()` stops accepting connections, closes idle ones, and waits for the requests in progress, answering them with `Connection: close`. After `timeout` (10 seconds by default; `server.close({ timeout: 30_000 })`) it cuts the rest, which aborts their `ctx.request.signal`. Call it on `SIGTERM` to deploy without dropping requests
+- `server.close()` stops accepting connections, closes idle ones, and ends each remaining connection once its requests have been answered. After `timeout` (10 seconds by default; `server.close({ timeout: 30_000 })`) it cuts the rest, which aborts their `ctx.request.signal`. Call it on `SIGTERM` to deploy without dropping requests
 
 ### Bun
 
