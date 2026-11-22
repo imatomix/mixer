@@ -19,10 +19,24 @@ export interface ServeOptions {
   allowedHosts?: readonly string[] | true
 }
 
+export interface CloseOptions {
+  /**
+   * Milliseconds to wait for requests in progress before cutting their connections (defaults to 10000).
+   * 0 cuts them at once
+   */
+  timeout?: number
+}
+
 export interface Server {
   readonly port: number
-  close(): Promise<void>
+  /**
+   * Stops accepting connections, closes idle ones, and resolves once the requests in progress have been
+   * answered (with `Connection: close`) or the timeout has cut them
+   */
+  close(options?: CloseOptions): Promise<void>
 }
+
+const DEFAULT_CLOSE_TIMEOUT = 10_000
 
 interface FetchApp {
   fetch: (request: Request) => Promise<Response>
@@ -45,7 +59,14 @@ export async function serve(
     )
   }
 
+  // Responses still being handled, so that close() can tell their connections not to stay open
+  const active = new Set<ServerResponse>()
+  let closing = false
+
   const server = createServer((req, res) => {
+    active.add(res)
+    res.once('close', () => active.delete(res))
+    if (closing) res.shouldKeepAlive = false
     handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
       console.error(error)
       if (!res.headersSent) {
@@ -64,11 +85,32 @@ export async function serve(
       const { port } = server.address() as AddressInfo
       resolve({
         port,
-        close: () =>
-          new Promise<void>((done, fail) => {
-            server.close((error) => (error ? fail(error) : done()))
-            server.closeAllConnections()
-          }),
+        close: ({ timeout = DEFAULT_CLOSE_TIMEOUT } = {}) => {
+          if (!Number.isFinite(timeout) || timeout < 0) {
+            return Promise.reject(
+              new RangeError(
+                `close timeout must be a finite number of milliseconds, 0 or more: ${timeout}`,
+              ),
+            )
+          }
+          closing = true
+          for (const res of active) {
+            if (!res.headersSent) res.shouldKeepAlive = false
+          }
+          return new Promise<void>((done, fail) => {
+            // Cutting the connections aborts ctx.request.signal of the requests still in progress
+            const timer = setTimeout(
+              () => server.closeAllConnections(),
+              timeout,
+            )
+            server.close((error) => {
+              clearTimeout(timer)
+              if (error) fail(error)
+              else done()
+            })
+            server.closeIdleConnections()
+          })
+        },
       })
     })
   })
