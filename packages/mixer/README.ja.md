@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-http://localhost:3000 を開く。Bun では代わりに `Bun.serve({ port: 3000, fetch: app.fetch })` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
+http://localhost:3000 を開く。Bun では代わりに `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
 
 ## 基本
 
@@ -175,10 +175,10 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: app.fetch })
+Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
 ```
 
-`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
+`request` だけを渡す。Bun は `fetch(request, server)` と呼ぶので、そのまま渡すと Bun のサーバーが `ctx.env` に入ってしまう。`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
 
 ### Cloudflare Workers
 
