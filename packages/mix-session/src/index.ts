@@ -21,6 +21,11 @@ export interface SessionOptions {
   ttl?: number
   /** Extend the expiry even on requests that only read the session */
   rolling?: boolean
+  /**
+   * Seconds after which a session ends, however active it is (defaults to 604800, 7 days). It restarts when a
+   * session is created or regenerated (such as on login). `false` turns it off
+   */
+  absoluteTtl?: number | false
   /** Cookie attributes. Defaults to the same as mixer's ctx.cookies (HttpOnly, Secure, SameSite=Lax) */
   cookie?: Omit<CookieOptions, 'maxAge' | 'expires'>
 }
@@ -41,28 +46,61 @@ export function session<D extends SessionData = SessionData>(
   const name = options.name ?? defaultCookieName(cookie)
   const ttl = options.ttl ?? 86_400
   const rolling = options.rolling ?? false
+  const absoluteTtl = options.absoluteTtl ?? 604_800
   checkCookiePrefix(name, cookie)
   if (!Number.isInteger(ttl) || ttl < 1) {
     throw new Error(`mix-session: ttl must be an integer of 1 or more: ${ttl}`)
   }
+  if (
+    absoluteTtl !== false &&
+    (!Number.isInteger(absoluteTtl) || absoluteTtl < 1)
+  ) {
+    throw new Error(
+      `mix-session: absoluteTtl must be an integer of 1 or more, or false: ${absoluteTtl}`,
+    )
+  }
+
+  /** Seconds this session may still live: the shorter of ttl and the time left before absoluteTtl */
+  const lifetime = (createdAt: number, now = Date.now()): number => {
+    if (absoluteTtl === false) return ttl
+    const left = Math.floor((createdAt + absoluteTtl * 1000 - now) / 1000)
+    return Math.min(ttl, left)
+  }
 
   return async (ctx) => {
     const loadedId = readSessionId(ctx, name)
-    const data = loadedId ? await store.get(loadedId) : undefined
+    const record = loadedId ? toRecord(await store.get(loadedId)) : undefined
+    // An expired session is treated as missing, and removed when the response is sent
+    const live = record && lifetime(record.createdAt) >= 1 ? record : undefined
+    const expiredId = record && !live ? loadedId : undefined
     // Never adopt an ID that is not in the store. Otherwise an attacker could make a victim use an ID the attacker chose
     const session = new Session<D>(
-      (data ?? {}) as Partial<D>,
-      data ? loadedId : undefined,
+      (live?.data ?? {}) as Partial<D>,
+      live ? loadedId : undefined,
     )
     ;(ctx.state as SessionState<D>).session = session
 
-    ctx.onBeforeSend(() => save(ctx, session))
+    ctx.onBeforeSend(() =>
+      save(ctx, session, live?.createdAt ?? Date.now(), expiredId),
+    )
     return undefined
   }
 
-  async function save(ctx: Context, session: Session<D>): Promise<void> {
+  async function save(
+    ctx: Context,
+    session: Session<D>,
+    createdAt: number,
+    expiredId: string | undefined,
+  ): Promise<void> {
     const { data, change } = session.snapshot()
     const currentId = session.id
+    const created =
+      change === 'regenerated' || (change === 'modified' && !currentId)
+
+    if (expiredId) {
+      await store.delete(expiredId)
+      if (!created) ctx.cookies.delete(name, cookie)
+    }
 
     if (change === 'destroyed' || (change !== 'none' && isEmpty(data))) {
       if (currentId) {
@@ -72,26 +110,60 @@ export function session<D extends SessionData = SessionData>(
       return
     }
 
-    if (change === 'regenerated' || (change === 'modified' && !currentId)) {
+    if (created) {
       if (currentId) await store.delete(currentId)
+      // A new or regenerated session (such as on login) starts its absolute lifetime now
+      const now = Date.now()
       const newId = generateId()
-      await store.set(newId, data as SessionData, ttl)
-      issueCookie(ctx, newId)
+      // The same clock reading for both, so that the new session gets its full lifetime
+      const seconds = lifetime(now, now)
+      await store.set(newId, { createdAt: now, data }, seconds)
+      issueCookie(ctx, newId, seconds)
       return
     }
 
     if (currentId && (change === 'modified' || rolling)) {
+      const seconds = lifetime(createdAt)
+      // The absolute lifetime ran out during this request
+      if (seconds < 1) {
+        await store.delete(currentId)
+        ctx.cookies.delete(name, cookie)
+        return
+      }
       // Do not save if the session was destroyed or regenerated concurrently (never bring an old ID back)
-      const updated = await store.update(currentId, data as SessionData, ttl)
-      if (updated) issueCookie(ctx, currentId)
+      const updated = await store.update(
+        currentId,
+        { createdAt, data },
+        seconds,
+      )
+      if (updated) issueCookie(ctx, currentId, seconds)
     }
   }
 
-  function issueCookie(ctx: Context, id: string): void {
-    ctx.cookies.set(name, id, { ...cookie, maxAge: ttl })
+  function issueCookie(ctx: Context, id: string, seconds: number): void {
+    ctx.cookies.set(name, id, { ...cookie, maxAge: seconds })
     // If a response with Set-Cookie were stored in a shared cache, other users would receive the same session
     ctx.headers.set('Cache-Control', 'private, no-store')
   }
+}
+
+/** What mix-session keeps in the store: the data, and when the session was created for absoluteTtl */
+interface SessionRecord {
+  createdAt: number
+  data: SessionData
+}
+
+/** A stored value in any other shape (for example, written by something else) is not adopted */
+function toRecord(value: SessionData | undefined): SessionRecord | undefined {
+  if (value === undefined) return undefined
+  const { createdAt, data } = value
+  if (typeof createdAt !== 'number' || !Number.isFinite(createdAt)) {
+    return undefined
+  }
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return undefined
+  }
+  return { createdAt, data: data as SessionData }
 }
 
 function readSessionId(ctx: Context, name: string): string | undefined {

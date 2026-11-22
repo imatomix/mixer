@@ -56,7 +56,7 @@ app.mix(
 | Method | Description |
 | --- | --- |
 | `get(key)` / `set(key, value)` / `delete(key)` | Read and write data. Deleting every key is the same as `destroy()` |
-| `regenerate()` | Issues a new ID while keeping the data, and deletes the old ID from the store. **Always call it when privileges change, such as on login** (protection against session fixation) |
+| `regenerate()` | Issues a new ID while keeping the data, and deletes the old ID from the store. **Always call it when privileges change, such as on login** (protection against session fixation). It also restarts the `absoluteTtl` clock |
 | `destroy()` | Deletes the session from the store and removes the cookie |
 | `id` | ID of the loaded session. `undefined` for a new session until it is saved |
 
@@ -66,11 +66,14 @@ app.mix(
 | --- | --- | --- |
 | `store` | `new MemoryStore()` | Where sessions are stored |
 | `name` | `'__Host-sid'` ([see below](#cookie-name)) | Cookie name |
-| `ttl` | `86400` | Lifetime in seconds. Used for the cookie's Max-Age and the store's expiry |
+| `ttl` | `86400` | Seconds a session lives without being saved again. Used for the cookie's Max-Age and the store's expiry |
 | `rolling` | `false` | Extend the expiry even on requests that only read the session |
+| `absoluteTtl` | `604800` (7 days) | Seconds after which a session ends however active it is. It restarts when a session is created or regenerated (such as on login). `false` turns it off |
 | `cookie` | mixer's defaults (HttpOnly, Secure, SameSite=Lax, Path=/) | Cookie attributes. Use `{ secure: false }` when developing on http://localhost |
 
 ## Stores
+
+Stores receive the value mix-session keeps, `{ createdAt, data }` (when the session was created, for `absoluteTtl`, and the session data); a value in any other shape is not adopted.
 
 ```ts
 interface SessionStore {

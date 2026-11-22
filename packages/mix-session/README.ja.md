@@ -56,7 +56,7 @@ app.mix(
 | メソッド | 説明 |
 | --- | --- |
 | `get(key)` / `set(key, value)` / `delete(key)` | データの読み書き。すべてのキーを消すと `destroy()` と同じ |
-| `regenerate()` | データを保ったまま ID を作り直し、古い ID をストアから消す。**ログインなど権限が変わるときに必ず呼ぶ**（セッション固定化の対策） |
+| `regenerate()` | データを保ったまま ID を作り直し、古い ID をストアから消す。**ログインなど権限が変わるときに必ず呼ぶ**（セッション固定化の対策）。`absoluteTtl` も数え直す |
 | `destroy()` | ストアから消し、Cookie も削除する |
 | `id` | 読み込んだセッションの ID。新しいセッションでは保存されるまで `undefined` |
 
@@ -66,11 +66,14 @@ app.mix(
 | --- | --- | --- |
 | `store` | `new MemoryStore()` | 保存先 |
 | `name` | `'__Host-sid'`（[後述](#cookie-の名前)） | Cookie の名前 |
-| `ttl` | `86400` | 有効期間（秒）。Cookie の Max-Age とストアの期限に使う |
+| `ttl` | `86400` | 保存し直されないまま生きる秒数。Cookie の Max-Age とストアの期限に使う |
 | `rolling` | `false` | 読むだけのリクエストでも期限を延ばす |
+| `absoluteTtl` | `604800`（7 日） | 使われ続けていても、この秒数でセッションを終える。セッションを作ったときと作り直したとき（ログインなど）に数え直す。`false` で無効 |
 | `cookie` | mixer の既定（HttpOnly・Secure・SameSite=Lax・Path=/） | Cookie の属性。http の localhost で開発するときは `{ secure: false }` |
 
 ## ストア
+
+ストアが受け取る値は、mix-session が保存する `{ createdAt, data }`（`absoluteTtl` のためのセッションの作成時刻と、セッションのデータ）。ほかの形の値は採用しない。
 
 ```ts
 interface SessionStore {
