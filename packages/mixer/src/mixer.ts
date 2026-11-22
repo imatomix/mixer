@@ -1,7 +1,12 @@
 import { DEFAULT_BODY_LIMIT } from './body.js'
 import { Context, type ExecutionContextLike, type State } from './context.js'
 import { HttpError } from './errors.js'
-import { errorDraft, finalizeResponse, toResponse } from './finalize.js'
+import {
+  errorDraft,
+  finalizeResponse,
+  joinVary,
+  toResponse,
+} from './finalize.js'
 
 export type Component<S extends State = State, E = unknown> = (
   ctx: Context<S, E>,
@@ -95,6 +100,9 @@ export class Mixer<S extends State = State, E = unknown> {
   async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
     const status = error instanceof HttpError ? error.status : 500
     const draft = errorDraft(ctx.headers, status)
+    if (error instanceof HttpError) {
+      addHeaders(draft.headers, error.headers, { cookies: true })
+    }
     ctx.resetDraft(draft)
 
     if (this.#onError) {
@@ -112,7 +120,11 @@ export class Mixer<S extends State = State, E = unknown> {
           return respondToHookFailure(hookError, ctx)
         }
       }
-      ctx.resetDraft(errorDraft(draft.headers, status))
+      const fresh = errorDraft(draft.headers, status)
+      if (error instanceof HttpError) {
+        addHeaders(fresh.headers, error.headers, { cookies: false })
+      }
+      ctx.resetDraft(fresh)
     }
 
     try {
@@ -122,6 +134,30 @@ export class Mixer<S extends State = State, E = unknown> {
     }
     return defaultErrorResponse(error, ctx)
   }
+}
+
+/**
+ * Adds an HttpError's headers to an error draft. Vary is joined with what the draft kept (such as Origin from
+ * mix-cors). Cookies are added only once: a draft rebuilt from one that already has them keeps them, together
+ * with any change onError made to them
+ */
+function addHeaders(
+  target: Headers,
+  source: Headers,
+  { cookies }: { cookies: boolean },
+): void {
+  for (const [name, value] of source) {
+    if (name === 'set-cookie') continue
+    if (name === 'vary') {
+      const vary = joinVary(target.get('Vary'), value)
+      if (vary) target.set('Vary', vary)
+    } else {
+      target.set(name, value)
+    }
+  }
+  if (!cookies) return
+  for (const cookie of source.getSetCookie())
+    target.append('Set-Cookie', cookie)
 }
 
 function respondToHookFailure(

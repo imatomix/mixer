@@ -98,6 +98,12 @@ app.mix((ctx) => {
 })
 ```
 
+Headers an error response needs go on the error itself; headers set in `ctx.headers` before the error are not kept (except `Access-Control-*`, `Vary`, and `Set-Cookie`), so that headers meant for a normal response do not leak into the error.
+
+```ts
+throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
+```
+
 To shape error responses yourself, pass `onError`. It starts with the error's status in `ctx.status`, and what it returns becomes the response. If it returns `undefined` or throws, the default response is sent.
 
 ```ts

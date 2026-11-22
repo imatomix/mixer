@@ -98,6 +98,12 @@ app.mix((ctx) => {
 })
 ```
 
+エラーの応答に必要なヘッダは、エラー自身に持たせる。エラーの前に `ctx.headers` で設定したヘッダは（`Access-Control-*`・`Vary`・`Set-Cookie` を除き）引き継がれない。通常の応答のためのヘッダがエラーに紛れ込まないようにするため。
+
+```ts
+throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
+```
+
 エラーの応答を自分で組み立てるときは `onError` を渡す。`ctx.status` にエラーのステータスが入った状態で呼ばれ、戻り値が応答になる。`undefined` を返すか例外を投げると、既定の応答になる。
 
 ```ts
