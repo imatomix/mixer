@@ -167,3 +167,20 @@ describe('request body', () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe('bodyLimit option', () => {
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    'rejects an invalid bodyLimit (%s), which would otherwise disable the limit',
+    (bodyLimit) => {
+      expect(() => new Mixer({ bodyLimit })).toThrow(RangeError)
+    },
+  )
+
+  it('accepts 0, which allows no body', async () => {
+    const res = await call(echoBody({ bodyLimit: 0 }), '/', {
+      method: 'POST',
+      body: 'x',
+    })
+    expect(res.status).toBe(413)
+  })
+})
