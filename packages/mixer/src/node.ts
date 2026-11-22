@@ -62,13 +62,21 @@ export async function serve(
   // Requests still being handled on each connection. While closing, a connection ends when its last one is
   // answered: ending it earlier would cut a pipelined request, and leaving it to Connection: close fails when
   // the headers are already sent (a stream) or the app answered with its own Connection header
-  const inProgress = new Map<Socket, Set<ServerResponse>>()
+  // A WeakMap, and cleared when the socket closes: a response queued behind a pipelined request never emits
+  // 'close' when the client disconnects, so its entry must not outlive the socket
+  const inProgress = new WeakMap<Socket, Set<ServerResponse>>()
   let closing = false
+  const track = (socket: Socket) => {
+    const responses = new Set<ServerResponse>()
+    inProgress.set(socket, responses)
+    socket.once('close', () => inProgress.delete(socket))
+    return responses
+  }
 
   const server = createServer((req, res) => {
     const socket = req.socket
-    const responses = inProgress.get(socket) ?? new Set()
-    inProgress.set(socket, responses.add(res))
+    const responses = inProgress.get(socket) ?? track(socket)
+    responses.add(res)
     res.once('close', () => {
       responses.delete(res)
       if (responses.size > 0) return
