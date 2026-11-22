@@ -95,6 +95,7 @@ export class Mixer<S extends State = State, E = unknown> {
   async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
     const status = error instanceof HttpError ? error.status : 500
     const draft = errorDraft(ctx.headers, status)
+    if (error instanceof HttpError) addHeaders(draft.headers, error.headers)
     ctx.resetDraft(draft)
 
     if (this.#onError) {
@@ -112,7 +113,9 @@ export class Mixer<S extends State = State, E = unknown> {
           return respondToHookFailure(hookError, ctx)
         }
       }
-      ctx.resetDraft(errorDraft(draft.headers, status))
+      const fresh = errorDraft(draft.headers, status)
+      if (error instanceof HttpError) addHeaders(fresh.headers, error.headers)
+      ctx.resetDraft(fresh)
     }
 
     try {
@@ -122,6 +125,14 @@ export class Mixer<S extends State = State, E = unknown> {
     }
     return defaultErrorResponse(error, ctx)
   }
+}
+
+function addHeaders(target: Headers, source: Headers): void {
+  for (const [name, value] of source) {
+    if (name !== 'set-cookie') target.set(name, value)
+  }
+  for (const cookie of source.getSetCookie())
+    target.append('Set-Cookie', cookie)
 }
 
 function respondToHookFailure(

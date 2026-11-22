@@ -111,6 +111,52 @@ describe('error handling', () => {
     expect(res.headers.get('cache-control')).toBe('private')
   })
 
+  it('sends headers given to an HttpError, such as Retry-After', async () => {
+    const app = new Mixer().mix(() => {
+      throw new HttpError(429, 'Too Many Requests', {
+        headers: { 'Retry-After': '60' },
+      })
+    })
+    const res = await call(app)
+    expect(res.status).toBe(429)
+    expect(res.headers.get('retry-after')).toBe('60')
+    expect(await res.json()).toEqual({ error: 'Too Many Requests' })
+  })
+
+  it('keeps HttpError headers when onError builds the response', async () => {
+    const app = new Mixer({
+      onError: (_error, ctx) => ({ auth: ctx.headers.get('www-authenticate') }),
+    }).mix(() => {
+      throw new HttpError(401, 'Unauthorized', {
+        headers: { 'WWW-Authenticate': 'Bearer' },
+      })
+    })
+    const res = await call(app)
+    expect(res.headers.get('www-authenticate')).toBe('Bearer')
+    expect(await res.json()).toEqual({ auth: 'Bearer' })
+  })
+
+  it('keeps HttpError headers when onError falls back to the default response', async () => {
+    const app = new Mixer({ onError: () => undefined }).mix(() => {
+      throw new HttpError(405, undefined, { headers: { Allow: 'GET, HEAD' } })
+    })
+    const res = await call(app)
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD')
+  })
+
+  it('exposes the headers of an HttpError and rejects invalid values', () => {
+    const error = new HttpError(405, undefined, { headers: { Allow: 'GET' } })
+    expect(error.headers.get('allow')).toBe('GET')
+    expect(new HttpError(400).headers).toBeInstanceOf(Headers)
+    expect(
+      () =>
+        new HttpError(400, undefined, {
+          headers: { 'X-Bad': 'a\r\nSet-Cookie: x=1' },
+        }),
+    ).toThrow(TypeError)
+  })
+
   it('lets onError return a value that goes through finalizing', async () => {
     const app = new Mixer({
       onError: (error, ctx) => {
