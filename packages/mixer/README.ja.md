@@ -86,6 +86,19 @@ app.mix((ctx) => {
 })
 ```
 
+### リダイレクト
+
+```ts
+import { redirect } from '@imatomix/mixer'
+
+return redirect('/login') // 302
+return redirect('/orders/1', { status: 303 }) // フォームを POST した後
+return redirect(ctx.url.searchParams.get('next'), { fallback: '/' }) // クライアントから受け取った値
+return redirect(url, { allowedOrigins: ['https://accounts.example.com'] }) // ほかのサイト
+```
+
+`redirect()` は、うっかり利用者をほかのサイトへ送ってしまうこと（オープンリダイレクト）を防ぐ。既定では、`/` 1 つで始まるこのサイトのパスだけを受け付け、`//evil.example`、`\`、空白・制御文字、符号化された `/` や `\`、`.` と `..` の区切り、絶対 URL は `TypeError` で拒否する。クライアントから受け取った値には、代わりに使う `fallback` を渡す。ほかのサイトへは、`allowedOrigins` にオリジンを完全一致で並べたものだけ。ステータスは既定で `302`（`301`・`303`・`307`・`308` も可）で、パスに `basePath` は付け足さない。リダイレクトの前に設定した Cookie は残る。
+
 ### エラー
 
 `HttpError` を投げると、そのステータスと `{ "error": message }` で応答する。それ以外のエラーは `500` になり、詳細は `console.error` に出してクライアントには見せない。
@@ -238,6 +251,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になり、共有キャッシュがほかの人に渡すことがない
 - `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直し、引き継ぐのは `Access-Control-*`・`Vary`・`Set-Cookie` だけなので、通常の応答のための `Location` や `Cache-Control` がエラーに紛れ込まない
 - 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる
+- `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
 - Node.js の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
 

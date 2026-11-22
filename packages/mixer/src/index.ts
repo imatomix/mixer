@@ -17,3 +17,8 @@ export {
   Mixer,
   type MixerOptions,
 } from './mixer.js'
+export {
+  type RedirectOptions,
+  type RedirectStatus,
+  redirect,
+} from './redirect.js'

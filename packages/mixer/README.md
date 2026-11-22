@@ -86,6 +86,19 @@ app.mix((ctx) => {
 })
 ```
 
+### Redirects
+
+```ts
+import { redirect } from '@imatomix/mixer'
+
+return redirect('/login') // 302
+return redirect('/orders/1', { status: 303 }) // after a form POST
+return redirect(ctx.url.searchParams.get('next'), { fallback: '/' }) // a value from the client
+return redirect(url, { allowedOrigins: ['https://accounts.example.com'] }) // another site
+```
+
+`redirect()` refuses to send users to another site by mistake (an open redirect). By default the location must be a path on this site that starts with a single `/`; `//evil.example`, backslashes, whitespace and control characters, encoded `/` or `\`, `.` and `..` segments, and absolute URLs are rejected with a `TypeError`. For a value that comes from the client, give a `fallback` to use instead. Other sites must be listed in `allowedOrigins` by exact origin. The status is `302` by default (`301`, `303`, `307`, and `308` are accepted), and the path is not prefixed with `basePath`. Cookies set before redirecting are kept.
+
 ### Errors
 
 Throw an `HttpError` to answer with its status and `{ "error": message }`. Any other error becomes `500`; its details go to `console.error`, never to the client.
@@ -238,6 +251,7 @@ Without any configuration:
 - A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
 - Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, keeping only `Access-Control-*`, `Vary`, and `Set-Cookie`, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error
 - Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`
+- `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
 - On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
 
