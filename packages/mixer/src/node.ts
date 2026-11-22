@@ -59,11 +59,12 @@ export async function serve(
     )
   }
 
-  // Requests still being handled on each connection. While closing, a connection ends when its last one is
-  // answered: ending it earlier would cut a pipelined request, and leaving it to Connection: close fails when
-  // the headers are already sent (a stream) or the app answered with its own Connection header
-  // A WeakMap, and cleared when the socket closes: a response queued behind a pipelined request never emits
-  // 'close' when the client disconnects, so its entry must not outlive the socket
+  // The requests in progress on each connection. While closing, a connection ends once its last request is
+  // answered, so that a pipelined request or one that arrives meanwhile is not cut. Marking responses
+  // Connection: close cannot do this: Node closes right after that response, and the mark is lost when the
+  // headers are already sent (a stream) or the app sets its own Connection header.
+  // Entries live until their socket closes (a WeakMap, so they never outlive it), which also means
+  // 'close' is listened to once per connection
   const inProgress = new WeakMap<Socket, Set<ServerResponse>>()
   let closing = false
   const track = (socket: Socket) => {
@@ -79,7 +80,6 @@ export async function serve(
     responses.add(res)
     res.once('close', () => {
       responses.delete(res)
-      // The empty set stays until the socket closes, so that 'close' is listened to once per connection
       if (closing && responses.size === 0) socket.end()
     })
     handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
@@ -108,9 +108,8 @@ export async function serve(
               ),
             )
           }
-          // No Connection: close on responses: Node would close after that response and cut a request that
-          // arrives on the same connection meanwhile. A request arriving just as the connection ends is lost,
-          // which HTTP/1.1 clients handle by retrying (RFC 9112, 9.3.1)
+          // A request that arrives just as its connection ends is lost; HTTP/1.1 clients retry such requests
+          // (RFC 9112, 9.3.1)
           closing = true
           return new Promise<void>((done, fail) => {
             // Cutting the connections aborts ctx.request.signal of the requests still in progress
