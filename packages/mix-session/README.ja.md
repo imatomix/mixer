@@ -44,7 +44,7 @@ app.mix(
 
 - Cookie には **32 バイトの乱数の ID だけ**を入れ、データはサーバ側のストアに置く。データがブラウザに渡らないので暗号化はしていない
 - **書き込むまでセッションを作らない**。訪問しただけではストアにも Cookie にも何も作られない
-- 変更があったときだけ、応答の直前（`ctx.onBeforeSend`）にストアへ保存し Cookie を発行する
+- 変更があったときだけ、応答の直前（`ctx.onBeforeSend`）にストアへ保存し Cookie を発行する。`session.get('cart').push(item)` のように値の中を変えた場合も変更として扱う
 - Set-Cookie を出す応答は `Cache-Control: private, no-store` にする（共有キャッシュから他の利用者に同じセッションが配られないように）
 - コンポーネントが返した `Response`、`404`、エラーの応答を含め、すべての応答で保存する
 - セッション ID は Web Crypto（`crypto.getRandomValues`）で作る

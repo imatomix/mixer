@@ -44,7 +44,7 @@ app.mix(
 
 - The cookie holds **only a 32-byte random ID**, and the data lives in a server-side store. The data never reaches the browser, so it is not encrypted
 - **No session is created until something is written.** Visiting alone creates nothing in the store or in cookies
-- Only when something changed, the session is saved to the store and the cookie is issued right before the response (`ctx.onBeforeSend`)
+- Only when something changed, the session is saved to the store and the cookie is issued right before the response (`ctx.onBeforeSend`). A change made inside a value, such as `session.get('cart').push(item)`, counts too
 - Responses that send Set-Cookie get `Cache-Control: private, no-store` (so shared caches never hand the same session to other users)
 - Sessions are saved for every response, including a `Response` returned by a component, `404`, and error responses
 - Session IDs come from Web Crypto (`crypto.getRandomValues`)
