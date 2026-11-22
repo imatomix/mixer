@@ -65,7 +65,7 @@ app.mix(
 | Option | Default | Description |
 | --- | --- | --- |
 | `store` | `new MemoryStore()` | Where sessions are stored |
-| `name` | `'sid'` | Cookie name |
+| `name` | `'__Host-sid'` ([see below](#cookie-name)) | Cookie name |
 | `ttl` | `86400` | Lifetime in seconds. Used for the cookie's Max-Age and the store's expiry |
 | `rolling` | `false` | Extend the expiry even on requests that only read the session |
 | `cookie` | mixer's defaults (HttpOnly, Secure, SameSite=Lax, Path=/) | Cookie attributes. Use `{ secure: false }` when developing on http://localhost |
@@ -86,6 +86,18 @@ interface SessionStore {
 
 `MemoryStore` keeps sessions in process memory. It never returns expired sessions, and drops the least recently used ones when `maxEntries` (default 10000) is exceeded.
 To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in. On serverless platforms and Cloudflare Workers, where each request may run in a different instance, always use an external store. Its `update` must check and update in one step (for example, a D1 transaction or a Durable Object); Workers KV does not fit, because its writes take time to reach other locations.
+
+## Cookie name
+
+By default the cookie gets the strongest name prefix your options allow, so that an attacker cannot plant a session ID of their choosing from another subdomain or an http page:
+
+| Options | Default name | Who cannot overwrite the cookie |
+| --- | --- | --- |
+| Defaults | `__Host-sid` | Other subdomains and http pages |
+| `cookie: { domain: 'example.com' }` (share across subdomains), or a `path` other than `/` | `__Secure-sid` | http pages |
+| `cookie: { secure: false }` (http development) | `sid` | Nobody; use only for development |
+
+To share a session across subdomains, set `domain`; that is all. A `name` you pass is used as is, and combinations that browsers reject (such as `__Host-` with a `domain`) make `session()` throw.
 
 ## Invalid IDs
 

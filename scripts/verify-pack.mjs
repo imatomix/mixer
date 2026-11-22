@@ -156,7 +156,7 @@ const sessionServer = await listen(sessionApp)
 const base = \`http://127.0.0.1:\${sessionServer.port}\`
 const login = await fetch(\`\${base}/login\`)
 const setCookies = login.headers.getSetCookie()
-const sid = setCookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
+const sid = setCookies.find((cookie) => cookie.startsWith('__Host-sid='))?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
 await sessionServer.close()
 if (me.user !== 'mixer' || setCookies.length !== 2) {

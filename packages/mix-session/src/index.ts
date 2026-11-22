@@ -13,7 +13,9 @@ export {
 export interface SessionOptions {
   /** Defaults to a new MemoryStore */
   store?: SessionStore
-  /** Cookie name (defaults to `sid`) */
+  /**
+   * Cookie name. Defaults to `__Host-sid`, or `__Secure-sid` with `cookie.domain`, or `sid` with `cookie.secure: false`
+   */
   name?: string
   /** Session lifetime in seconds (defaults to 86400). Used for the cookie's Max-Age and the store's expiry */
   ttl?: number
@@ -35,10 +37,11 @@ export function session<D extends SessionData = SessionData>(
   options: SessionOptions = {},
 ): Component {
   const store = options.store ?? new MemoryStore()
-  const name = options.name ?? 'sid'
+  const cookie = options.cookie ?? {}
+  const name = options.name ?? defaultCookieName(cookie)
   const ttl = options.ttl ?? 86_400
   const rolling = options.rolling ?? false
-  const cookie = options.cookie ?? {}
+  checkCookiePrefix(name, cookie)
   if (!Number.isInteger(ttl) || ttl < 1) {
     throw new Error(`mix-session: ttl must be an integer of 1 or more: ${ttl}`)
   }
@@ -97,6 +100,36 @@ function readSessionId(ctx: Context, name: string): string | undefined {
   if (values.length !== 1) return undefined
   const [id] = values
   return id !== undefined && ID_PATTERN.test(id) ? id : undefined
+}
+
+/**
+ * The strongest cookie prefix the options allow. A `__Host-` cookie cannot be set from another subdomain or an
+ * http page, so an attacker cannot plant a session ID that way; `__Host-` forbids Domain and needs Path=/, so a shared domain or a narrower path gets
+ * `__Secure-`, which still keeps http pages out. Both need Secure, so `secure: false` gets a plain name
+ */
+function defaultCookieName(cookie: SessionOptions['cookie'] & {}): string {
+  if (cookie.secure === false) return 'sid'
+  const hostOnly = cookie.domain === undefined && (cookie.path ?? '/') === '/'
+  return hostOnly ? '__Host-sid' : '__Secure-sid'
+}
+
+/** Fails at definition instead of on the first login, for prefixes that browsers would reject */
+function checkCookiePrefix(
+  name: string,
+  cookie: SessionOptions['cookie'] & {},
+): void {
+  const secure = cookie.secure !== false
+  const hostOnly = cookie.domain === undefined && (cookie.path ?? '/') === '/'
+  if (name.startsWith('__Host-') && (!secure || !hostOnly)) {
+    throw new Error(
+      `mix-session: a ${name} cookie needs Secure, no domain, and path '/'; change those options or choose another name`,
+    )
+  }
+  if (name.startsWith('__Secure-') && !secure) {
+    throw new Error(
+      `mix-session: a ${name} cookie needs Secure; remove cookie.secure: false or choose another name`,
+    )
+  }
 }
 
 function generateId(): string {

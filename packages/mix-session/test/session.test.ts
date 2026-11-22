@@ -8,7 +8,7 @@ import {
 } from '../src/index.js'
 import { app, call } from './helpers.js'
 
-const SID = /^sid=([A-Za-z0-9_-]{43});/
+const SID = /^__Host-sid=([A-Za-z0-9_-]{43});/
 
 function sidFrom(res: Response): string | undefined {
   for (const cookie of res.headers.getSetCookie()) {
@@ -18,7 +18,7 @@ function sidFrom(res: Response): string | undefined {
   return undefined
 }
 
-const cookieHeader = (sid: string) => ({ cookie: `sid=${sid}` })
+const cookieHeader = (sid: string) => ({ cookie: `__Host-sid=${sid}` })
 
 /** Records calls to the store */
 class RecordingStore extends MemoryStore {
@@ -70,7 +70,7 @@ describe('creating and loading', () => {
     const sid = sidFrom(login)
     expect(sid).toBeDefined()
     expect(login.headers.getSetCookie()[0]).toBe(
-      `sid=${sid}; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      `__Host-sid=${sid}; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax`,
     )
     expect(login.headers.get('cache-control')).toBe('private, no-store')
 
@@ -110,8 +110,11 @@ describe('invalid IDs', () => {
   })
 
   it.each([
-    ['the format is invalid', 'sid=short'],
-    ['the cookie name appears more than once', 'sid=VALID; sid=VALID'],
+    ['the format is invalid', '__Host-sid=short'],
+    [
+      'the cookie name appears more than once',
+      '__Host-sid=VALID; __Host-sid=VALID',
+    ],
   ])('does not load the session when %s', async (_label, cookie) => {
     const store = new MemoryStore()
     const valid = 'B'.repeat(43)
@@ -190,7 +193,7 @@ describe('regenerate and destroy', () => {
     })
     const res = await call(target, '/', { headers: cookieHeader(old) })
     expect(await store.get(old)).toBeUndefined()
-    expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
+    expect(res.headers.getSetCookie()[0]).toMatch(/^__Host-sid=; Max-Age=0;/)
   })
 
   it('deleting every key is the same as destroy', async () => {
@@ -202,7 +205,7 @@ describe('regenerate and destroy', () => {
     })
     const res = await call(target, '/', { headers: cookieHeader(old) })
     expect(await store.get(old)).toBeUndefined()
-    expect(res.headers.getSetCookie()[0]).toMatch(/^sid=; Max-Age=0;/)
+    expect(res.headers.getSetCookie()[0]).toMatch(/^__Host-sid=; Max-Age=0;/)
   })
 
   it('does not bring back a session destroyed concurrently when another request saves', async () => {
@@ -271,6 +274,56 @@ describe('expiry', () => {
   })
 })
 
+describe('default cookie name', () => {
+  const writes = (ctx: { state: unknown }) => {
+    ;(ctx.state as State).session.set('v', 1)
+    return 'ok'
+  }
+
+  it.each([
+    [
+      '__Host-sid by default, so other subdomains and http pages cannot plant it',
+      {},
+      '__Host-sid',
+    ],
+    [
+      '__Secure-sid with a domain, as __Host- forbids Domain',
+      { domain: 'example.com' },
+      '__Secure-sid',
+    ],
+    ['sid with secure: false, for http development', { secure: false }, 'sid'],
+    [
+      '__Secure-sid with a path other than /, as __Host- needs Path=/',
+      { path: '/app' },
+      '__Secure-sid',
+    ],
+  ])('uses %s', async (_label, cookie, name) => {
+    const res = await call(app(session({ cookie }), writes))
+    expect(res.headers.getSetCookie()[0]).toMatch(
+      new RegExp(`^${name}=[A-Za-z0-9_-]{43};`),
+    )
+  })
+
+  it('reads the session back under the default name', async () => {
+    const store = new MemoryStore()
+    const target = app(session({ store }), (ctx) => {
+      const { session: current } = ctx.state as State
+      if (ctx.path === '/login') {
+        current.set('user', 'mixer')
+        return 'ok'
+      }
+      return { user: current.get('user') ?? null }
+    })
+    const login = await call(target, '/login')
+    const cookie = login.headers.getSetCookie()[0]?.split(';')[0] ?? ''
+    expect(
+      await (await call(target, '/me', { headers: { cookie } })).json(),
+    ).toEqual({
+      user: 'mixer',
+    })
+  })
+})
+
 describe('options', () => {
   it('accepts a custom cookie name and attributes', async () => {
     const target = app(
@@ -309,6 +362,30 @@ describe('options', () => {
       console.error = original
     }
   })
+
+  it.each([
+    [
+      '__Host- with a domain',
+      { name: '__Host-sid', cookie: { domain: 'example.com' } },
+    ],
+    [
+      '__Host- without Secure',
+      { name: '__Host-sid', cookie: { secure: false } },
+    ],
+    [
+      '__Secure- without Secure',
+      { name: '__Secure-sid', cookie: { secure: false } },
+    ],
+    [
+      '__Host- with a path other than /',
+      { name: '__Host-sid', cookie: { path: '/app' } },
+    ],
+  ])(
+    'throws at definition for a cookie name browsers would reject (%s)',
+    (_label, options) => {
+      expect(() => session(options)).toThrow()
+    },
+  )
 
   it.each([0, -1, 1.5])('rejects an invalid ttl (%s)', (ttl) => {
     expect(() => session({ ttl })).toThrow()
