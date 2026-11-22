@@ -22,6 +22,11 @@ export interface MemoryStoreOptions {
   maxEntries?: number
 }
 
+// Expired entries are never returned, so sweeping them only frees memory. Doing it on every write would cost a scan
+// of every entry per request, so sweep at most this often, and at most once a second when over the limit
+const SWEEP_INTERVAL_MS = 60_000
+const MIN_SWEEP_GAP_MS = 1_000
+
 interface Entry {
   data: SessionData
   expiresAt: number
@@ -35,6 +40,7 @@ export class MemoryStore implements SessionStore {
   // A Map keeps insertion order, so re-inserting on every use keeps the least recently used entry first
   readonly #entries = new Map<string, Entry>()
   readonly #maxEntries: number
+  #lastSweep = Date.now()
 
   constructor(options: MemoryStoreOptions = {}) {
     const maxEntries = options.maxEntries ?? 10_000
@@ -46,8 +52,9 @@ export class MemoryStore implements SessionStore {
     this.#maxEntries = maxEntries
   }
 
+  /** The number of live sessions (counting them sweeps expired ones) */
   get size(): number {
-    this.#purgeExpired()
+    this.#purgeExpired(Date.now())
     return this.#entries.size
   }
 
@@ -103,7 +110,15 @@ export class MemoryStore implements SessionStore {
   }
 
   #evictOverflow(): void {
-    this.#purgeExpired()
+    const now = Date.now()
+    const sinceSweep = now - this.#lastSweep
+    const overLimit = this.#entries.size > this.#maxEntries
+    if (
+      sinceSweep >= SWEEP_INTERVAL_MS ||
+      (overLimit && sinceSweep >= MIN_SWEEP_GAP_MS)
+    ) {
+      this.#purgeExpired(now)
+    }
     while (this.#entries.size > this.#maxEntries) {
       const oldest = this.#entries.keys().next().value
       if (oldest === undefined) break
@@ -111,8 +126,8 @@ export class MemoryStore implements SessionStore {
     }
   }
 
-  #purgeExpired(): void {
-    const now = Date.now()
+  #purgeExpired(now: number): void {
+    this.#lastSweep = now
     for (const [id, entry] of this.#entries) {
       if (entry.expiresAt <= now) this.#entries.delete(id)
     }

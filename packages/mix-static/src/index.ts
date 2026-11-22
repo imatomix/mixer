@@ -165,7 +165,9 @@ function isServableSegment(segment: string, dotfiles: boolean): boolean {
 
 function isInside(rootPath: string, target: string): boolean {
   const path = relative(rootPath, target)
-  return path !== '' && !path.startsWith('..') && !isAbsolute(path)
+  // Compare whole segments: a file named `..foo` inside root is fine, `../foo` is outside
+  const outside = path === '..' || path.startsWith(`..${sep}`)
+  return path !== '' && !outside && !isAbsolute(path)
 }
 
 async function statOrUndefined(path: string) {

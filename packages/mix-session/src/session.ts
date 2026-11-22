@@ -7,10 +7,14 @@ export class Session<D extends SessionData = SessionData> {
   #data: Partial<D>
   readonly #loadedId: string | undefined
   #change: SessionChange = 'none'
+  // A change made inside a value (such as pushing to an array from get) does not go through set,
+  // so the loaded data is compared at save time, as stores keep it as JSON anyway
+  readonly #loadedJson: string
 
   constructor(data: Partial<D>, loadedId: string | undefined) {
     this.#data = data
     this.#loadedId = loadedId
+    this.#loadedJson = JSON.stringify(data)
   }
 
   /** ID of the session loaded from the store. undefined for a new session until it is saved */
@@ -52,7 +56,12 @@ export class Session<D extends SessionData = SessionData> {
 
   /** @internal Used when saving */
   snapshot(): { data: Partial<D>; change: SessionChange } {
-    return { data: this.#data, change: this.#change }
+    const changedInside =
+      this.#change === 'none' && JSON.stringify(this.#data) !== this.#loadedJson
+    return {
+      data: this.#data,
+      change: changedInside ? 'modified' : this.#change,
+    }
   }
 
   #markModified(): void {

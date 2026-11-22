@@ -126,6 +126,34 @@ describe('invalid IDs', () => {
   })
 })
 
+describe('changes inside stored values', () => {
+  it('saves a change made directly to a nested value', async () => {
+    const store = new MemoryStore()
+    const sid = 'F'.repeat(43)
+    await store.set(sid, { cart: ['apple'] }, 60)
+    const target = app(session({ store }), (ctx) => {
+      ;((ctx.state as State).session.get('cart') as string[]).push('banana')
+      return 'ok'
+    })
+    const res = await call(target, '/', { headers: cookieHeader(sid) })
+    expect(await store.get(sid)).toEqual({ cart: ['apple', 'banana'] })
+    expect(sidFrom(res)).toBe(sid)
+  })
+
+  it('does not save or send a cookie when a nested value is only read', async () => {
+    const store = new RecordingStore()
+    const sid = 'G'.repeat(43)
+    await store.set(sid, { cart: ['apple'] }, 60)
+    store.calls = []
+    const target = app(session({ store }), (ctx) =>
+      (ctx.state as State).session.get('cart'),
+    )
+    const res = await call(target, '/', { headers: cookieHeader(sid) })
+    expect(store.calls).toEqual([])
+    expect(res.headers.getSetCookie()).toEqual([])
+  })
+})
+
 describe('regenerate and destroy', () => {
   async function loggedIn(store: MemoryStore) {
     const sid = 'C'.repeat(43)
