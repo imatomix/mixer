@@ -3,7 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import { type AddressInfo, isIP } from 'node:net'
+import { type AddressInfo, isIP, type Socket } from 'node:net'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -19,10 +19,24 @@ export interface ServeOptions {
   allowedHosts?: readonly string[] | true
 }
 
+export interface CloseOptions {
+  /**
+   * Milliseconds to wait for requests in progress before cutting their connections (defaults to 10000).
+   * 0 cuts them at once
+   */
+  timeout?: number
+}
+
 export interface Server {
   readonly port: number
-  close(): Promise<void>
+  /**
+   * Stops accepting connections, closes idle ones, ends each connection once its requests have been answered,
+   * and resolves when all are closed or the timeout has cut the rest
+   */
+  close(options?: CloseOptions): Promise<void>
 }
+
+const DEFAULT_CLOSE_TIMEOUT = 10_000
 
 interface FetchApp {
   fetch: (request: Request) => Promise<Response>
@@ -45,7 +59,29 @@ export async function serve(
     )
   }
 
+  // The requests in progress on each connection. While closing, a connection ends once its last request is
+  // answered, so that a pipelined request or one that arrives meanwhile is not cut. Marking responses
+  // Connection: close cannot do this: Node closes right after that response, and the mark is lost when the
+  // headers are already sent (a stream) or the app sets its own Connection header.
+  // Entries live until their socket closes (a WeakMap, so they never outlive it), which also means
+  // 'close' is listened to once per connection
+  const inProgress = new WeakMap<Socket, Set<ServerResponse>>()
+  let closing = false
+  const track = (socket: Socket) => {
+    const responses = new Set<ServerResponse>()
+    inProgress.set(socket, responses)
+    socket.once('close', () => inProgress.delete(socket))
+    return responses
+  }
+
   const server = createServer((req, res) => {
+    const socket = req.socket
+    const responses = inProgress.get(socket) ?? track(socket)
+    responses.add(res)
+    res.once('close', () => {
+      responses.delete(res)
+      if (closing && responses.size === 0) socket.end()
+    })
     handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
       console.error(error)
       if (!res.headersSent) {
@@ -64,11 +100,31 @@ export async function serve(
       const { port } = server.address() as AddressInfo
       resolve({
         port,
-        close: () =>
-          new Promise<void>((done, fail) => {
-            server.close((error) => (error ? fail(error) : done()))
-            server.closeAllConnections()
-          }),
+        close: ({ timeout = DEFAULT_CLOSE_TIMEOUT } = {}) => {
+          if (!Number.isFinite(timeout) || timeout < 0) {
+            return Promise.reject(
+              new RangeError(
+                `close timeout must be a finite number of milliseconds, 0 or more: ${timeout}`,
+              ),
+            )
+          }
+          // A request that arrives just as its connection ends is lost; HTTP/1.1 clients retry such requests
+          // (RFC 9112, 9.3.1)
+          closing = true
+          return new Promise<void>((done, fail) => {
+            // Cutting the connections aborts ctx.request.signal of the requests still in progress
+            const timer = setTimeout(
+              () => server.closeAllConnections(),
+              timeout,
+            )
+            server.close((error) => {
+              clearTimeout(timer)
+              if (error) fail(error)
+              else done()
+            })
+            server.closeIdleConnections()
+          })
+        },
       })
     })
   })
