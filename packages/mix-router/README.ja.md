@@ -2,29 +2,32 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md) | 日本語
 
-Type-safe router for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+[mixer](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md) の型安全なルーター。ルートは mixer のコンポーネントで、パラメータの型はパスから推論される。
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- 動く場所: Node.js・Bun・Cloudflare Workers
+- 0.x なので、マイナーバージョンの間で API が変わることがある
 
-## Install
+## インストール
 
 ```sh
 npm install @imatomix/mixer @imatomix/mix-router
 ```
 
-## Usage
+## 使い方
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
-import { all, get } from '@imatomix/mix-router'
+import { get, post } from '@imatomix/mix-router'
 
 const app = new Mixer()
 
 app.mix(
-  get('/mix/:fruit', (ctx, { fruit }) => `${fruit} juice`),
-  all('/*', () => new Response('Not found route', { status: 404 })),
+  get('/users/:id', (ctx, { id }) => ({ id })), // GET と HEAD の /users/42 → { "id": "42" }
+  post('/users', async (ctx) => {
+    ctx.status = 201
+    return await ctx.body()
+  }),
 )
 
 await serve(app, { port: 3000 })
@@ -146,22 +149,3 @@ app.mix(get('/db', (ctx) => ctx.env.DATABASE_URL)) // ctx.env.DATABASE_URL: stri
 
 ルートは `mix()` に渡す前に作るので、アプリから型を受け取れない。`createRouter` で一度だけ型を書く。
 
-## v0.1 からの移行
-
-ルーターの API は変わらない。ハンドラは [mixer の移行表](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#v01-からの移行)に沿って直す。
-
-- ルートは `ctx.url.pathname` ではなく `ctx.path` と照合するので、`basePath` の下でも動く
-- `ctx.send(status, body)` の代わりに、（`ctx.status` を設定して）値を返すか `Response` を返す
-- リクエストのパスは、ルートがいくつあってもリクエストごとに 1 回だけデコードする
-
-## v0.0.x からの移行
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const { get } = require('mix-router')` | `import { get } from '@imatomix/mix-router'` |
-| `get(path, (req, res) => {})` | `get(path, (ctx, params) => {})` |
-| `req.params.fruit` | 第2引数の `params.fruit` |
-| `req.query.q` | `ctx.url.searchParams.get('q')` |
-| `namespace(prefix)(...routes)` | 同じ（入れ子でもパスが正しく連結されるようになった） |
-| `mkcalendar()` などのその他のメソッド | `route('MKCALENDAR', path, handler)` |
-| `res.post(200, x)` | `return x` |

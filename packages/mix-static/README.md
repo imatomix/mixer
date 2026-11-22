@@ -2,9 +2,10 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.ja.md)
 
-Serve static files for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+Static files for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer), guarded against path traversal, dotfiles, and symbolic links that lead outside.
 
-> **Note:** This package is at 0.x, so the API may change between minor versions.
+- Runs on Node.js and Bun (it reads files with `node:fs`; on Cloudflare Workers, use Workers Static Assets)
+- At 0.x, so the API may change between minor versions
 
 ## Install
 
@@ -35,8 +36,6 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 ```
 
 When a file is not found, it does nothing and hands over to the next component (ending up as mixer's 404).
-
-mix-static reads files with `node:fs`, so it runs on Node.js and Bun. Cloudflare Workers have no file system: serve static files there with Workers Static Assets.
 Files are looked up by mixer's `ctx.path`, so with `basePath` the public directory maps to the paths below it. The directory redirect keeps `basePath` in `Location`.
 
 ## Serving a single file (favicon and the like)
@@ -93,17 +92,3 @@ Malformed percent-encoding results in `400 Bad Request`.
 
 **Keep the public directory somewhere untrusted users cannot write to.** Replacing a symbolic link between the checks and opening the file is prevented for the last path component with `O_NOFOLLOW`, but replacing a directory in the middle of the path cannot be prevented.
 
-## Migrating from v0.1
-
-Options and behavior are unchanged. mix-static uses `node:fs`, so it runs on Node.js and Bun.
-
-## Migrating from v0.0.x
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const static = require('mix-static')` | `import { serveStatic } from '@imatomix/mix-static'` |
-| `static({ public: './public' })` | `serveStatic('./public')` |
-| `public` defaults to `'./'` | Required (so that the whole current directory is never published by mistake) |
-| `route` | `prefix` (compared segment by segment) |
-| Dotfiles are served | Not served by default |
-| No `Content-Type` | Derived from the extension |

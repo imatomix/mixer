@@ -2,18 +2,18 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mix-logger/README.md) | 日本語
 
-Request logger for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+[mixer](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md) のアクセスログ。リクエストごとに 1 行で、クエリは記録せず、偽の行を差し込ませない。
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- 動く場所: Node.js・Bun・Cloudflare Workers
+- 0.x なので、マイナーバージョンの間で API が変わることがある
 
-## Install
+## インストール
 
 ```sh
 npm install @imatomix/mixer @imatomix/mix-logger
 ```
 
-## Usage
+## 使い方
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
@@ -67,20 +67,3 @@ app.mix(
 - 既定の形式では改行やエスケープシーケンスなどの制御文字をエスケープし、偽の行や色付けをログに差し込ませない（`write` で独自に出力する場合は各自で扱うこと）
 - `write` が例外を投げたり Promise が失敗したりしても、`console.error` に出すだけで応答やサーバには影響しない
 
-## v0.1 からの移行
-
-| v0.1 | v0.2 |
-| --- | --- |
-| `durationMs`（応答を送り終えるまで） | `responseDurationMs`（`Response` ができるまで。送信の時間は含まない） |
-| `aborted` | 削除。Web 標準のハンドラからは、本文を送っている途中でクライアントが切断したかを知る手段がない |
-| `process.stdout.write` で出力 | `console.log` で出力（出力される行は同じ） |
-
-## v0.0.x からの移行
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const logger = require('mix-logger')` | `import { logger } from '@imatomix/mix-logger'` |
-| `new mixer(logger)` | `app.mix(logger())`（関数を呼ぶ形に変更） |
-| 同時のリクエストで処理時間が混ざっていた | リクエストごとに計測する |
-| メモリ使用量を出力 | 出力しない |
-| URL をクエリごと出力 | パスのみ |

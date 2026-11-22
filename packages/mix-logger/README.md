@@ -2,9 +2,10 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-logger/README.ja.md)
 
-Request logger for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+Access logs for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer): one line per request, without the query, safe against forged log lines.
 
-> **Note:** This package is at 0.x, so the API may change between minor versions.
+- Runs on Node.js, Bun, and Cloudflare Workers
+- At 0.x, so the API may change between minor versions
 
 ## Install
 
@@ -66,20 +67,3 @@ If `write` returns a Promise, the response does not wait for it: it is passed to
 - The default format escapes control characters such as newlines and escape sequences, so fake lines or colors cannot be injected into the log (handle this yourself when writing a custom format with `write`)
 - If `write` throws or its Promise rejects, the error is only reported with `console.error`; the response and the server are not affected
 
-## Migrating from v0.1
-
-| v0.1 | v0.2 |
-| --- | --- |
-| `durationMs` (until the response was sent) | `responseDurationMs` (until the `Response` was ready; sending is not included) |
-| `aborted` | Removed: a Web standard handler cannot see whether the client went away while the body was sent |
-| Written with `process.stdout.write` | Written with `console.log` (the same line) |
-
-## Migrating from v0.0.x
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const logger = require('mix-logger')` | `import { logger } from '@imatomix/mix-logger'` |
-| `new mixer(logger)` | `app.mix(logger())` (now called as a function) |
-| Durations of concurrent requests were mixed up | Measured per request |
-| Memory usage was printed | Not printed |
-| The URL was printed with its query | Path only |

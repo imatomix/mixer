@@ -2,9 +2,10 @@
 
 English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mix-cors/README.ja.md)
 
-CORS for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+CORS for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer), with exact origin matching and preflights answered before your routes.
 
-> **Note:** This package is at 0.x, so the API may change between minor versions.
+- Runs on Node.js, Bun, and Cloudflare Workers
+- At 0.x, so the API may change between minor versions
 
 ## Install
 
@@ -70,18 +71,3 @@ So `cors()` throws as soon as it is called. Specify the allowed origins when you
 - `OPTIONS` requests that are not preflights are not intercepted (mix-router's `options()` and similar keep working)
 - The headers are kept on error responses from later `HttpError`s (so browsers can read the error), and are added to a `Response` returned by a later component
 
-## Migrating from v0.1
-
-Options and behavior are unchanged. If your own code read the CORS headers through `ctx.res`, read `ctx.headers` instead.
-
-## Migrating from v0.0.x
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `const cors = require('mix-cors')` | `import { cors } from '@imatomix/mix-cors'` |
-| `allowCredentials` (default `true`) | `credentials` (default `false`) |
-| `allowMethods` | `methods` (`OPTIONS` is no longer needed and was removed from the default) |
-| `allowHeaders` (default `['Accept', 'Content-Type']`) | Defaults to allowing the requested headers |
-| `maxAge` (default 86400) | Default 600 |
-| `origin` accepts strings only | Strings, regular expressions, arrays, and functions |
-| Every OPTIONS request treated as a preflight (without responding) | Only real preflights are completed with 204 |

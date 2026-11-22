@@ -2,18 +2,18 @@
 
 [English](https://github.com/imatomix/mixer/blob/main/packages/mix-session/README.md) | 日本語
 
-Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/packages/mixer).
+[mixer](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md) のサーバサイドセッション。Cookie にはランダムな ID だけを入れ、書き込むまで何も作らない。
 
-デザイナーが node.js とサーバサイド周りの勉強にちまちま作ってます。
-仕様は気紛れに変わります。
+- 動く場所: Node.js・Bun・Cloudflare Workers（Workers などのサーバーレス環境では外部のストアを使う）
+- 0.x なので、マイナーバージョンの間で API が変わることがある
 
-## Install
+## インストール
 
 ```sh
 npm install @imatomix/mixer @imatomix/mix-session
 ```
 
-## Usage
+## 使い方
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
@@ -60,7 +60,7 @@ app.mix(
 | `destroy()` | ストアから消し、Cookie も削除する |
 | `id` | 読み込んだセッションの ID。新しいセッションでは保存されるまで `undefined` |
 
-## Options
+## オプション
 
 | オプション | 初期値 | 説明 |
 | --- | --- | --- |
@@ -92,18 +92,3 @@ interface SessionStore {
 - ストアにない ID（期限切れ・偽造）は採用せず、書き込み時に新しい ID を発行する
 - 形式が不正な ID や、同じ名前の Cookie が複数ある場合（サブドメインなどから仕込まれた可能性）は読み込まない
 
-## v0.1 からの移行
-
-オプション、ストアのインターフェース、Cookie の形式は変わらないので、既存のセッションもそのまま使える。`ctx.send()` の代わりに、値か `Response` を返して応答する。
-
-## v0.0.x からの移行
-
-v0.0.x は Node.js 22 で削除された `crypto.createCipher` を使っており、現在の Node.js では動作しない。設計から作り直したので、API は互換性がない。
-
-| v0.0.x | v0.1 |
-| --- | --- |
-| `req.session.user = 'x'` | `ctx.state.session.set('user', 'x')` |
-| `secret`（データを暗号化） | 不要（データはサーバ側にのみある） |
-| `generateId` | 廃止（32 バイトの乱数で固定） |
-| `cookie.httpOnly`（常に true になっていた） | `cookie.httpOnly`（既定 true、false も指定可能） |
-| 全訪問者にセッションを作成 | 書き込んだときだけ作成 |
