@@ -467,6 +467,38 @@ describe('close', () => {
     expect(closed).toBe(true)
   })
 
+  it('closes the connection of a stream that started before closing once it finishes', async () => {
+    let finish: () => void = () => {}
+    let started: () => void = () => {}
+    const streaming = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const server = await serve(
+      new Mixer().mix(
+        () =>
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('first'))
+              started()
+              finish = () => controller.close()
+            },
+          }),
+      ),
+      { port: 0, hostname: '127.0.0.1' },
+    )
+    const socket = connect(server.port, '127.0.0.1')
+    socket.on('data', () => {})
+    socket.write('GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+    await streaming
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const start = performance.now()
+    const closing = server.close({ timeout: 2_000 })
+    finish()
+    await closing
+    expect(performance.now() - start).toBeLessThan(1_000)
+    socket.destroy()
+  })
+
   it('stops accepting new connections once closing', async () => {
     const { server, release, handling } = await startHeld()
     const response = request(server.port)

@@ -95,7 +95,14 @@ export async function serve(
           }
           closing = true
           for (const res of active) {
-            if (!res.headersSent) res.shouldKeepAlive = false
+            if (!res.headersSent) {
+              res.shouldKeepAlive = false
+            } else {
+              // Too late for Connection: close (a stream already sending), so end the connection once it finishes
+              // The socket is detached from the response when it finishes, so keep a reference now
+              const socket = res.socket
+              res.once('finish', () => socket?.end())
+            }
           }
           return new Promise<void>((done, fail) => {
             // Cutting the connections aborts ctx.request.signal of the requests still in progress
