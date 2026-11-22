@@ -74,10 +74,10 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 - `Content-Length`, `ETag` (weak), `Last-Modified`, `Cache-Control`
 - `304` when `If-None-Match` / `If-Modified-Since` match (`If-None-Match` takes precedence)
 - `HEAD` returns only headers, without reading the file
+- Range requests (such as seeking in a video) get `206` with only the requested bytes, or `416` when the range starts past the end. One range per request is served; several ranges, or a malformed `Range`, get the whole file. With `If-Range`, the whole file is sent, because the `ETag` is weak
 - The body is streamed, and the file is closed when the response finishes or the client goes away
 - `X-Content-Type-Options: nosniff` is added by mixer to every response
 - A directory without a trailing `/` is redirected with `301` to the path with `/` (so that relative links in HTML resolve correctly)
-- Range requests (such as seeking in videos) are not supported
 
 ## Safety
 

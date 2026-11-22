@@ -211,6 +211,8 @@ const headResponse = await fetch(\`\${staticBase}/hello.txt\`, { method: 'HEAD' 
 await headResponse.text()
 const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-none-match': etag } })
 await notModified.text()
+const part = await fetch(\`\${staticBase}/hello.txt\`, { headers: { range: 'bytes=6-' } })
+const partText = await part.text()
 const escaped = await fetch(\`\${staticBase}/link.txt\`)
 const escapedText = await escaped.text()
 await staticServer.close()
@@ -218,6 +220,8 @@ if (
   fileText !== 'hello static' ||
   file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||
   headResponse.status !== 200 ||
+  part.status !== 206 ||
+  partText !== 'static' ||
   headResponse.headers.get('content-length') !== '12' ||
   notModified.status !== 304 ||
   escaped.status !== 404 ||
