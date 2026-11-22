@@ -27,6 +27,35 @@ describe('checkSessionStore', () => {
     ).resolves.toBeUndefined()
   })
 
+  it('passes for a store that reorders object keys, as JSON columns may', async () => {
+    const sortKeys = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(sortKeys)
+      if (value === null || typeof value !== 'object') return value
+      const sorted: Record<string, unknown> = {}
+      for (const key of Object.keys(value).sort().reverse()) {
+        Object.defineProperty(sorted, key, {
+          value: sortKeys((value as Record<string, unknown>)[key]),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        })
+      }
+      return sorted
+    }
+    const shared = new MemoryStore()
+    const store = broken({
+      set: (id, data, ttl) =>
+        shared.set(id, sortKeys(data) as SessionData, ttl),
+      update: (id, data, ttl) =>
+        shared.update(id, sortKeys(data) as SessionData, ttl),
+      get: (id) => shared.get(id),
+      delete: (id) => shared.delete(id),
+    })
+    await expect(
+      checkSessionStore(store, { expiry: false }),
+    ).resolves.toBeUndefined()
+  })
+
   it('fails when update creates a session that does not exist', async () => {
     const shared = new MemoryStore()
     const store = broken({

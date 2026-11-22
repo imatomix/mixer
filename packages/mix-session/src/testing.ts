@@ -104,8 +104,36 @@ function expect(condition: boolean, rule: string): void {
   if (!condition) throw new Error(`session store check failed: ${rule}`)
 }
 
+/** Structural equality: object key order is not part of the store contract (JSON columns may reorder keys) */
 function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => same(item, b[i]))
+    )
+  }
+  if (
+    a === null ||
+    b === null ||
+    typeof a !== 'object' ||
+    typeof b !== 'object'
+  ) {
+    return Object.is(a, b)
+  }
+  // Object.keys includes an own __proto__ key, which is part of the data
+  const keysA = Object.keys(a).sort()
+  const keysB = Object.keys(b).sort()
+  return (
+    same(keysA, keysB) &&
+    keysA.every((key) =>
+      same(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      ),
+    )
+  )
 }
 
 function newId(): string {
