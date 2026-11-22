@@ -7,8 +7,11 @@ export type OriginMatcher =
   | ((origin: string, ctx: Context) => boolean | Promise<boolean>)
 
 export interface CorsOptions {
-  /** Allowed origins. `'*'` allows any origin (cannot be combined with credentials) */
-  origin?: OriginMatcher
+  /**
+   * Allowed origins. Required, so that letting every site read responses is a choice written in code:
+   * pass `'*'` for a public API (it cannot be combined with credentials)
+   */
+  origin: OriginMatcher
   /** Allow requests with credentials such as cookies */
   credentials?: boolean
   methods?: readonly string[]
@@ -22,8 +25,13 @@ export interface CorsOptions {
 const DEFAULT_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
 const DEFAULT_MAX_AGE = 600
 
-export function cors(options: CorsOptions = {}): Component {
-  const origin = toFullMatch(options.origin ?? '*')
+export function cors(options: CorsOptions): Component {
+  if (options?.origin === undefined) {
+    throw new Error(
+      "mix-cors: origin is required. Pass the allowed origins, or origin: '*' to allow any site",
+    )
+  }
+  const origin = toFullMatch(options.origin)
   const allowsAnyOrigin = origin === '*'
   const credentials = options.credentials ?? false
   const methods = (options.methods ?? DEFAULT_METHODS).join(', ')

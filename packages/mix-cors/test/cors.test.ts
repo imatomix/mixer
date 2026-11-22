@@ -18,7 +18,7 @@ function preflight(
 
 describe('simple requests', () => {
   it('adds Access-Control-Allow-Origin: * by default and moves on', async () => {
-    const target = app(cors(), ok)
+    const target = app(cors({ origin: '*' }), ok)
     const res = await call(target, '/', {
       headers: { origin: 'https://a.example' },
     })
@@ -29,7 +29,7 @@ describe('simple requests', () => {
   })
 
   it('adds no CORS headers when there is no Origin header', async () => {
-    const target = app(cors(), ok)
+    const target = app(cors({ origin: '*' }), ok)
     const res = await call(target)
     expect(res.headers.get('access-control-allow-origin')).toBeNull()
     expect(await res.text()).toBe('ok')
@@ -162,7 +162,7 @@ describe('simple requests', () => {
   })
 
   it('keeps CORS headers on error responses from later HttpErrors', async () => {
-    const target = app(cors(), () => {
+    const target = app(cors({ origin: '*' }), () => {
       throw new HttpError(403, 'Forbidden')
     })
     const res = await call(target, '/', {
@@ -210,7 +210,7 @@ describe('simple requests', () => {
 describe('preflight', () => {
   it('responds with 204 immediately and does not move on', async () => {
     let reached = false
-    const target = app(cors(), () => {
+    const target = app(cors({ origin: '*' }), () => {
       reached = true
       return 'should not reach'
     })
@@ -225,7 +225,7 @@ describe('preflight', () => {
   })
 
   it('allows the requested headers by default and adds them to Vary', async () => {
-    const target = app(cors(), ok)
+    const target = app(cors({ origin: '*' }), ok)
     const res = await preflight(target, 'https://a.example', {
       'access-control-request-headers': 'content-type, authorization',
     })
@@ -236,7 +236,10 @@ describe('preflight', () => {
   })
 
   it('allows only the given allowHeaders', async () => {
-    const target = app(cors({ allowHeaders: ['Content-Type'] }), ok)
+    const target = app(
+      cors({ origin: '*', allowHeaders: ['Content-Type'] }),
+      ok,
+    )
     const res = await preflight(target, 'https://a.example', {
       'access-control-request-headers': 'content-type, authorization',
     })
@@ -244,7 +247,10 @@ describe('preflight', () => {
   })
 
   it('accepts custom methods and maxAge', async () => {
-    const target = app(cors({ methods: ['GET', 'POST'], maxAge: 60 }), ok)
+    const target = app(
+      cors({ origin: '*', methods: ['GET', 'POST'], maxAge: 60 }),
+      ok,
+    )
     const res = await preflight(target, 'https://a.example')
     expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST')
     expect(res.headers.get('access-control-max-age')).toBe('60')
@@ -263,7 +269,7 @@ describe('preflight', () => {
   })
 
   it('does not intercept OPTIONS requests that are not preflights', async () => {
-    const target = app(cors(), (ctx) =>
+    const target = app(cors({ origin: '*' }), (ctx) =>
       ctx.method === 'OPTIONS' ? 'app options' : undefined,
     )
     const withoutRequestMethod = await call(target, '/', {
@@ -277,12 +283,21 @@ describe('preflight', () => {
 })
 
 describe('configuration validation', () => {
+  it('requires origin, so that allowing every site is a choice written in code', () => {
+    // @ts-expect-error origin is required
+    expect(() => cors()).toThrow(/origin/)
+    // @ts-expect-error origin is required
+    expect(() => cors({})).toThrow(/origin/)
+    expect(() => cors({ origin: '*' })).not.toThrow()
+  })
+
   it("throws at definition for origin: '*' with credentials: true", () => {
-    expect(() => cors({ credentials: true })).toThrow()
-    expect(() => cors({ origin: '*', credentials: true })).toThrow()
+    expect(() => cors({ origin: '*', credentials: true })).toThrow(
+      /credentials/,
+    )
   })
 
   it.each([-1, 1.5, Number.NaN])('rejects an invalid maxAge (%s)', (maxAge) => {
-    expect(() => cors({ maxAge })).toThrow()
+    expect(() => cors({ origin: '*', maxAge })).toThrow(/maxAge/)
   })
 })
