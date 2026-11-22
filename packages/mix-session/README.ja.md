@@ -65,7 +65,7 @@ app.mix(
 | オプション | 初期値 | 説明 |
 | --- | --- | --- |
 | `store` | `new MemoryStore()` | 保存先 |
-| `name` | `'sid'` | Cookie の名前 |
+| `name` | `'__Host-sid'`（[後述](#cookie-の名前)） | Cookie の名前 |
 | `ttl` | `86400` | 有効期間（秒）。Cookie の Max-Age とストアの期限に使う |
 | `rolling` | `false` | 読むだけのリクエストでも期限を延ばす |
 | `cookie` | mixer の既定（HttpOnly・Secure・SameSite=Lax・Path=/） | Cookie の属性。http の localhost で開発するときは `{ secure: false }` |
@@ -86,6 +86,18 @@ interface SessionStore {
 
 `MemoryStore` はプロセス内のメモリに保存する。有効期限を過ぎたものは返さず、`maxEntries`（既定 10000）を超えたら最も長く使われていないものから捨てる。
 複数プロセスで動かす場合や、再起動でセッションを失いたくない場合は、外部のストアを実装して渡す。リクエストごとに別のインスタンスで動きうるサーバーレス環境や Cloudflare Workers では、必ず外部のストアを使う。その `update` は、存在の確認と更新を一度に行う必要がある（D1 のトランザクションや Durable Object など）。Workers KV は書き込みがほかの拠点に届くまで時間がかかるので向かない。
+
+## Cookie の名前
+
+既定では、オプションが許す範囲で最も強い接頭辞を名前に付ける。攻撃者がほかのサブドメインや http のページから、自分の選んだセッション ID を植え付けられないようにするため。
+
+| オプション | 既定の名前 | Cookie を上書きできない相手 |
+| --- | --- | --- |
+| 既定のまま | `__Host-sid` | ほかのサブドメインと http のページ |
+| `cookie: { domain: 'example.com' }`（サブドメインで共有）、または `/` 以外の `path` | `__Secure-sid` | http のページ |
+| `cookie: { secure: false }`（http での開発） | `sid` | なし。開発のときだけに使う |
+
+サブドメインでセッションを共有したいときは、`domain` を指定するだけでよい。`name` を渡せばその名前をそのまま使い、ブラウザが拒否する組み合わせ（`domain` 付きの `__Host-` など）は、`session()` を呼んだ時点で例外を投げる。
 
 ## 不正な ID の扱い
 

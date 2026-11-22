@@ -156,7 +156,7 @@ const sessionServer = await listen(sessionApp)
 const base = \`http://127.0.0.1:\${sessionServer.port}\`
 const login = await fetch(\`\${base}/login\`)
 const setCookies = login.headers.getSetCookie()
-const sid = setCookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
+const sid = setCookies.find((cookie) => cookie.startsWith('__Host-sid='))?.split(';')[0]
 const me = await (await fetch(\`\${base}/me\`, { headers: { cookie: sid ?? '' } })).json()
 await sessionServer.close()
 if (me.user !== 'mixer' || setCookies.length !== 2) {
@@ -213,7 +213,7 @@ ${
 import { Mixer as CorsMixer } from '@imatomix/mixer'
 import { cors } from '@imatomix/mix-cors'
 
-const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
+const corsApp = new CorsMixer().mix(cors({ origin: '*' }), () => 'cors ok')
 const corsServer = await listen(corsApp)
 const corsBase = \`http://127.0.0.1:\${corsServer.port}\`
 const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })

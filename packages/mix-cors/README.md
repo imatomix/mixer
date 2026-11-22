@@ -22,12 +22,12 @@ import { cors } from '@imatomix/mix-cors'
 
 const app = new Mixer()
 
-app.mix(cors(), () => 'cors is mixed!')
+app.mix(cors({ origin: 'https://example.com' }), () => 'cors is mixed!')
 
 await serve(app, { port: 3000 })
 ```
 
-Mix it in **before** the router and other components.
+Mix it in **before** the router and other components. `origin` is required: list the sites that may read your responses, or pass `origin: '*'` for a public API that any site may read.
 
 ## Options
 
@@ -41,7 +41,7 @@ cors({
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `origin` | `'*'` | Allowed origins: a string, a regular expression, an array of them, or a function `(origin, ctx) => boolean \| Promise<boolean>` |
+| `origin` | required | Allowed origins: `'*'` for any site, a string, a regular expression, an array of them, or a function `(origin, ctx) => boolean \| Promise<boolean>` |
 | `credentials` | `false` | Allow requests with credentials such as cookies |
 | `methods` | `['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']` | Methods allowed in preflights |
 | `allowHeaders` | The requested headers, as is | Request headers allowed in preflights |

@@ -148,7 +148,9 @@ async function smoke(fetch) {
   await login.text()
   const cookies = login.headers.getSetCookie()
   expect('two Set-Cookie headers', cookies.length, 2)
-  const sid = cookies.find((cookie) => cookie.startsWith('sid='))?.split(';')[0]
+  const sid = cookies
+    .find((cookie) => cookie.startsWith('__Host-sid='))
+    ?.split(';')[0]
   const me = await fetch('/api/me', { headers: { cookie: sid ?? '' } })
   expect('session', await me.json(), { user: 'mixer' })
 

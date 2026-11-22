@@ -10,7 +10,7 @@ export {
   type CookieOptions,
   Cookies,
 } from './cookies.js'
-export { HttpError } from './errors.js'
+export { HttpError, type HttpErrorOptions } from './errors.js'
 export {
   type Component,
   type ErrorHandler,
