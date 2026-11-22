@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-Open http://localhost:3000. On Bun, use `Bun.serve({ port: 3000, fetch: app.fetch })` instead; see [Running the app](#running-the-app) for the other places.
+Open http://localhost:3000. On Bun, use `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` instead; see [Running the app](#running-the-app) for the other places.
 
 ## The basics
 
@@ -175,10 +175,10 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: app.fetch })
+Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
 ```
 
-`Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
+Pass only the request: Bun calls `fetch(request, server)`, and its server would otherwise become `ctx.env`. `Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
 
 ### Cloudflare Workers
 

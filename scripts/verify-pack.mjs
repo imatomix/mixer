@@ -118,7 +118,8 @@ type BunRuntime = {
 async function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
   const bun = (globalThis as { Bun?: BunRuntime }).Bun
   if (!bun) return serve(app, { hostname: '127.0.0.1' })
-  const server = bun.serve({ port: 0, hostname: '127.0.0.1', fetch: app.fetch })
+  // Only the request: Bun passes its server as the second argument, which would become ctx.env
+  const server = bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
   return { port: server.port, close: () => server.stop(true) }
 }
 ${
@@ -127,12 +128,17 @@ ${
 import { Mixer } from '@imatomix/mixer'
 import { get } from '@imatomix/mix-router'
 
-const app = new Mixer().mix(get('/hello/:name', (_ctx, { name }) => ({ hello: name })))
+const app = new Mixer().mix(
+  get('/hello/:name', (ctx, { name }) => ({ hello: name, envIsEmpty: ctx.env === undefined })),
+)
 const server = await listen(app)
 const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
 await server.close()
-if (body.hello !== 'mixer') throw new Error('mixer + mix-router smoke test failed')
+// Bun passes its server as fetch's second argument; it must not end up in ctx.env
+if (body.hello !== 'mixer' || body.envIsEmpty !== true) {
+  throw new Error(\`mixer + mix-router smoke test failed: \${JSON.stringify(body)}\`)
+}
 `
     : ''
 }
