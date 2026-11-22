@@ -213,7 +213,7 @@ ${
 import { Mixer as CorsMixer } from '@imatomix/mixer'
 import { cors } from '@imatomix/mix-cors'
 
-const corsApp = new CorsMixer().mix(cors(), () => 'cors ok')
+const corsApp = new CorsMixer().mix(cors({ origin: '*' }), () => 'cors ok')
 const corsServer = await listen(corsApp)
 const corsBase = \`http://127.0.0.1:\${corsServer.port}\`
 const simple = await fetch(corsBase, { headers: { origin: 'https://a.example' } })

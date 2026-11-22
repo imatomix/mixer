@@ -22,12 +22,12 @@ import { cors } from '@imatomix/mix-cors'
 
 const app = new Mixer()
 
-app.mix(cors(), () => 'cors is mixed!')
+app.mix(cors({ origin: 'https://example.com' }), () => 'cors is mixed!')
 
 await serve(app, { port: 3000 })
 ```
 
-ルーターなどより**前に** mix する。
+ルーターなどより**前に** mix する。`origin` は必須。応答を読んでよいサイトを並べるか、どのサイトからも読める公開 API なら `origin: '*'` を渡す。
 
 ## オプション
 
@@ -41,7 +41,7 @@ cors({
 
 | オプション | 初期値 | 説明 |
 | --- | --- | --- |
-| `origin` | `'*'` | 許可する Origin。文字列・正規表現・それらの配列・関数 `(origin, ctx) => boolean \| Promise<boolean>` |
+| `origin` | 必須 | 許可する Origin。どのサイトにも許可するなら `'*'`。文字列・正規表現・それらの配列・関数 `(origin, ctx) => boolean \| Promise<boolean>` |
 | `credentials` | `false` | Cookie などの資格情報付きリクエストを許可する |
 | `methods` | `['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']` | preflight で許可するメソッド |
 | `allowHeaders` | リクエストされたヘッダをそのまま許可 | preflight で許可するリクエストヘッダ |
