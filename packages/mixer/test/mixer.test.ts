@@ -145,6 +145,35 @@ describe('error handling', () => {
     expect(res.headers.get('allow')).toBe('GET, HEAD')
   })
 
+  it('does not repeat or bring back HttpError cookies on the fallback response', async () => {
+    quiet()
+    const app = new Mixer({
+      onError: (_error, ctx) => {
+        ctx.cookies.delete('token')
+        return undefined
+      },
+    }).mix(() => {
+      throw new HttpError(401, undefined, {
+        headers: { 'Set-Cookie': 'token=active; Path=/' },
+      })
+    })
+    const cookies = (await call(app)).headers.getSetCookie()
+    expect(cookies.filter((c) => c.startsWith('token=active'))).toHaveLength(1)
+    expect(cookies.at(-1)).toMatch(/^token=; Max-Age=0;/)
+  })
+
+  it('joins Vary from an HttpError with Vary kept from before the error', async () => {
+    const app = new Mixer().mix((ctx) => {
+      ctx.headers.set('Vary', 'Origin')
+      throw new HttpError(406, undefined, {
+        headers: { Vary: 'Accept-Language' },
+      })
+    })
+    expect((await call(app)).headers.get('vary')).toBe(
+      'Origin, Accept-Language',
+    )
+  })
+
   it('exposes the headers of an HttpError and rejects invalid values', () => {
     const error = new HttpError(405, undefined, { headers: { Allow: 'GET' } })
     expect(error.headers.get('allow')).toBe('GET')

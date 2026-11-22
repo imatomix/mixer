@@ -138,7 +138,7 @@ function mergeResponse(
  * Vary lists what a cached response depends on, so dropping a field (such as Origin from mix-cors) would let caches
  * reuse the response too widely. Joining both lists can only narrow reuse
  */
-function joinVary(...values: (string | null)[]): string | undefined {
+export function joinVary(...values: (string | null)[]): string | undefined {
   const fields: string[] = []
   for (const value of values) {
     for (const field of (value ?? '').split(',')) {
