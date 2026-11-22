@@ -79,9 +79,8 @@ export async function serve(
     responses.add(res)
     res.once('close', () => {
       responses.delete(res)
-      if (responses.size > 0) return
-      inProgress.delete(socket)
-      if (closing) socket.end()
+      // The empty set stays until the socket closes, so that 'close' is listened to once per connection
+      if (closing && responses.size === 0) socket.end()
     })
     handle(app, req, res, allowsHost, rejectHost).catch((error: unknown) => {
       console.error(error)

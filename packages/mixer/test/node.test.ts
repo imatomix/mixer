@@ -666,6 +666,30 @@ describe('close', () => {
     socket.destroy()
   })
 
+  it('does not add a listener to a connection for every request it carries', async () => {
+    const warnings: Error[] = []
+    const onWarning = (warning: Error) => warnings.push(warning)
+    process.on('warning', onWarning)
+    try {
+      const server = await start(new Mixer().mix(() => 'ok'))
+      const socket = connect(server.port, '127.0.0.1')
+      socket.setEncoding('utf8')
+      for (let i = 0; i < 20; i++) {
+        await new Promise<void>((resolve) => {
+          socket.once('data', () => resolve())
+          socket.write('GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+        })
+      }
+      socket.destroy()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    } finally {
+      process.off('warning', onWarning)
+    }
+    expect(
+      warnings.filter((w) => w.name === 'MaxListenersExceededWarning'),
+    ).toEqual([])
+  })
+
   it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
     'rejects an invalid timeout (%s)',
     async (timeout) => {
