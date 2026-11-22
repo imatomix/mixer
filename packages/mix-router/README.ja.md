@@ -100,6 +100,24 @@ const requireAuth = (ctx) => {
 get('/admin/users/:id', requireAuth, (ctx, { id }) => findUser(id))
 ```
 
+## 405 Method Not Allowed
+
+既定では、パスは合うがメソッドに合うルートがないリクエストも、ほかの合わないリクエストと同じく次へ進み、最後は `404` になる。代わりに `405` と `Allow` ヘッダで応答するには、ルートの後ろに `methodNotAllowed()` を mix する。
+
+```ts
+import { get, methodNotAllowed, post } from '@imatomix/mix-router'
+
+app.mix(
+  get('/users', listUsers),
+  post('/users', createUser),
+  methodNotAllowed(), // DELETE /users → 405、Allow: GET, HEAD, POST
+)
+```
+
+- `405` になるのは、パスが合うルートがあり、メソッドを受け付けるルートが 1 つもないときだけ。メソッドを受け付けたが何も返さなかったルート、`all()` のルート、間にあって応答したコンポーネントがあれば、いつもどおりの動きになる
+- `OPTIONS` には自分からは応答しない。`options()` のルートを書くか、preflight に応答する [mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) をルートより前に置く
+- **`405` と `Allow` は、そのパスが存在することをクライアントに伝える。** 認証などの確認をルートのハンドラの中だけで行っているなら、ルートより前に置く（たとえば [namespace](#namespace-の中のコンポーネント) の先頭のコンポーネントにする）。そうすれば、認証されていないリクエストは何かを明かす前に拒否される
+
 ## namespace
 
 ルートの先頭に共通のパスを付ける。入れ子にもできる。

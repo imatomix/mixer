@@ -6,6 +6,7 @@ import {
   del,
   get,
   head,
+  methodNotAllowed,
   namespace,
   options,
   type Params,
@@ -370,6 +371,80 @@ describe('components inside a namespace', () => {
       expectTypeOf(ctx.state.user).toEqualTypeOf<string | undefined>()
       expectTypeOf(ctx.env.KEY).toEqualTypeOf<string>()
     })
+  })
+})
+
+describe('methodNotAllowed', () => {
+  const users = () => [
+    get('/users', () => 'list'),
+    post('/users', () => 'created'),
+  ]
+
+  it('answers 405 with Allow when the path matches but no route takes the method', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    const res = await call(app, '/users', { method: 'DELETE' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD, POST')
+    expect(await res.json()).toEqual({ error: 'Method Not Allowed' })
+  })
+
+  it('leaves unknown paths to 404', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    expect((await call(app, '/nothing')).status).toBe(404)
+  })
+
+  it('changes nothing when it is not mixed in', async () => {
+    const app = new Mixer().mix(...users())
+    expect((await call(app, '/users', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it('answers 404 when a route took the method but returned nothing', async () => {
+    const app = new Mixer().mix(
+      get('/users', () => undefined),
+      post('/users', () => 'created'),
+      methodNotAllowed(),
+    )
+    expect((await call(app, '/users')).status).toBe(404)
+  })
+
+  it('does not answer 405 when an all() route matches the path', async () => {
+    const app = new Mixer().mix(
+      get('/users', () => 'list'),
+      all('/users', () => undefined),
+      methodNotAllowed(),
+    )
+    expect((await call(app, '/users', { method: 'DELETE' })).status).toBe(404)
+  })
+
+  it('lets a later component handle the method first', async () => {
+    const app = new Mixer().mix(
+      ...users(),
+      (ctx) => (ctx.method === 'DELETE' ? 'custom' : undefined),
+      methodNotAllowed(),
+    )
+    expect(await (await call(app, '/users', { method: 'DELETE' })).text()).toBe(
+      'custom',
+    )
+  })
+
+  it('collects methods from namespaced routes and lists each once', async () => {
+    const app = new Mixer().mix(
+      namespace('/api')(
+        get('/users', () => 'a'),
+        get('/users', () => 'b'),
+      ),
+      methodNotAllowed(),
+    )
+    const res = await call(app, '/api/users', { method: 'POST' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD')
+  })
+
+  it('does not answer OPTIONS by itself', async () => {
+    const app = new Mixer().mix(...users(), methodNotAllowed())
+    const res = await call(app, '/users', { method: 'OPTIONS' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET, HEAD, POST')
   })
 })
 

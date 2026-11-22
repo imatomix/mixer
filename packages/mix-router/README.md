@@ -100,6 +100,24 @@ const requireAuth = (ctx) => {
 get('/admin/users/:id', requireAuth, (ctx, { id }) => findUser(id))
 ```
 
+## 405 Method Not Allowed
+
+By default a path whose method has no route falls through like any other unmatched request and ends as `404`. To answer `405` with an `Allow` header instead, mix `methodNotAllowed()` in after the routes:
+
+```ts
+import { get, methodNotAllowed, post } from '@imatomix/mix-router'
+
+app.mix(
+  get('/users', listUsers),
+  post('/users', createUser),
+  methodNotAllowed(), // DELETE /users → 405, Allow: GET, HEAD, POST
+)
+```
+
+- It answers `405` only when a route's path matched and no route takes the method. A route that takes the method but returns nothing, an `all()` route, or a component in between that answers keeps the usual behavior
+- `OPTIONS` is not answered by itself: add an `options()` route, or put [mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) before the routes to answer preflights
+- **`405` and `Allow` tell the client that a path exists.** If a check such as authentication lives only inside route handlers, put it before the routes instead (for example, as the first component of a [namespace](#components-inside-a-namespace)), so that unauthenticated requests are rejected before anything is revealed
+
 ## namespace
 
 Adds a common prefix to routes. Namespaces can be nested.
