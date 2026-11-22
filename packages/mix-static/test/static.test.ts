@@ -272,9 +272,21 @@ describe('range requests', () => {
       const res = await ranged(range)
       expect(res.status).toBe(416)
       expect(res.headers.get('content-range')).toBe('bytes */10')
-      expect(await res.text()).toBe('')
+      expect(await res.json()).toEqual({ error: 'Range Not Satisfiable' })
     },
   )
+
+  it('lets onError shape the 416 response', async () => {
+    const target = new Mixer({
+      onError: (_error, ctx) => ({ custom: ctx.status }),
+    }).mix(serveStatic(root))
+    const res = await call(target, '/digits.txt', {
+      headers: { range: 'bytes=10-' },
+    })
+    expect(res.status).toBe(416)
+    expect(res.headers.get('content-range')).toBe('bytes */10')
+    expect(await res.json()).toEqual({ custom: 416 })
+  })
 
   it.each([
     'bytes=0-1,3-4',

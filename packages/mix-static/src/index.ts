@@ -254,10 +254,10 @@ async function sendFile(
 
     const range = requestedRange(ctx, stats.size)
     if (range === 'unsatisfiable') {
-      await handle.close()
-      ctx.status = 416
-      headers.set('Content-Range', `bytes */${stats.size}`)
-      return null
+      // Thrown, so that the app's onError can shape it like any other error; the catch below closes the file
+      throw new HttpError(416, 'Range Not Satisfiable', {
+        headers: { 'Content-Range': `bytes */${stats.size}` },
+      })
     }
 
     headers.set('Content-Type', contentTypeOf(basename(filePath)))
