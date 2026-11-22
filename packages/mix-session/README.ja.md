@@ -85,7 +85,20 @@ interface SessionStore {
 `update` が「存在するときだけ」なのは、`destroy()` や `regenerate()` された直後に、古い ID を持った並行リクエストの保存でセッションが復活するのを防ぐため。
 
 `MemoryStore` はプロセス内のメモリに保存する。有効期限を過ぎたものは返さず、`maxEntries`（既定 10000）を超えたら最も長く使われていないものから捨てる。
+
 複数プロセスで動かす場合や、再起動でセッションを失いたくない場合は、外部のストアを実装して渡す。リクエストごとに別のインスタンスで動きうるサーバーレス環境や Cloudflare Workers では、必ず外部のストアを使う。その `update` は、存在の確認と更新を一度に行う必要がある（D1 のトランザクションや Durable Object など）。Workers KV は書き込みがほかの拠点に届くまで時間がかかるので向かない。
+
+### 自作のストアを確かめる
+
+`@imatomix/mix-session/testing` の `checkSessionStore()` は、上の決まりをストアに対して確かめ、最初に破った決まりの名前を付けた `Error` を投げる。テストの道具に依存せず、毎回新しいランダムな ID を使うので、Redis のような共有のストアも確かめられる。
+
+```ts
+import { checkSessionStore } from '@imatomix/mix-session/testing'
+
+it('セッションのストアの決まりを守る', async () => {
+  await checkSessionStore(() => myStore()) // 約 2 秒かかる有効期限の確認を飛ばすなら { expiry: false }
+})
+```
 
 ## Cookie の名前
 
