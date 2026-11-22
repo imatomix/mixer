@@ -49,6 +49,17 @@ describe('serveFile', () => {
     ).toBe(304)
   })
 
+  it('answers range requests too', async () => {
+    const res = await call(app(serveFile(favicon)), '/', {
+      headers: { range: 'bytes=1-2' },
+    })
+    expect(res.status).toBe(206)
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+      new Uint8Array([0, 1]),
+    )
+    expect(res.headers.get('content-range')).toBe('bytes 1-2/4')
+  })
+
   it('moves on to the next component for methods other than GET and HEAD', async () => {
     const target = app(serveFile(favicon), next)
     expect(await (await call(target, '/', { method: 'POST' })).text()).toBe(

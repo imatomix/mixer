@@ -27,6 +27,7 @@ beforeAll(() => {
 
   writeFileSync(join(root, 'index.html'), '<h1>root</h1>')
   writeFileSync(join(root, 'hello.txt'), 'hello')
+  writeFileSync(join(root, 'digits.txt'), '0123456789')
   writeFileSync(join(root, 'style.css'), 'body{}')
   writeFileSync(join(root, 'data.unknownext'), 'x')
   writeFileSync(join(root, '日本語 ファイル.txt'), 'にほんご')
@@ -232,6 +233,98 @@ describe('conditional requests', () => {
       },
     })
     expect(res.status).toBe(200)
+  })
+})
+
+describe('range requests', () => {
+  const ranged = (range: string, headers: Record<string, string> = {}) =>
+    call(app(serveStatic(root)), '/digits.txt', {
+      headers: { range, ...headers },
+    })
+
+  it('advertises Accept-Ranges: bytes', async () => {
+    const res = await call(app(serveStatic(root)), '/digits.txt')
+    expect(res.headers.get('accept-ranges')).toBe('bytes')
+  })
+
+  it.each([
+    ['bytes=2-4', '234', 'bytes 2-4/10'],
+    ['bytes=7-', '789', 'bytes 7-9/10'],
+    ['bytes=-3', '789', 'bytes 7-9/10'],
+    ['bytes=5-100', '56789', 'bytes 5-9/10'],
+    ['bytes=-100', '0123456789', 'bytes 0-9/10'],
+    [' bytes=0-0 ', '0', 'bytes 0-0/10'],
+  ])(
+    'answers %s with 206 and only that part',
+    async (range, body, contentRange) => {
+      const res = await ranged(range)
+      expect(res.status).toBe(206)
+      expect(await res.text()).toBe(body)
+      expect(res.headers.get('content-range')).toBe(contentRange)
+      expect(res.headers.get('content-length')).toBe(String(body.length))
+      expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+    },
+  )
+
+  it.each(['bytes=10-', 'bytes=10-20', 'bytes=-0'])(
+    'answers %s with 416 and the size',
+    async (range) => {
+      const res = await ranged(range)
+      expect(res.status).toBe(416)
+      expect(res.headers.get('content-range')).toBe('bytes */10')
+      expect(await res.json()).toEqual({ error: 'Range Not Satisfiable' })
+    },
+  )
+
+  it('lets onError shape the 416 response', async () => {
+    const target = new Mixer({
+      onError: (_error, ctx) => ({ custom: ctx.status }),
+    }).mix(serveStatic(root))
+    const res = await call(target, '/digits.txt', {
+      headers: { range: 'bytes=10-' },
+    })
+    expect(res.status).toBe(416)
+    expect(res.headers.get('content-range')).toBe('bytes */10')
+    expect(await res.json()).toEqual({ custom: 416 })
+  })
+
+  it.each([
+    'bytes=0-1,3-4',
+    'bytes=4-2',
+    'bytes=-',
+    'bytes=abc',
+    'items=0-1',
+    `bytes=0-${'9'.repeat(30)}x`,
+  ])('ignores %s and sends the whole file', async (range) => {
+    const res = await ranged(range)
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('0123456789')
+  })
+
+  it('sends the whole file when If-Range is present, as the ETag is weak', async () => {
+    const etag =
+      (await call(app(serveStatic(root)), '/digits.txt')).headers.get('etag') ??
+      ''
+    const res = await ranged('bytes=2-4', { 'if-range': etag })
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('0123456789')
+  })
+
+  it('answers 304 before looking at Range', async () => {
+    const etag =
+      (await call(app(serveStatic(root)), '/digits.txt')).headers.get('etag') ??
+      ''
+    const res = await ranged('bytes=2-4', { 'if-none-match': etag })
+    expect(res.status).toBe(304)
+  })
+
+  it('ignores Range for HEAD', async () => {
+    const res = await call(app(serveStatic(root)), '/digits.txt', {
+      method: 'HEAD',
+      headers: { range: 'bytes=2-4' },
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-length')).toBe('10')
   })
 })
 
