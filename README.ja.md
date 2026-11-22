@@ -37,7 +37,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mix-session](packages/mix-session) | サーバサイドセッション | Node.js、Bun、Workers（外部のストアを使う） |
 | [@imatomix/mix-logger](packages/mix-logger) | アクセスログ | Node.js、Bun、Workers |
 
-まずは [mixer の README](packages/mixer/README.ja.md) から。対応環境は Node.js 24 以上、Bun 1.4.4 以上、Cloudflare Workers。PR ごとに、公開用のパッケージを 3 つすべてで確かめている。
+まずは [mixer の README](packages/mixer/README.ja.md) から。対応環境は Node.js 24 以上、Bun 1.4.4 以上、Cloudflare Workers。PR ごとに、公開するときと同じ形にパッケージを作り、3 つすべてで確かめている。
 
 > どのパッケージも 0.x なので、マイナーバージョンの間で API が変わることがある。
 

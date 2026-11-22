@@ -4,7 +4,7 @@ This file is the canonical instruction set for AI coding agents (Claude Code, Co
 
 ## Project
 
-A pnpm workspaces monorepo for `@imatomix/mixer`, a minimal and asynchronous web framework for Node.js, and its modules.
+A pnpm workspaces monorepo for `@imatomix/mixer`, a small web framework built on the Web standard `Request` and `Response` (running on Node.js, Bun, and Cloudflare Workers), and its modules.
 
 - `packages/mixer`: the core. Provides `Mixer` (a Web standard `fetch(request) => Response` handler), `Context`, `Component`, `HttpError`, and cookies. The Node.js adapter `serve()` lives in the `@imatomix/mixer/node` subpath export.
 - `packages/mix-*`: optional modules (router, CORS, static files, sessions, logging). Each is published to npm separately so that users can pick only what they need.
