@@ -138,6 +138,20 @@ describe('serving', () => {
     ).toBe('public, max-age=3600')
   })
 
+  it('adds immutable to Cache-Control with immutable: true', async () => {
+    const res = await call(
+      app(serveStatic(root, { maxAge: 31_536_000, immutable: true })),
+      '/hello.txt',
+    )
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=31536000, immutable',
+    )
+  })
+
+  it('rejects immutable without a maxAge', () => {
+    expect(() => serveStatic(root, { immutable: true })).toThrow(/immutable/)
+  })
+
   it.each(['//hello.txt', '/sub//index.html'])(
     'does not serve a path with an empty segment in the middle (%s)',
     async (path) => {
