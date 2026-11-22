@@ -80,6 +80,16 @@ describe('serveFile', () => {
     expect(() => serveFile(join(dir, 'folder'))).toThrow()
   })
 
+  it('adds immutable to Cache-Control with immutable: true', async () => {
+    const res = await call(
+      app(serveFile(favicon, { maxAge: 60, immutable: true })),
+    )
+    expect(res.headers.get('cache-control')).toBe(
+      'public, max-age=60, immutable',
+    )
+    expect(() => serveFile(favicon, { immutable: true })).toThrow(/immutable/)
+  })
+
   it.each([-1, 1.5])('rejects an invalid maxAge (%s)', (maxAge) => {
     expect(() => serveFile(favicon, { maxAge })).toThrow()
   })

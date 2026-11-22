@@ -12,6 +12,11 @@ export interface StaticOptions {
   index?: string | false
   /** max-age of Cache-Control, in seconds */
   maxAge?: number
+  /**
+   * Add `immutable` to Cache-Control, for files whose content never changes under the same name (such as
+   * fingerprinted build output). Requires a maxAge
+   */
+  immutable?: boolean
   /** Serve files and directories whose names start with a dot, such as `.env` or `.git/` */
   dotfiles?: boolean
   /**
@@ -34,7 +39,7 @@ export function serveStatic(
   const maxAge = options.maxAge ?? 0
   const dotfiles = options.dotfiles ?? false
   const precompressed = options.precompressed ?? false
-  validateMaxAge(maxAge)
+  const cache = cacheControl(maxAge, options.immutable ?? false)
   if (index !== false && !isValidIndexName(index)) {
     throw new Error(`mix-static: index must be a file name only: ${index}`)
   }
@@ -81,13 +86,18 @@ export function serveStatic(
       return undefined
     }
 
-    return sendFile(ctx, realFilePath, { maxAge, precompressed })
+    return sendFile(ctx, realFilePath, { cacheControl: cache, precompressed })
   }
 }
 
 export interface FileOptions {
   /** max-age of Cache-Control, in seconds */
   maxAge?: number
+  /**
+   * Add `immutable` to Cache-Control, for files whose content never changes under the same name (such as
+   * fingerprinted build output). Requires a maxAge
+   */
+  immutable?: boolean
 }
 
 /**
@@ -103,11 +113,11 @@ export function serveFile(
     throw new Error(`mix-static: not a regular file: ${filePath}`)
   }
   const maxAge = options.maxAge ?? 0
-  validateMaxAge(maxAge)
+  const cache = cacheControl(maxAge, options.immutable ?? false)
 
   return (ctx) => {
     if (ctx.method !== 'GET' && ctx.method !== 'HEAD') return undefined
-    return sendFile(ctx, realFilePath, { maxAge })
+    return sendFile(ctx, realFilePath, { cacheControl: cache })
   }
 }
 
@@ -194,12 +204,18 @@ function errorCode(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException).code
 }
 
-function validateMaxAge(maxAge: number): void {
+function cacheControl(maxAge: number, immutable: boolean): string {
   if (!Number.isInteger(maxAge) || maxAge < 0) {
     throw new Error(
       `mix-static: maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }
+  if (!immutable) return `public, max-age=${maxAge}`
+  // immutable means "do not revalidate before max-age runs out", which says nothing with a max-age of 0
+  if (maxAge === 0) {
+    throw new Error('mix-static: immutable requires a maxAge of 1 or more')
+  }
+  return `public, max-age=${maxAge}, immutable`
 }
 
 function redirectToDirectory(ctx: Context) {
@@ -232,9 +248,9 @@ async function sendFile(
   ctx: Context,
   filePath: string,
   {
-    maxAge,
+    cacheControl,
     precompressed = false,
-  }: { maxAge: number; precompressed?: boolean },
+  }: { cacheControl: string; precompressed?: boolean },
 ) {
   let handle: FileHandle
   try {
@@ -271,7 +287,7 @@ async function sendFile(
 
     headers.set('ETag', etag)
     headers.set('Last-Modified', lastModified.toUTCString())
-    headers.set('Cache-Control', `public, max-age=${maxAge}`)
+    headers.set('Cache-Control', cacheControl)
     headers.set('Accept-Ranges', 'bytes')
 
     if (isNotModified(ctx, etag, lastModified)) {

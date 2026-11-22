@@ -40,7 +40,7 @@ Files are looked up by mixer's `ctx.path`, so with `basePath` the public directo
 
 ## Serving a single file (favicon and the like)
 
-`serveFile(filePath, { maxAge })` is a Component that always returns the given file. It does not check the path, so combine it with [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) or similar.
+`serveFile(filePath, { maxAge, immutable })` is a Component that always returns the given file. It does not check the path, so combine it with [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) or similar.
 
 ```ts
 import { get } from '@imatomix/mix-router'
@@ -66,6 +66,7 @@ If `favicon.ico` is in the public directory, `serveStatic` alone serves it (the 
 | `prefix` | `'/'` | Only handle requests under this path. Compared segment by segment (`/imgs` does not match `/imgsecret`) |
 | `index` | `'index.html'` | File name returned for directory requests. `false` disables it |
 | `maxAge` | `0` | Seconds for `Cache-Control: public, max-age=N` |
+| `immutable` | `false` | Add `immutable` to `Cache-Control`, for files whose content never changes under the same name (such as fingerprinted build output: `app.3f9a1c.js`). Requires a `maxAge` of 1 or more |
 | `dotfiles` | `false` | Serve files and directories whose names start with a dot, such as `.env` or `.git/` |
 | `precompressed` | `false` | Serve `file.br` or `file.gz` next to a file when the client accepts that encoding ([details](#precompressed-files)) |
 

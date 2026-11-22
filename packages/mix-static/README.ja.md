@@ -40,7 +40,7 @@ app.mix(serveStatic('./public/images', { prefix: '/imgs' }))
 
 ## 単体のファイルを配信する（favicon など）
 
-`serveFile(filePath, { maxAge })` は、常に指定したファイルを返す Component。パスの判定はしないので、[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) などと組み合わせる。
+`serveFile(filePath, { maxAge, immutable })` は、常に指定したファイルを返す Component。パスの判定はしないので、[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) などと組み合わせる。
 
 ```ts
 import { get } from '@imatomix/mix-router'
@@ -66,6 +66,7 @@ app.mix(
 | `prefix` | `'/'` | このパス以下へのリクエストだけを扱う。セグメント単位で比べる（`/imgs` は `/imgsecret` に一致しない） |
 | `index` | `'index.html'` | ディレクトリへのアクセスで返すファイル名。`false` で無効 |
 | `maxAge` | `0` | `Cache-Control: public, max-age=N` の秒数 |
+| `immutable` | `false` | `Cache-Control` に `immutable` を付ける。同じ名前のまま中身が変わらないファイル（`app.3f9a1c.js` のようにハッシュを含むビルド成果物など）向け。`maxAge` が 1 以上でないと使えない |
 | `dotfiles` | `false` | `.env` や `.git/` のようなドットで始まるファイル・ディレクトリを配信する |
 | `precompressed` | `false` | クライアントが受け付けるなら、ファイルの隣の `file.br` や `file.gz` を代わりに配信する（[詳細](#圧縮済みファイル)） |
 
