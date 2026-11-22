@@ -56,6 +56,32 @@ describe('MemoryStore', () => {
     expect(await store.get('c')).toEqual({ v: 3 })
   })
 
+  it('keeps the cost of a write independent of how many sessions are stored', async () => {
+    const timeFill = async (count: number) => {
+      const store = new MemoryStore({ maxEntries: count })
+      const start = performance.now()
+      for (let i = 0; i < count; i++) await store.set(`s${i}`, { i }, 600)
+      return performance.now() - start
+    }
+    await timeFill(2_000) // warm up
+    const small = await timeFill(2_000)
+    const large = await timeFill(20_000)
+    // Ten times the sessions should take about ten times as long; scanning every entry on each write takes about a hundred
+    expect(large).toBeLessThan(small * 30 + 10)
+  })
+
+  it('drops expired entries before live ones when over the limit', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
+    const store = new MemoryStore({ maxEntries: 2 })
+    await store.set('expired', { v: 1 }, 1)
+    await store.set('live', { v: 2 }, 60)
+    vi.setSystemTime(new Date('2026-01-01T00:00:05Z'))
+    await store.set('new', { v: 3 }, 60)
+    expect(await store.get('live')).toEqual({ v: 2 })
+    expect(await store.get('new')).toEqual({ v: 3 })
+  })
+
   it('removes entries with delete', async () => {
     const store = new MemoryStore()
     await store.set('a', { v: 1 }, 60)
