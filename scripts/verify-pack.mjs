@@ -190,6 +190,7 @@ ${
   dependencies['@imatomix/mix-static']
     ? `
 import { mkdtempSync as makeTempDir, symlinkSync, writeFileSync as writeTempFile } from 'node:fs'
+import { brotliCompressSync } from 'node:zlib'
 import { tmpdir as osTmpdir } from 'node:os'
 import { join as joinPath } from 'node:path'
 import { Mixer as StaticMixer } from '@imatomix/mixer'
@@ -197,11 +198,14 @@ import { serveStatic } from '@imatomix/mix-static'
 
 const publicDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-static-'))
 writeTempFile(joinPath(publicDir, 'hello.txt'), 'hello static')
+// A real Brotli file, decoded by the runtime's fetch, to check precompressed files end to end
+writeTempFile(joinPath(publicDir, 'compressed.txt'), 'compressed static')
+writeTempFile(joinPath(publicDir, 'compressed.txt.br'), brotliCompressSync('compressed static'))
 // A symbolic link inside the public directory that points outside it must never be served
 const outsideDir = makeTempDir(joinPath(osTmpdir(), 'mixer-smoke-outside-'))
 writeTempFile(joinPath(outsideDir, 'secret.txt'), 'secret')
 symlinkSync(joinPath(outsideDir, 'secret.txt'), joinPath(publicDir, 'link.txt'))
-const staticApp = new StaticMixer().mix(serveStatic(publicDir))
+const staticApp = new StaticMixer().mix(serveStatic(publicDir, { precompressed: true }))
 const staticServer = await listen(staticApp)
 const staticBase = \`http://127.0.0.1:\${staticServer.port}\`
 const file = await fetch(\`\${staticBase}/hello.txt\`)
@@ -211,6 +215,8 @@ const headResponse = await fetch(\`\${staticBase}/hello.txt\`, { method: 'HEAD' 
 await headResponse.text()
 const notModified = await fetch(\`\${staticBase}/hello.txt\`, { headers: { 'if-none-match': etag } })
 await notModified.text()
+const brotli = await fetch(\`\${staticBase}/compressed.txt\`, { headers: { 'accept-encoding': 'br' } })
+const brotliText = await brotli.text()
 const part = await fetch(\`\${staticBase}/hello.txt\`, { headers: { range: 'bytes=6-' } })
 const partText = await part.text()
 const escaped = await fetch(\`\${staticBase}/link.txt\`)
@@ -221,6 +227,8 @@ if (
   file.headers.get('content-type') !== 'text/plain; charset=utf-8' ||
   headResponse.status !== 200 ||
   part.status !== 206 ||
+  brotli.headers.get('content-encoding') !== 'br' ||
+  brotliText !== 'compressed static' ||
   partText !== 'static' ||
   headResponse.headers.get('content-length') !== '12' ||
   notModified.status !== 304 ||
