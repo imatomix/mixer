@@ -106,6 +106,35 @@ describe('checkSessionStore', () => {
     )
   })
 
+  it('fails when update brings back an expired session that was not cleaned up yet', async () => {
+    const records = new Map<string, { data: SessionData; expiresAt: number }>()
+    const live = (id: string) => {
+      const record = records.get(id)
+      return record && record.expiresAt > Date.now() ? record : undefined
+    }
+    const store: () => SessionStore = () => ({
+      get: async (id) => structuredClone(live(id)?.data),
+      set: async (id, data, ttl) =>
+        void records.set(id, {
+          data: structuredClone(data),
+          expiresAt: Date.now() + ttl * 1000,
+        }),
+      update: async (id, data, ttl) => {
+        // Checks that the record exists, but not that it is still valid
+        if (!records.has(id)) return false
+        records.set(id, {
+          data: structuredClone(data),
+          expiresAt: Date.now() + ttl * 1000,
+        })
+        return true
+      },
+      delete: async (id) => void records.delete(id),
+    })
+    await expect(checkSessionStore(store)).rejects.toThrow(
+      /update must not bring back an expired session/,
+    )
+  })
+
   it('fails when sessions never expire', async () => {
     const shared = new MemoryStore()
     const store = broken({

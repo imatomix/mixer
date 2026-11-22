@@ -86,10 +86,18 @@ export async function checkSessionStore(
   if (!expiry) return
   const expiring = newId()
   await store.set(expiring, { v: 1 }, 1)
+  const revivable = newId()
+  await store.set(revivable, { v: 1 }, 1)
   const shortened = newId()
   await store.set(shortened, { v: 1 }, 600)
   await store.update(shortened, { v: 2 }, 1)
   await new Promise((resolve) => setTimeout(resolve, 2_100))
+  // Before any get: get may clean up the expired record and hide an update that only checks existence
+  expect(
+    (await store.update(revivable, { v: 2 }, 60)) === false &&
+      (await store.get(revivable)) === undefined,
+    'update must not bring back an expired session (one that is not cleaned up yet)',
+  )
   expect(
     (await store.get(expiring)) === undefined,
     'sessions must expire after ttlSeconds',
