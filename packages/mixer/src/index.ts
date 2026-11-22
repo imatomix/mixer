@@ -1,4 +1,4 @@
-export type { FormBody } from './body.js'
+export type { FormBody, MultipartBody } from './body.js'
 export {
   Context,
   type ExecutionContextLike,

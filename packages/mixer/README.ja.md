@@ -58,7 +58,7 @@ app.mix(
 | `ctx.status` / `ctx.headers` | 組み立て中の応答のステータス（既定 `200`）とヘッダ |
 | `ctx.state` | 後のコンポーネントに渡す値 |
 | `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
-| `await ctx.body()` | Content-Type に応じて解析したリクエストボディ（[詳細](#リクエストボディ)） |
+| `await ctx.body()` | Content-Type に応じて解析したリクエストボディ。フォームとファイルのアップロードも含む（[詳細](#リクエストボディ)） |
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
@@ -297,12 +297,13 @@ ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 
 ### リクエストボディ
 
-`ctx.body()` は求められたときだけボディを読み、何度呼んでも同じ結果を返す。
+`ctx.body()` は求められたときだけボディを読み、何度呼んでも同じ結果を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込むので、大きなファイルを受け取るときは上限を上げる。とても大きなファイルを流しながら保存する使い方には向かない。
 
 | Content-Type | 結果 |
 | --- | --- |
 | `application/json`、`*+json` | 解析した値（不正なら `400`） |
 | `application/x-www-form-urlencoded` | `{ key: value }`（同じキーは配列） |
+| `multipart/form-data` | 同じ形。アップロードされたファイルは `File`（不正なら `400`） |
 | `text/*` または指定なし | 文字列 |
 | それ以外 | `Uint8Array` |
 | 空のボディ | `undefined` |

@@ -95,10 +95,10 @@ export class Context<S extends State = State, E = unknown> {
   }
 
   async body<T = unknown>(): Promise<T> {
-    return parseBody(
+    return (await parseBody(
       await this.bytes(),
       this.request.headers.get('content-type'),
-    ) as T
+    )) as T
   }
 
   /** Registers work to run right before the final Response is built (for example, setting cookies) */
