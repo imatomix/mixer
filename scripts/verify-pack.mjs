@@ -144,6 +144,24 @@ import { MemoryStore, session, type SessionState } from '@imatomix/mix-session'
 import { checkSessionStore } from '@imatomix/mix-session/testing'
 
 await checkSessionStore(() => new MemoryStore(), { expiry: false })
+import { redisStore, sessionKey } from '@imatomix/mix-session/redis'
+
+// A stand-in for a Redis client (no server here), to check that the /redis entry point loads and works
+const fakeRedis = new Map<string, string>()
+await checkSessionStore(
+  () =>
+    redisStore({
+      send: async ([command, key = '', value = '', , , xx]) => {
+        if (command === 'GET') return fakeRedis.get(key) ?? null
+        if (command === 'DEL') return fakeRedis.delete(key) ? 1 : 0
+        if (xx === 'XX' && !fakeRedis.has(key)) return null
+        fakeRedis.set(key, value)
+        return 'OK'
+      },
+    }),
+  { expiry: false },
+)
+if (!(await sessionKey('id')).startsWith('mix-session:')) throw new Error('sessionKey failed')
 
 const sessionApp = new SessionMixer<SessionState>().mix(session(), (ctx) => {
   const current = ctx.state.session

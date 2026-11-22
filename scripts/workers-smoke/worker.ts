@@ -5,6 +5,7 @@ import { cors } from '@imatomix/mix-cors'
 import { type LogEntry, logger } from '@imatomix/mix-logger'
 import { createRouter } from '@imatomix/mix-router'
 import { type SessionState, session } from '@imatomix/mix-session'
+import { sessionKey } from '@imatomix/mix-session/redis'
 import { HttpError, Mixer } from '@imatomix/mixer'
 
 type Env = { GREETING: string }
@@ -50,6 +51,7 @@ const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
     ctx.cookies.set('theme', 'dark')
     return 'ok'
   }),
+  get('/key', () => sessionKey('abc')),
   get('/me', (ctx) => ({ user: ctx.state.session.get('user') ?? null })),
 )
 

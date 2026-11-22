@@ -88,6 +88,48 @@ interface SessionStore {
 
 To run multiple processes, or to keep sessions across restarts, implement an external store and pass it in. On serverless platforms and Cloudflare Workers, where each request may run in a different instance, always use an external store. Its `update` must check and update in one step (for example, a D1 transaction or a Durable Object); Workers KV does not fit, because its writes take time to reach other locations.
 
+### Redis
+
+`redisStore()` from `@imatomix/mix-session/redis` stores sessions in Redis. It has no dependency: pass a `send` function that sends one command with the client you already use and resolves with its reply.
+
+```ts
+import { session } from '@imatomix/mix-session'
+import { redisStore } from '@imatomix/mix-session/redis'
+
+app.mix(session({ store: redisStore({ send: (args) => client.sendCommand(args) }) }))
+```
+
+| Client | `send` |
+| --- | --- |
+| node-redis | `(args) => client.sendCommand(args)` |
+| ioredis | `([command, ...rest]) => client.call(command, ...rest)` |
+| Bun | `([command, ...rest]) => client.send(command, rest)` |
+
+```ts
+// Upstash REST (for Workers)
+const send = async (args: string[]) => {
+  const res = await fetch(env.UPSTASH_REDIS_REST_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}` },
+    body: JSON.stringify(args),
+  })
+  const { result, error } = await res.json()
+  if (error) throw new Error(error)
+  return result
+}
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `send` | required | Sends one command and resolves with its reply; rejects on a Redis error |
+| `prefix` | `'mix-session:'` | Prepended to every key |
+| `hashKeys` | `true` | Store under a SHA-256 hash of the session ID |
+
+- **Keys are hashes of session IDs by default.** A session ID is all it takes to use a session, so a key seen in a key listing, a monitoring tool, a log, or a backup would otherwise be enough to take one over. Set `hashKeys: false` only to share sessions with other software that reads the same keys, and then rely on keeping Redis private (network, ACLs, TLS)
+- `sessionKey(id, { prefix, hashKeys })` gives the key for a session ID, for looking a session up by hand
+- `update` uses `SET ... XX`, so a session deleted or expired meanwhile is not written back
+- It follows `checkSessionStore()`, run against a real Redis in CI
+
 ### Checking your own store
 
 `checkSessionStore()` from `@imatomix/mix-session/testing` runs the rules above against a store and throws an `Error` naming the first one it breaks. It is not tied to a test framework, and it uses fresh random IDs, so a shared store such as Redis can be checked:

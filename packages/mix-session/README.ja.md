@@ -88,6 +88,48 @@ interface SessionStore {
 
 複数プロセスで動かす場合や、再起動でセッションを失いたくない場合は、外部のストアを実装して渡す。リクエストごとに別のインスタンスで動きうるサーバーレス環境や Cloudflare Workers では、必ず外部のストアを使う。その `update` は、存在の確認と更新を一度に行う必要がある（D1 のトランザクションや Durable Object など）。Workers KV は書き込みがほかの拠点に届くまで時間がかかるので向かない。
 
+### Redis
+
+`@imatomix/mix-session/redis` の `redisStore()` は、セッションを Redis に保存する。依存はなく、使っているクライアントで 1 つのコマンドを送り、その応答を返す `send` 関数を渡す。
+
+```ts
+import { session } from '@imatomix/mix-session'
+import { redisStore } from '@imatomix/mix-session/redis'
+
+app.mix(session({ store: redisStore({ send: (args) => client.sendCommand(args) }) }))
+```
+
+| クライアント | `send` |
+| --- | --- |
+| node-redis | `(args) => client.sendCommand(args)` |
+| ioredis | `([command, ...rest]) => client.call(command, ...rest)` |
+| Bun | `([command, ...rest]) => client.send(command, rest)` |
+
+```ts
+// Upstash の REST（Workers 向け）
+const send = async (args: string[]) => {
+  const res = await fetch(env.UPSTASH_REDIS_REST_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}` },
+    body: JSON.stringify(args),
+  })
+  const { result, error } = await res.json()
+  if (error) throw new Error(error)
+  return result
+}
+```
+
+| オプション | 既定 | 説明 |
+| --- | --- | --- |
+| `send` | 必須 | 1 つのコマンドを送り、その応答を返す。Redis のエラーは例外にする |
+| `prefix` | `'mix-session:'` | すべてのキーの先頭に付ける |
+| `hashKeys` | `true` | セッション ID の SHA-256 ハッシュ値をキーにする |
+
+- **既定では、キーはセッション ID のハッシュ値。** セッション ID はそれだけでセッションを使える値なので、そのままキーにすると、キーの一覧・監視ツール・ログ・バックアップに出たキーから乗っ取れてしまう。`hashKeys: false` は、同じキーを読むほかのソフトウェアとセッションを共有するときだけに使い、その場合は Redis を外から触らせないこと（ネットワーク・ACL・TLS）に頼る
+- `sessionKey(id, { prefix, hashKeys })` で、セッション ID に対応するキーを求められる（手で調べるとき用）
+- `update` は `SET ... XX` を使うので、途中で破棄されたセッションや期限切れのセッションを書き戻さない
+- `checkSessionStore()` を満たし、CI で本物の Redis に対して確かめている
+
 ### 自作のストアを確かめる
 
 `@imatomix/mix-session/testing` の `checkSessionStore()` は、上の決まりをストアに対して確かめ、最初に破った決まりの名前を付けた `Error` を投げる。テストの道具に依存せず、毎回新しいランダムな ID を使うので、Redis のような共有のストアも確かめられる。

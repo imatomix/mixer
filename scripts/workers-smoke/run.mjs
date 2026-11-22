@@ -154,6 +154,9 @@ async function smoke(fetch) {
   const me = await fetch('/api/me', { headers: { cookie: sid ?? '' } })
   expect('session', await me.json(), { user: 'mixer' })
 
+  const key = await (await fetch('/api/key')).text()
+  expect('Redis session key', /^mix-session:[A-Za-z0-9_-]{43}$/.test(key), true)
+
   // The log write finishes 50 ms after the response; only ctx.waitUntil keeps it running on workerd
   await (await fetch('/api/hello/later')).text()
   await new Promise((resolve) => setTimeout(resolve, 200))

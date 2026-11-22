@@ -11,6 +11,10 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "import": "./dist/redis.js"
     }
   },
   "main": "./dist/index.js",
@@ -51,6 +55,7 @@
   "devDependencies": {
     "@imatomix/mixer": "workspace:*",
     "@types/node": "catalog:",
+    "redis": "^6.3.1",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
