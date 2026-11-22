@@ -1,7 +1,9 @@
 import { createClient } from 'redis'
 import { afterAll, describe, expect, it } from 'vitest'
+import { type SessionState, session } from '../src/index.js'
 import { redisStore, sessionKey } from '../src/redis.js'
 import { checkSessionStore } from '../src/testing.js'
+import { app, call } from './helpers.js'
 
 const ID = 'A'.repeat(43)
 
@@ -117,5 +119,34 @@ describe.skipIf(!url)('with a real Redis (REDIS_URL)', () => {
     await checkSessionStore(() =>
       redisStore({ send: (args) => client.sendCommand(args), prefix }),
     )
+  })
+
+  it('keeps sessions for session(), with the Redis expiry capped by absoluteTtl', async () => {
+    if (!client.isOpen) await client.connect()
+    const store = redisStore({
+      send: (args) => client.sendCommand(args),
+      prefix,
+    })
+    const target = app(session({ store, absoluteTtl: 3600 }), (ctx) => {
+      const { session: current } = ctx.state as SessionState
+      if (ctx.path === '/login') {
+        current.set('user', 'mixer')
+        return 'ok'
+      }
+      return { user: current.get('user') ?? null }
+    })
+    const login = await call(target, '/login')
+    const cookie = login.headers.getSetCookie()[0]?.split(';')[0] ?? ''
+    const id = cookie.split('=')[1] ?? ''
+    const ttl = Number(
+      await client.sendCommand(['TTL', await sessionKey(id, { prefix })]),
+    )
+    expect(ttl).toBeGreaterThan(3500)
+    expect(ttl).toBeLessThanOrEqual(3600)
+    expect(
+      await (await call(target, '/me', { headers: { cookie } })).json(),
+    ).toEqual({
+      user: 'mixer',
+    })
   })
 })

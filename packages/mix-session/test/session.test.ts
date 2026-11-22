@@ -39,6 +39,19 @@ class RecordingStore extends MemoryStore {
 
 type State = SessionState
 
+/** Puts a session into a store the way mix-session saves one */
+const seed = (
+  store: SessionStore,
+  id: string,
+  data: SessionData,
+  ttl = 60,
+  createdAt = Date.now(),
+) => store.set(id, { createdAt, data }, ttl)
+
+/** The session data mix-session saved under an ID */
+const stored = async (store: SessionStore, id: string) =>
+  ((await store.get(id)) as { data?: SessionData } | undefined)?.data
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -118,7 +131,7 @@ describe('invalid IDs', () => {
   ])('does not load the session when %s', async (_label, cookie) => {
     const store = new MemoryStore()
     const valid = 'B'.repeat(43)
-    await store.set(valid, { user: 'victim' }, 60)
+    await seed(store, valid, { user: 'victim' }, 60)
     const target = app(session({ store }), (ctx) => ({
       user: (ctx.state as State).session.get('user') ?? null,
     }))
@@ -133,20 +146,20 @@ describe('changes inside stored values', () => {
   it('saves a change made directly to a nested value', async () => {
     const store = new MemoryStore()
     const sid = 'F'.repeat(43)
-    await store.set(sid, { cart: ['apple'] }, 60)
+    await seed(store, sid, { cart: ['apple'] }, 60)
     const target = app(session({ store }), (ctx) => {
       ;((ctx.state as State).session.get('cart') as string[]).push('banana')
       return 'ok'
     })
     const res = await call(target, '/', { headers: cookieHeader(sid) })
-    expect(await store.get(sid)).toEqual({ cart: ['apple', 'banana'] })
+    expect(await stored(store, sid)).toEqual({ cart: ['apple', 'banana'] })
     expect(sidFrom(res)).toBe(sid)
   })
 
   it('does not save or send a cookie when a nested value is only read', async () => {
     const store = new RecordingStore()
     const sid = 'G'.repeat(43)
-    await store.set(sid, { cart: ['apple'] }, 60)
+    await seed(store, sid, { cart: ['apple'] }, 60)
     store.calls = []
     const target = app(session({ store }), (ctx) =>
       (ctx.state as State).session.get('cart'),
@@ -160,7 +173,7 @@ describe('changes inside stored values', () => {
 describe('regenerate and destroy', () => {
   async function loggedIn(store: MemoryStore) {
     const sid = 'C'.repeat(43)
-    await store.set(sid, { cart: ['apple'] }, 60)
+    await seed(store, sid, { cart: ['apple'] }, 60)
     return sid
   }
 
@@ -178,7 +191,7 @@ describe('regenerate and destroy', () => {
     expect(sid).toBeDefined()
     expect(sid).not.toBe(old)
     expect(await store.get(old)).toBeUndefined()
-    expect(await store.get(sid ?? '')).toEqual({
+    expect(await stored(store, sid ?? '')).toEqual({
       cart: ['apple'],
       user: 'imatomix',
     })
@@ -250,7 +263,7 @@ describe('expiry', () => {
   it('extends the expiry on read-only requests with rolling', async () => {
     const store = new RecordingStore()
     const sid = 'D'.repeat(43)
-    await store.set(sid, { v: 1 }, 600)
+    await seed(store, sid, { v: 1 }, 600)
     store.calls = []
     const target = app(session({ store, ttl: 600, rolling: true }), (ctx) =>
       (ctx.state as State).session.get('v'),
@@ -263,7 +276,7 @@ describe('expiry', () => {
   it('updates neither the store nor the cookie on read-only requests without rolling', async () => {
     const store = new RecordingStore()
     const sid = 'E'.repeat(43)
-    await store.set(sid, { v: 1 }, 600)
+    await seed(store, sid, { v: 1 }, 600)
     store.calls = []
     const target = app(session({ store }), (ctx) =>
       (ctx.state as State).session.get('v'),
@@ -322,6 +335,169 @@ describe('default cookie name', () => {
       user: 'mixer',
     })
   })
+})
+
+describe('absolute lifetime', () => {
+  const DAY = 86_400
+  const start = new Date('2026-01-01T00:00:00Z')
+  const at = (days: number) =>
+    vi.setSystemTime(new Date(start.getTime() + days * DAY * 1000))
+  const reads = (ctx: { state: unknown }) => ({
+    user: (ctx.state as State).session.get('user') ?? null,
+  })
+
+  it('ends a session 7 days after it was created by default, even with rolling', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    at(0)
+    const store = new MemoryStore()
+    const sid = 'H'.repeat(43)
+    await seed(store, sid, { user: 'mixer' }, DAY)
+    const target = app(session({ store, rolling: true }), reads)
+    for (const day of [0.9, 1.8, 2.7, 3.6, 4.5, 5.4, 6.3]) {
+      at(day)
+      expect(
+        await (await call(target, '/', { headers: cookieHeader(sid) })).json(),
+      ).toEqual({
+        user: 'mixer',
+      })
+    }
+    at(7)
+    const res = await call(target, '/', { headers: cookieHeader(sid) })
+    expect(await res.json()).toEqual({ user: null })
+    vi.useRealTimers()
+  })
+
+  it('removes an expired session that is still in the store, and its cookie', async () => {
+    const store = new MemoryStore()
+    const sid = 'M'.repeat(43)
+    // Created 8 days ago and kept longer by the store, as after absoluteTtl was shortened
+    await seed(
+      store,
+      sid,
+      { user: 'mixer' },
+      30 * DAY,
+      Date.now() - 8 * DAY * 1000,
+    )
+    const res = await call(app(session({ store }), reads), '/', {
+      headers: cookieHeader(sid),
+    })
+    expect(await res.json()).toEqual({ user: null })
+    expect(res.headers.getSetCookie()[0]).toMatch(/^__Host-sid=; Max-Age=0;/)
+    expect(await store.get(sid)).toBeUndefined()
+  })
+
+  it('caps the cookie and store lifetime to the time left', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    at(0)
+    const store = new RecordingStore()
+    const sid = 'I'.repeat(43)
+    await seed(store, sid, { v: 1 }, 7 * DAY)
+    store.calls = []
+    at(6.5)
+    const res = await call(
+      app(session({ store }), (ctx) => {
+        ;(ctx.state as State).session.set('v', 2)
+        return 'ok'
+      }),
+      '/',
+      { headers: cookieHeader(sid) },
+    )
+    expect(store.calls).toEqual([`update:${DAY / 2}`])
+    expect(res.headers.getSetCookie()[0]).toMatch(
+      new RegExp(`Max-Age=${DAY / 2};`),
+    )
+    vi.useRealTimers()
+  })
+
+  it('gives a new session no longer than absoluteTtl', async () => {
+    const store = new RecordingStore()
+    const res = await call(
+      app(session({ store, absoluteTtl: 3600 }), (ctx) => {
+        ;(ctx.state as State).session.set('v', 1)
+        return 'ok'
+      }),
+    )
+    expect(store.calls).toEqual(['set:3600'])
+    expect(res.headers.getSetCookie()[0]).toMatch(/Max-Age=3600;/)
+  })
+
+  it('restarts the clock on regenerate', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    at(0)
+    const store = new MemoryStore()
+    const old = 'J'.repeat(43)
+    await seed(store, old, { user: 'guest' }, DAY)
+    const target = app(session({ store, rolling: true }), (ctx) => {
+      const { session: current } = ctx.state as State
+      if (ctx.path === '/login') {
+        current.regenerate()
+        current.set('user', 'mixer')
+        return 'ok'
+      }
+      return { user: current.get('user') ?? null }
+    })
+    at(6)
+    const login = await call(target, '/login', { headers: cookieHeader(old) })
+    const sid = sidFrom(login) ?? ''
+    for (const day of [6.9, 7.8, 8.7, 9.6, 10.5, 11.4, 12.3]) {
+      at(day)
+      expect(
+        await (
+          await call(target, '/me', { headers: cookieHeader(sid) })
+        ).json(),
+      ).toEqual({
+        user: 'mixer',
+      })
+    }
+    at(13)
+    expect(
+      await (await call(target, '/me', { headers: cookieHeader(sid) })).json(),
+    ).toEqual({
+      user: null,
+    })
+    vi.useRealTimers()
+  })
+
+  it('keeps a session alive past 7 days with absoluteTtl: false', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    at(0)
+    const store = new MemoryStore()
+    const sid = 'K'.repeat(43)
+    await seed(store, sid, { user: 'mixer' }, DAY)
+    const target = app(
+      session({ store, rolling: true, absoluteTtl: false }),
+      reads,
+    )
+    for (let day = 0.9; day < 30; day += 0.9) {
+      at(day)
+      await call(target, '/', { headers: cookieHeader(sid) })
+    }
+    expect(
+      await (await call(target, '/', { headers: cookieHeader(sid) })).json(),
+    ).toEqual({
+      user: 'mixer',
+    })
+    vi.useRealTimers()
+  })
+
+  it('does not adopt a stored value that is not a session record', async () => {
+    const store = new MemoryStore()
+    const sid = 'L'.repeat(43)
+    await store.set(sid, { user: 'mixer' }, 60)
+    const res = await call(app(session({ store }), reads), '/', {
+      headers: cookieHeader(sid),
+    })
+    expect(await res.json()).toEqual({ user: null })
+  })
+
+  it.each([0, -1, 1.5, Number.NaN, true])(
+    'rejects an invalid absoluteTtl (%s)',
+    (absoluteTtl) => {
+      expect(() => session({ absoluteTtl: absoluteTtl as number })).toThrow(
+        /absoluteTtl/,
+      )
+    },
+  )
 })
 
 describe('options', () => {
