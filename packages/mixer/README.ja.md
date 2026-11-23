@@ -120,7 +120,7 @@ app.mix((ctx) => {
 throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
 ```
 
-エラーの応答を自分で組み立てるときは `onError` を渡す。`ctx.status` にエラーのステータスが入った状態で呼ばれ、戻り値が応答になる。`undefined` を返すか例外を投げると、既定の応答になる。
+エラーの応答を自分で組み立てるときは `onError` を渡す。`ctx.status` にエラーのステータスが入った状態で呼ばれ、戻り値が応答になる。`undefined` を返すか例外を投げると、既定の応答になる。ここでは `ctx.state` がそろっていないことがある。状態を入れるコンポーネントより前にエラーが起きたり、どのコンポーネントも見ていない `basePath` の外へのリクエストだったりするため。そこで `onError` の中では `ctx.state` のプロパティは省略可能な型になる（`ctx.state.log?.requestId` のように書く）。
 
 ```ts
 const app = new Mixer({

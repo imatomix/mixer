@@ -940,3 +940,32 @@ describe('response headers', () => {
     expect(res.headers.getSetCookie()).toHaveLength(2)
   })
 })
+
+describe('onError and state', () => {
+  type AppState = { log: { requestId: string } }
+
+  it('types ctx.state as possibly incomplete, because components may not have run', () => {
+    new Mixer<AppState>({
+      onError: (_error, ctx) => {
+        // @ts-expect-error log is undefined when the request never reached the component that sets it
+        ctx.state.log.requestId
+        return ctx.state.log?.requestId ?? null
+      },
+    })
+  })
+
+  it('runs onError for a request outside basePath, where no component ran', async () => {
+    const app = new Mixer<AppState>({
+      basePath: '/app',
+      onError: (_error, ctx) => ({
+        status: ctx.status,
+        requestId: ctx.state.log?.requestId ?? 'none',
+      }),
+    }).mix((ctx) => {
+      ctx.state.log = { requestId: 'abc' }
+    })
+    const res = await call(app, '/outside')
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ status: 404, requestId: 'none' })
+  })
+})

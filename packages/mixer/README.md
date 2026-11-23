@@ -120,7 +120,7 @@ Headers an error response needs go on the error itself; headers set in `ctx.head
 throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
 ```
 
-To shape error responses yourself, pass `onError`. It starts with the error's status in `ctx.status`, and what it returns becomes the response. If it returns `undefined` or throws, the default response is sent.
+To shape error responses yourself, pass `onError`. It starts with the error's status in `ctx.status`, and what it returns becomes the response. If it returns `undefined` or throws, the default response is sent. `ctx.state` may be incomplete here, because the error can come before the components that fill it, or from a request outside `basePath` that no component saw, so its properties are optional in `onError` (write `ctx.state.log?.requestId`).
 
 ```ts
 const app = new Mixer({
