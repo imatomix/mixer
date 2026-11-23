@@ -88,7 +88,7 @@ export function logger(options: LoggerOptions = {}): Component {
     const base = { requestId, method: ctx.method, path: ctx.url.pathname }
 
     const emit = (event: LogEvent) => {
-      const pending = safely(() => write(event))
+      const pending = safely(() => write(event), base)
       if (pending) ctx.waitUntil(pending)
     }
     const appEvent =
@@ -188,8 +188,10 @@ function toWriter(
 /** The fixed fields come last, so a handler's fields cannot replace the request ID or the level */
 function formatJson({ fields, time, ...event }: LogEvent): string {
   const fixed = { ...event, time: time.toISOString() }
+  // JSON.stringify would call a toJSON copied from the fields and let it replace the whole object
+  const { toJSON: _ignored, ...own } = fields ?? {}
   try {
-    return toJson({ ...fields, ...fixed })
+    return toJson({ ...own, ...fixed })
   } catch {
     return toJson({ ...fixed, fields: 'unserializable' })
   }
@@ -225,17 +227,22 @@ function serializeError(error: unknown): SerializedError {
   return { message: String(error) }
 }
 
-/** Failing to write an event must not affect the response or the server */
-function safely(run: () => void | Promise<void>): Promise<void> | undefined {
+/**
+ * Failing to write an event must not affect the response or the server. The failure goes straight to the console,
+ * with the request it was for, instead of back into write
+ */
+function safely(
+  run: () => void | Promise<void>,
+  request: { requestId: string; method: string; path: string },
+): Promise<void> | undefined {
+  const report = (error: unknown) => {
+    console.error('mix-logger: write failed', request, error)
+  }
   try {
     const result = run()
-    if (result instanceof Promise) {
-      return result.catch((error: unknown) => {
-        console.error('mix-logger:', error)
-      })
-    }
+    if (result instanceof Promise) return result.catch(report)
   } catch (error) {
-    console.error('mix-logger:', error)
+    report(error)
   }
   return undefined
 }

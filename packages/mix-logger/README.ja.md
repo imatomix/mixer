@@ -19,8 +19,9 @@ npm install @imatomix/mixer @imatomix/mix-logger
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
 import { type LoggerState, logger } from '@imatomix/mix-logger'
-import { post } from '@imatomix/mix-router'
+import { createRouter } from '@imatomix/mix-router'
 
+const { post } = createRouter<LoggerState>()
 const app = new Mixer<LoggerState>()
 
 app.mix(
@@ -52,7 +53,7 @@ await serve(app, { port: 3000 })
 
 ## ハンドラーの中で
 
-`ctx.state.log` には `debug`・`info`・`warn`・`error` があり、どれもメッセージと任意のフィールドを受け取る。利用者に見せたり他のサービスに渡したりするための `requestId` もある。使うにはアプリに `LoggerState` の型を付ける。`new Mixer<LoggerState>()`（自分の状態と合わせるなら `Mixer<LoggerState & MyState>`）、mix-router なら `createRouter<LoggerState>()`。
+`ctx.state.log` には `debug`・`info`・`warn`・`error` があり、どれもメッセージと任意のフィールドを受け取る。利用者に見せたり他のサービスに渡したりするための `requestId` もある。使うにはアプリとルートに `LoggerState` の型を付ける。`new Mixer<LoggerState>()` と、mix-router なら `createRouter<LoggerState>()`（ルートはアプリから型を受け継げない）。ほかの状態と合わせるなら `LoggerState & SessionState` のようにする。
 
 ## オプション
 
@@ -67,8 +68,8 @@ logger({
 | オプション | 既定値 | 説明 |
 | --- | --- | --- |
 | `write` | `'json'` | `'json'` は 1 行に 1 つの JSON、`'text'` は読みやすい 1 行を `console.log`（エラーは `console.error`）に書く。関数を渡すと、代わりに各 `LogEvent` を受け取る |
-| `requestId` | 新しいランダムな UUID | ID をリクエストから取る `(ctx) => string \| undefined`。Cloudflare の `CF-Ray` など。無いか形が不正（`A-Z a-z 0-9 . _ : -` の 1〜128 文字以外）なら新しく作る |
-| `header` | `'X-Request-Id'` | ID を載せる応答ヘッダー。`false` なら付けない。ハンドラーが設定した値は置き換えるので、応答とログの ID は必ずそろう。自分の値を持つ `Response` を返したときは、その値が残る |
+| `requestId` | 新しいランダムな UUID | ID をリクエストから取る `(ctx) => string \| undefined`。Cloudflare の `CF-Ray` など。実行環境やプロキシが付け、クライアントが付けられないヘッダーだけを使う。Cloudflare を前に置かない Node.js や Bun では、`CF-Ray` は誰でも送れる。無いか形が不正（`A-Z a-z 0-9 . _ : -` の 1〜128 文字以外）なら新しく作る |
+| `header` | `'X-Request-Id'` | ID を載せる応答ヘッダー。`false` なら付けない。ハンドラーが `ctx.headers` に設定した値は置き換えるので、応答とログの ID はそろう。自分の値を持つ `Response` を返したとき（別のサービスの応答をそのまま返すなど）はその値が残り、ログの ID とは食い違う |
 
 開発中は `'text'` のほうが読みやすい。
 

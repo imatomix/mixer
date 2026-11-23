@@ -239,6 +239,18 @@ describe('X-Request-Id', () => {
     expect(res.headers.get('x-request-id')).toBe(log.events[0]?.requestId)
   })
 
+  it("keeps a returned Response's own value, which then differs from the logs", async () => {
+    const log = collect()
+    const res = await call(
+      logged(
+        { write: log.write },
+        () => new Response('ok', { headers: { 'X-Request-Id': 'upstream' } }),
+      ),
+    )
+    expect(res.headers.get('x-request-id')).toBe('upstream')
+    expect(log.events[0]?.requestId).not.toBe('upstream')
+  })
+
   it('uses another header name or none', async () => {
     const renamed = await call(
       logged({ write: () => {}, header: 'X-Correlation-Id' }, () => 'ok'),
@@ -353,6 +365,21 @@ describe('output', () => {
     expect(app.level).toBe('info')
   })
 
+  it('keeps the fixed fields when the fields object has its own toJSON', async () => {
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await call(
+      logged({}, (ctx) => {
+        ctx.state.log.info('x', {
+          toJSON: () => ({ requestId: 'forged', level: 'error' }),
+        })
+        return 'ok'
+      }),
+    )
+    const app = JSON.parse(String(consoleLog.mock.calls[0]?.[0]))
+    expect(app.requestId).not.toBe('forged')
+    expect(app).toMatchObject({ level: 'info', kind: 'app', message: 'x' })
+  })
+
   it('writes fields that JSON cannot hold without failing', async () => {
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
     const circular: Record<string, unknown> = {}
@@ -382,7 +409,7 @@ describe('output', () => {
     )
   })
 
-  it('does not affect the response when write throws', async () => {
+  it('does not affect the response when write throws, and says which request it was for', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const target = logged(
       {
@@ -392,8 +419,17 @@ describe('output', () => {
       },
       () => 'ok',
     )
-    expect(await (await call(target)).text()).toBe('ok')
-    expect(consoleError).toHaveBeenCalled()
+    const res = await call(target, '/todos')
+    expect(await res.text()).toBe('ok')
+    expect(consoleError).toHaveBeenCalledWith(
+      'mix-logger: write failed',
+      {
+        requestId: res.headers.get('x-request-id'),
+        method: 'GET',
+        path: '/todos',
+      },
+      expect.objectContaining({ message: 'disk full' }),
+    )
   })
 
   it('hands an asynchronous write to waitUntil and catches its failure', async () => {
@@ -414,7 +450,8 @@ describe('output', () => {
     expect(waitUntil).toHaveBeenCalled()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(consoleError).toHaveBeenCalledWith(
-      'mix-logger:',
+      'mix-logger: write failed',
+      { requestId: expect.stringMatching(UUID), method: 'GET', path: '/' },
       expect.objectContaining({ message: 'remote down' }),
     )
   })
