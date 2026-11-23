@@ -201,7 +201,7 @@ const server = await serve(app, { port: 3000 })
 await server.close()
 ```
 
-Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option.
+Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option. If a handler throws or rejects, the adapter logs the error on the server and returns an empty 500 response, including in development mode.
 
 ### Cloudflare Workers
 

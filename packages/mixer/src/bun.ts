@@ -87,11 +87,17 @@ export async function serve(
         }
         return new Response(null, { status: 400 })
       }
-      return app.handle
-        ? app.handle(request, {
-            remoteAddress: bunServer.requestIP(request)?.address,
-          })
-        : app.fetch(request)
+      try {
+        // Await both paths so rejections cannot reach Bun's development error renderer.
+        return await (app.handle
+          ? app.handle(request, {
+              remoteAddress: bunServer.requestIP(request)?.address,
+            })
+          : app.fetch(request))
+      } catch (error) {
+        console.error(error)
+        return new Response(null, { status: 500 })
+      }
     },
   })
 

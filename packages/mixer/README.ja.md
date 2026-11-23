@@ -201,7 +201,7 @@ const server = await serve(app, { port: 3000 })
 await server.close()
 ```
 
-Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。
+Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。ハンドラーが例外を投げたり Promise が失敗したりした場合は、開発モードでもサーバー側にエラーを記録し、本文のない 500 応答を返す。
 
 ### Cloudflare Workers
 

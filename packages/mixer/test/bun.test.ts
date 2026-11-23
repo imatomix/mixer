@@ -149,6 +149,29 @@ describe('serve() on Bun', () => {
     expect(await (await send('localhost')).text()).toBe('plain')
   })
 
+  it.each(['fetch', 'handle'] as const)(
+    'returns an empty 500 and logs synchronous and asynchronous %s failures',
+    async (method) => {
+      const error = new Error('adapter-test-secret')
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      for (const fail of [
+        () => {
+          throw error
+        },
+        () => Promise.reject(error),
+      ]) {
+        await serve({
+          fetch: async () => new Response('unused'),
+          [method]: fail,
+        })
+        const response = await send('localhost')
+        expect(response.status).toBe(500)
+        expect(await response.text()).toBe('')
+        expect(log).toHaveBeenLastCalledWith(error)
+      }
+    },
+  )
+
   it('stops the Bun server on close', async () => {
     const server = await serve(app)
     await server.close()

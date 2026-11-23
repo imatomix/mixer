@@ -117,6 +117,22 @@ type FetchApp = {
 function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
   return 'Bun' in globalThis ? serveOnBun(app) : serveOnNode(app)
 }
+// Exercise the production package on a real server, including Bun's development error path.
+for (const fail of [
+  () => { throw new Error('adapter-test-secret') },
+  () => Promise.reject(new Error('adapter-test-secret')),
+]) {
+  const server = await ('Bun' in globalThis ? serveOnBun : serveOnNode)({ fetch: fail })
+  try {
+    const response = await fetch(\`http://127.0.0.1:\${server.port}/\`)
+    const body = await response.text()
+    if (response.status !== 500 || body !== '') {
+      throw new Error('Adapter failures must return an empty 500')
+    }
+  } finally {
+    await server.close()
+  }
+}
 ${
   dependencies['@imatomix/mix-router']
     ? `
