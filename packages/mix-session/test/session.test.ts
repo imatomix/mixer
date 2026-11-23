@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   MemoryStore,
+  Session,
   type SessionData,
   type SessionState,
   type SessionStore,
@@ -697,4 +698,13 @@ describe('caching of responses that carry a session', () => {
       expect(() => session({ cacheControl })).toThrow(/cacheControl/)
     },
   )
+})
+
+describe('public surface of Session', () => {
+  it('does not expose how it is saved', () => {
+    const names = ['snapshot', 'isEmpty'].filter(
+      (name) => name in new Session({}, undefined),
+    )
+    expect(names).toEqual([])
+  })
 })

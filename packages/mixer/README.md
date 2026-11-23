@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-Open http://localhost:3000. On Bun, use `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` instead; see [Running the app](#running-the-app) for the other places.
+Open http://localhost:3000. On Bun, use `serve` imported from `@imatomix/mixer/bun` instead; see [Running the app](#running-the-app) for the other places.
 
 ## The basics
 
@@ -59,7 +59,8 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.state` | Values passed to later components |
 | `ctx.env` | Bindings and settings passed as the second argument of `app.fetch` |
 | `ctx.ip` / `ctx.remoteAddress` | The client's IP address, and the direct peer's ([details](#client-ip-address)) |
-| `await ctx.body()` | The request body, parsed by Content-Type, including forms and file uploads ([details](#request-body)) |
+| `await ctx.json()` / `await ctx.form()` | The request body as JSON, or as `FormData` from a form or file upload ([details](#request-body)) |
+| `await ctx.text()` / `await ctx.bytes()` | The request body as a string or bytes |
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
@@ -194,15 +195,14 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({
-  port: 3000,
-  hostname: '127.0.0.1',
-  fetch: (request, server) =>
-    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
-})
+import { serve } from '@imatomix/mixer/bun'
+
+const server = await serve(app, { port: 3000 })
+// When shutting down:
+await server.close()
 ```
 
-`app.handle()` passes the peer's address for `ctx.ip`. Do not pass `app.fetch` itself: Bun calls `fetch(request, server)`, and its server would become `ctx.env`. `Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
+Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option. If a handler throws or rejects, the adapter logs the error on the server and returns an empty 500 response, including in development mode.
 
 ### Cloudflare Workers
 
@@ -229,7 +229,7 @@ export default {
 
 - `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` hands work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
 - Checked on every pull request on workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
-- `bodyLimit` applies when the body is read through `ctx.body()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
+- `bodyLimit` applies when the body is read through `ctx.json()`, `ctx.form()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
 
 | Package | On Workers |
 | --- | --- |
@@ -288,11 +288,11 @@ Without any configuration:
 - Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/`. Values are encoded, and names, paths, and domains that could inject headers are rejected
 - A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
 - Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, keeping only `Access-Control-*`, `Vary`, and `Set-Cookie`, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error
-- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`
+- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`. `ctx.json()` and `ctx.form()` accept only their own Content-Type (`415` otherwise), so a JSON route never parses a cross-site form
 - `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
 - `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
-- On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
+- On Node.js and Bun, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
 
 What depends on the app is left to modules, one line each: CSRF protection with [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf), and `X-Frame-Options`, `Referrer-Policy`, HSTS, or CSP with [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers). An app that serves pages to browsers should mix in both.
 
@@ -308,7 +308,7 @@ Adapters pass the address through `app.handle(request, options)`, which otherwis
 
 | Option | Where it comes from | `ctx.ip` |
 | --- | --- | --- |
-| `remoteAddress` | The socket: `serve()` passes it on Node.js, and `server.requestIP(request)` on Bun | The peer, or behind `trustedProxies` the client from `X-Forwarded-For` |
+| `remoteAddress` | The socket: the Node.js and Bun adapters pass it to `app.handle()` | The peer, or behind `trustedProxies` the client from `X-Forwarded-For` |
 | `clientIp` | An address the platform or framework already resolved: Cloudflare's `CF-Connecting-IP`, SvelteKit's `getClientAddress()` | That address as it is; `X-Forwarded-For` is not read |
 
 Behind reverse proxies, list them in `trustedProxies`. `X-Forwarded-For` is read only when the peer is one of them: from the right, trusted proxies are skipped and the first other address is the client, so values a client prepends are ignored. A malformed hop that has to be read, or a header over 8 KiB or 32 hops, falls back to the peer.
@@ -385,16 +385,30 @@ ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 
 ### Request body
 
-`ctx.body()` reads the body only when asked, and returns the same result however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
+Say which kind of body a route expects. Each reader accepts only its own Content-Type and answers `415` otherwise, before reading anything:
 
-| Content-Type | Result |
-| --- | --- |
-| `application/json`, `*+json` | The parsed value (`400` if invalid) |
-| `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
-| `multipart/form-data` | The same shape; uploaded files are `File` objects (`400` if malformed) |
-| `text/*` or none | A string |
-| Anything else | A `Uint8Array` |
-| Empty body | `undefined` |
+| Method | Accepts | Result |
+| --- | --- | --- |
+| `ctx.json()` | `application/json`, `application/*+json` | The parsed value as `unknown` (`400` if invalid or empty) |
+| `ctx.form()` | `application/x-www-form-urlencoded`, `multipart/form-data` | `FormData`: `get(name)` and `getAll(name)` give strings, or `File`s for uploads (`400` if malformed) |
+| `ctx.text()` / `ctx.bytes()` | anything | A string / a `Uint8Array` |
+
+A JSON route therefore never parses a form or `text/plain`, which browsers send from other sites without asking first. That keeps a JSON route from being reached by a plain cross-site form, but it does not replace CSRF protection for routes that rely on cookies: use mix-csrf for those.
+
+The values come from the client, so check them before use; `ctx.json()` returns `unknown` for that reason:
+
+```ts
+post('/todos', async (ctx) => {
+  const form = await ctx.form()
+  const title = form.get('title')
+  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
+    throw new HttpError(422, 'A title is between 1 and 200 characters')
+  }
+  // ...
+})
+```
+
+The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
 
 ### basePath
 
@@ -410,7 +424,7 @@ const app = new Mixer({ basePath: '/api' })
 | Option | Default | Description |
 | --- | --- | --- |
 | `basePath` | none | Path the app is mounted on |
-| `bodyLimit` | 3 MB | Largest request body that `ctx.body()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
+| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
 | `onError` | none | `(error, ctx) => value` to shape error responses |
 | `trustedProxies` | none | Reverse proxies (IP addresses or CIDR ranges) whose `X-Forwarded-For` is read for `ctx.ip` |
 

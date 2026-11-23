@@ -969,3 +969,22 @@ describe('onError and state', () => {
     expect(await res.json()).toEqual({ status: 404, requestId: 'none' })
   })
 })
+
+describe('public surface of ctx', () => {
+  it('does not expose the operations mixer runs on it', async () => {
+    let names: string[] = []
+    const app = new Mixer().mix((ctx) => {
+      names = [
+        'draft',
+        'resetDraft',
+        'runBeforeSend',
+        'runOnResponse',
+        'reportError',
+        'applyResponseHeaders',
+      ].filter((name) => name in ctx)
+      return 'ok'
+    })
+    await call(app)
+    expect(names).toEqual([])
+  })
+})

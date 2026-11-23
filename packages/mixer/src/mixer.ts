@@ -3,6 +3,7 @@ import {
   Context,
   type ErrorPhase,
   type ExecutionContextLike,
+  internal,
   type State,
 } from './context.js'
 import { HttpError } from './errors.js'
@@ -135,10 +136,10 @@ export class Mixer<S extends State = State, E = unknown> {
     }
 
     const final = finalizeResponse(
-      ctx.applyResponseHeaders(response),
+      internal.applyResponseHeaders(ctx, response),
       ctx.method,
     )
-    await ctx.runOnResponse(final)
+    await internal.runOnResponse(ctx, final)
     return final
   }
 
@@ -152,13 +153,13 @@ export class Mixer<S extends State = State, E = unknown> {
 
   async #respond(ctx: Context<S, E>, value: unknown): Promise<Response> {
     try {
-      await ctx.runBeforeSend()
+      await internal.runBeforeSend(ctx)
     } catch (error) {
       // The value will never be sent, so release a stream it holds (for example, an open file)
       cancelBody(value, ctx)
       throw new BeforeSendFailure(error)
     }
-    return toResponse(value, ctx.draft, ctx.url.pathname)
+    return toResponse(value, internal.draft(ctx), ctx.url.pathname)
   }
 
   async #respondToError(
@@ -167,19 +168,19 @@ export class Mixer<S extends State = State, E = unknown> {
     phase: ErrorPhase,
   ): Promise<Response> {
     const status = error instanceof HttpError ? error.status : 500
-    if (status >= 500) ctx.reportError(error, phase)
+    if (status >= 500) internal.reportError(ctx, error, phase)
     const draft = errorDraft(ctx.headers, status)
     if (error instanceof HttpError) {
       addHeaders(draft.headers, error.headers, { cookies: true })
     }
-    ctx.resetDraft(draft)
+    internal.resetDraft(ctx, draft)
 
     if (this.#onError) {
       let value: unknown
       try {
         value = await this.#onError(error, ctx)
       } catch (handlerError) {
-        ctx.reportError(handlerError, 'onError')
+        internal.reportError(ctx, handlerError, 'onError')
       }
       // A failure while sending onError's value is a hook failure, not an onError failure, so it is a 500
       if (value !== undefined) {
@@ -195,11 +196,11 @@ export class Mixer<S extends State = State, E = unknown> {
       if (error instanceof HttpError) {
         addHeaders(fresh.headers, error.headers, { cookies: false })
       }
-      ctx.resetDraft(fresh)
+      internal.resetDraft(ctx, fresh)
     }
 
     try {
-      await ctx.runBeforeSend()
+      await internal.runBeforeSend(ctx)
     } catch (hookError) {
       return respondToHookFailure(hookError, ctx, 'beforeSend')
     }
@@ -241,9 +242,9 @@ function respondToHookFailure(
   ctx: Context<State, unknown>,
   phase: ErrorPhase,
 ): Response {
-  ctx.reportError(error, phase)
-  ctx.resetDraft(errorDraft(ctx.headers, 500))
-  return toResponse({ error: 'Internal Server Error' }, ctx.draft)
+  internal.reportError(ctx, error, phase)
+  internal.resetDraft(ctx, errorDraft(ctx.headers, 500))
+  return toResponse({ error: 'Internal Server Error' }, internal.draft(ctx))
 }
 
 function defaultErrorResponse(
@@ -251,9 +252,9 @@ function defaultErrorResponse(
   ctx: Context<State, unknown>,
 ): Response {
   if (error instanceof HttpError && error.expose) {
-    return toResponse({ error: error.message }, ctx.draft)
+    return toResponse({ error: error.message }, internal.draft(ctx))
   }
-  return toResponse({ error: 'Internal Server Error' }, ctx.draft)
+  return toResponse({ error: 'Internal Server Error' }, internal.draft(ctx))
 }
 
 function cancelBody(value: unknown, ctx: Context<State, unknown>): void {
@@ -265,7 +266,7 @@ function cancelBody(value: unknown, ctx: Context<State, unknown>): void {
         : null
   stream
     ?.cancel()
-    .catch((error: unknown) => ctx.reportError(error, 'streamCancel'))
+    .catch((error: unknown) => internal.reportError(ctx, error, 'streamCancel'))
 }
 
 function normalizeBasePath(basePath: string | undefined): string {

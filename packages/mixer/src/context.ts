@@ -1,5 +1,6 @@
-import { parseBody, readBytes } from './body.js'
+import { isForm, isJson, parseForm, parseJson, readBytes } from './body.js'
 import { Cookies } from './cookies.js'
+import { HttpError } from './errors.js'
 import type { Draft } from './finalize.js'
 
 export type State = Record<string, unknown>
@@ -47,6 +48,21 @@ export interface ContextInit<E> {
   remoteAddress: string | undefined
 }
 
+/**
+ * What mixer runs on a Context while answering. Filled in by Context's static block, so these reach its private
+ * parts; the package's entry point does not export it, so it is not part of the public API
+ */
+export interface ContextInternals {
+  draft(ctx: Context): Draft
+  resetDraft(ctx: Context, draft: Draft): void
+  runBeforeSend(ctx: Context): Promise<void>
+  runOnResponse(ctx: Context, response: Response): Promise<void>
+  reportError(ctx: Context, error: unknown, phase: ErrorPhase): void
+  applyResponseHeaders(ctx: Context, response: Response): Response
+}
+
+export const internal = {} as ContextInternals
+
 export class Context<S extends State = State, E = unknown> {
   readonly request: Request
   readonly url: URL
@@ -80,7 +96,9 @@ export class Context<S extends State = State, E = unknown> {
 
   constructor(request: Request, init: ContextInit<E>) {
     this.request = request
-    // The host comes from the client's Host header and cannot be trusted; never use it for security decisions
+    // The host comes from the request's Host header, which any client can set: never build links or redirects
+    // from it, or trust it to identify the server. (A browser cannot change it, which is why mix-csrf may compare
+    // a browser's Origin with it)
     this.url = new URL(request.url)
     this.method = request.method
     this.path = init.path
@@ -113,7 +131,7 @@ export class Context<S extends State = State, E = unknown> {
   waitUntil(promise: Promise<unknown>): void {
     const observed = promise.then(
       () => undefined,
-      (error: unknown) => this.reportError(error, 'waitUntil'),
+      (error: unknown) => this.#reportError(error, 'waitUntil'),
     )
     this.#executionContext?.waitUntil(observed)
   }
@@ -128,11 +146,28 @@ export class Context<S extends State = State, E = unknown> {
     return new TextDecoder().decode(await this.bytes())
   }
 
-  async body<T = unknown>(): Promise<T> {
-    return (await parseBody(
-      await this.bytes(),
-      this.request.headers.get('content-type'),
-    )) as T
+  /**
+   * The body parsed as JSON. Only for application/json (or another +json type): anything else is 415 before the
+   * body is read, so a JSON route cannot be reached by a form or text/plain that browsers send cross-site without
+   * a preflight. The value is unknown: check it before use
+   */
+  async json(): Promise<unknown> {
+    if (!isJson(this.request.headers.get('content-type'))) {
+      throw new HttpError(415, 'Expected a JSON body')
+    }
+    return parseJson(await this.bytes())
+  }
+
+  /**
+   * The body as FormData. Only for application/x-www-form-urlencoded and multipart/form-data: anything else is
+   * 415 before the body is read. Values are strings, or Files for uploads; check them before use
+   */
+  async form(): Promise<FormData> {
+    const contentType = this.request.headers.get('content-type')
+    if (!isForm(contentType)) {
+      throw new HttpError(415, 'Expected a form body')
+    }
+    return parseForm(await this.bytes(), contentType ?? '')
   }
 
   /** Registers work to run right before the final Response is built (for example, setting cookies) */
@@ -168,8 +203,22 @@ export class Context<S extends State = State, E = unknown> {
     this.#responseHeadersListeners.push(listener)
   }
 
-  /** @internal Each listener edits a copy that is kept only if it does not throw */
-  applyResponseHeaders(response: Response): Response {
+  static {
+    Object.assign(internal, {
+      draft: (ctx: Context) => ctx.#draft(),
+      resetDraft: (ctx: Context, draft: Draft) => ctx.#resetDraft(draft),
+      runBeforeSend: (ctx: Context) => ctx.#runBeforeSend(),
+      runOnResponse: (ctx: Context, response: Response) =>
+        ctx.#runOnResponse(response),
+      reportError: (ctx: Context, error: unknown, phase: ErrorPhase) =>
+        ctx.#reportError(error, phase),
+      applyResponseHeaders: (ctx: Context, response: Response) =>
+        ctx.#applyResponseHeaders(response),
+    } satisfies ContextInternals)
+  }
+
+  /** Each listener edits a copy that is kept only if it does not throw */
+  #applyResponseHeaders(response: Response): Response {
     if (this.#responseHeadersListeners.length === 0) return response
     let headers = new Headers(response.headers)
     for (const listener of this.#responseHeadersListeners) {
@@ -178,7 +227,7 @@ export class Context<S extends State = State, E = unknown> {
         listener(edited, { status: response.status })
         headers = edited
       } catch (error) {
-        this.reportError(error, 'headers')
+        this.#reportError(error, 'headers')
       }
     }
     // A Response from fetch() or Response.redirect() has immutable headers, so it is rebuilt without reading the body
@@ -189,8 +238,8 @@ export class Context<S extends State = State, E = unknown> {
     })
   }
 
-  /** @internal A failing listener is logged directly, so reporting never loops or affects the response */
-  reportError(error: unknown, phase: ErrorPhase): void {
+  /** A failing listener is logged directly, so reporting never loops or affects the response */
+  #reportError(error: unknown, phase: ErrorPhase): void {
     if (this.#errorListeners.length === 0) {
       console.error(
         `mixer: ${this.method} ${this.url.pathname} (${phase})`,
@@ -214,25 +263,23 @@ export class Context<S extends State = State, E = unknown> {
     }
   }
 
-  /** @internal */
-  get draft(): Draft {
+  #draft(): Draft {
     return { status: this.status, headers: this.#headers }
   }
 
-  /** @internal Replaces the draft, for error responses */
-  resetDraft(draft: Draft): void {
+  /** Replaces the draft, for error responses */
+  #resetDraft(draft: Draft): void {
     this.status = draft.status
     this.#headers = draft.headers
   }
 
-  /** @internal Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
-  async runBeforeSend(): Promise<void> {
+  /** Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
+  async #runBeforeSend(): Promise<void> {
     const hooks = this.#beforeSendHooks.splice(0)
     for (const hook of hooks) await hook()
   }
 
-  /** @internal */
-  async runOnResponse(response: Response): Promise<void> {
+  async #runOnResponse(response: Response): Promise<void> {
     this.#final = true
     for (const hook of this.#responseHooks) {
       try {
@@ -241,7 +288,7 @@ export class Context<S extends State = State, E = unknown> {
           headers: new Headers(response.headers),
         })
       } catch (error) {
-        this.reportError(error, 'onResponse')
+        this.#reportError(error, 'onResponse')
       }
     }
   }

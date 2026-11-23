@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-http://localhost:3000 を開く。Bun では代わりに `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
+http://localhost:3000 を開く。Bun では代わりに `@imatomix/mixer/bun` からインポートした `serve` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
 
 ## 基本
 
@@ -59,7 +59,8 @@ app.mix(
 | `ctx.state` | 後のコンポーネントに渡す値 |
 | `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
 | `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](#クライアントの-ip-アドレス)） |
-| `await ctx.body()` | Content-Type に応じて解析したリクエストボディ。フォームとファイルのアップロードも含む（[詳細](#リクエストボディ)） |
+| `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](#リクエストボディ)） |
+| `await ctx.text()` / `await ctx.bytes()` | 文字列またはバイト列として読んだリクエストボディ |
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
@@ -194,15 +195,14 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({
-  port: 3000,
-  hostname: '127.0.0.1',
-  fetch: (request, server) =>
-    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
-})
+import { serve } from '@imatomix/mixer/bun'
+
+const server = await serve(app, { port: 3000 })
+// 終了するとき:
+await server.close()
 ```
 
-`app.handle()` で接続元のアドレスを渡し、`ctx.ip` に使う。`app.fetch` をそのまま渡してはいけない。Bun は `fetch(request, server)` と呼ぶので、Bun のサーバーが `ctx.env` に入ってしまう。`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
+Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。ハンドラーが例外を投げたり Promise が失敗したりした場合は、開発モードでもサーバー側にエラーを記録し、本文のない 500 応答を返す。
 
 ### Cloudflare Workers
 
@@ -229,7 +229,7 @@ export default {
 
 - `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される。mix-router を使うときは、`createRouter<State, Env>()` にもバインディングの型を渡す
 - PR ごとに、workerd の互換日付 `2026-07-30`、Node 互換を切った状態（`no_nodejs_compat`、`no_nodejs_compat_v2`）で動作を確かめ、`@cloudflare/workers-types` で型も確かめている。mixer に `nodejs_compat` は要らない
-- `bodyLimit` が効くのは `ctx.body()`・`ctx.text()`・`ctx.bytes()` で読んだときだけで、`ctx.request` を直接読むと効かない。`ctx.waitUntil()` に渡した処理には Workers の時間の上限がかかる
+- `bodyLimit` が効くのは `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` で読んだときだけで、`ctx.request` を直接読むと効かない。`ctx.waitUntil()` に渡した処理には Workers の時間の上限がかかる
 
 | パッケージ | Workers での扱い |
 | --- | --- |
@@ -288,11 +288,11 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - Cookie は `HttpOnly; Secure; SameSite=Lax; Path=/`。値はエンコードされ、ヘッダを注入できる名前・パス・ドメインは拒否される
 - Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になり、共有キャッシュがほかの人に渡すことがない
 - `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直し、引き継ぐのは `Access-Control-*`・`Vary`・`Set-Cookie` だけなので、通常の応答のための `Location` や `Cache-Control` がエラーに紛れ込まない
-- 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる
+- 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる。`ctx.json()` と `ctx.form()` は自分の Content-Type だけを受け付ける（それ以外は `415`）ので、JSON のルートが別サイトのフォームを解析することはない
 - `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
 - `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
-- Node.js の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
+- Node.js と Bun の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
 
 アプリによって変わるものはモジュールに任せ、それぞれ 1 行で加える。CSRF 対策は [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf)、`X-Frame-Options`・`Referrer-Policy`・HSTS・CSP は [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers)。ブラウザにページを返すアプリは両方を加える。
 
@@ -308,7 +308,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 
 | オプション | どこから来るか | `ctx.ip` |
 | --- | --- | --- |
-| `remoteAddress` | ソケット。Node.js では `serve()` が渡し、Bun では `server.requestIP(request)` | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
+| `remoteAddress` | ソケット。Node.js と Bun のアダプタが `app.handle()` に渡す | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
 | `clientIp` | 実行環境やフレームワークが確定させたアドレス（Cloudflare の `CF-Connecting-IP`、SvelteKit の `getClientAddress()`） | そのアドレス。`X-Forwarded-For` は読まない |
 
 リバースプロキシの後ろで動かすときは、それを `trustedProxies` に並べる。`X-Forwarded-For` を読むのは、接続元がその一覧に入るときだけ。右から見ていき、信用するプロキシを飛ばして、最初のほかのアドレスをクライアントとするので、クライアントが前に付け足した値は無視される。読む必要のある段が不正なとき、ヘッダが 8 KiB か 32 段を超えるときは、接続元に戻す。
@@ -385,16 +385,30 @@ ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 
 ### リクエストボディ
 
-`ctx.body()` は求められたときだけボディを読み、何度呼んでも同じ結果を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込むので、大きなファイルを受け取るときは上限を上げる。とても大きなファイルを流しながら保存する使い方には向かない。
+ルートが受け取るボディの種類を明示する。それぞれの読み方は自分の Content-Type だけを受け付け、それ以外は何も読まずに `415` を返す。
 
-| Content-Type | 結果 |
-| --- | --- |
-| `application/json`、`*+json` | 解析した値（不正なら `400`） |
-| `application/x-www-form-urlencoded` | `{ key: value }`（同じキーは配列） |
-| `multipart/form-data` | 同じ形。アップロードされたファイルは `File`（不正なら `400`） |
-| `text/*` または指定なし | 文字列 |
-| それ以外 | `Uint8Array` |
-| 空のボディ | `undefined` |
+| メソッド | 受け付けるもの | 結果 |
+| --- | --- | --- |
+| `ctx.json()` | `application/json`、`application/*+json` | 解析した値。型は `unknown`（不正か空なら `400`） |
+| `ctx.form()` | `application/x-www-form-urlencoded`、`multipart/form-data` | `FormData`。`get(name)`・`getAll(name)` で文字列、アップロードは `File` が得られる（不正なら `400`） |
+| `ctx.text()` / `ctx.bytes()` | 何でも | 文字列 / `Uint8Array` |
+
+そのため JSON のルートが、ブラウザが別のサイトから事前の確認なしに送れるフォームや `text/plain` を解析することはない。ただの別サイトのフォームから JSON のルートに届かなくなるが、Cookie に頼るルートの CSRF 対策の代わりにはならない。そうしたルートには mix-csrf を使う。
+
+値はクライアントから来るので、使う前に確かめる。`ctx.json()` が `unknown` を返すのはそのため。
+
+```ts
+post('/todos', async (ctx) => {
+  const form = await ctx.form()
+  const title = form.get('title')
+  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
+    throw new HttpError(422, 'A title is between 1 and 200 characters')
+  }
+  // ...
+})
+```
+
+ボディは求められたときだけ読み、どの読み方も何度呼んでも同じ内容を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込むので、大きなファイルを受け取るときは上限を上げる。とても大きなファイルを流しながら保存する使い方には向かない。
 
 ### basePath
 
@@ -410,7 +424,7 @@ const app = new Mixer({ basePath: '/api' })
 | オプション | 既定 | 説明 |
 | --- | --- | --- |
 | `basePath` | なし | アプリを置くパス |
-| `bodyLimit` | 3 MB | `ctx.body()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413` |
+| `bodyLimit` | 3 MB | `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413` |
 | `onError` | なし | エラーの応答を組み立てる `(error, ctx) => value` |
 | `trustedProxies` | なし | `ctx.ip` のために `X-Forwarded-For` を読む、リバースプロキシ（IP アドレスか CIDR の範囲） |
 

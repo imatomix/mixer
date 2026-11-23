@@ -120,7 +120,7 @@ async function smoke(fetch) {
   // Written out by hand: Miniflare's own fetch does not recognize Node's FormData
   const field = (value) =>
     `--b\r\nContent-Disposition: form-data; name="a"\r\n\r\n${value}\r\n`
-  const multipart = await fetch('/api/echo', {
+  const multipart = await fetch('/api/form', {
     method: 'POST',
     headers: { 'content-type': 'multipart/form-data; boundary=b' },
     body: `${field('1')}${field('2')}--b--\r\n`,
@@ -129,7 +129,7 @@ async function smoke(fetch) {
 
   const tooLarge = await fetch('/api/echo', {
     method: 'POST',
-    headers: { 'content-type': 'text/plain' },
+    headers: { 'content-type': 'application/json' },
     body: 'x'.repeat(BODY_LIMIT + 1),
   })
   await tooLarge.text()
