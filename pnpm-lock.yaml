@@ -42,6 +42,40 @@ importers:
         specifier: 'catalog:'
         version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2))
 
+  examples/todo:
+    dependencies:
+      '@imatomix/mix-csrf':
+        specifier: workspace:*
+        version: link:../../packages/mix-csrf
+      '@imatomix/mix-logger':
+        specifier: workspace:*
+        version: link:../../packages/mix-logger
+      '@imatomix/mix-router':
+        specifier: workspace:*
+        version: link:../../packages/mix-router
+      '@imatomix/mix-secure-headers':
+        specifier: workspace:*
+        version: link:../../packages/mix-secure-headers
+      '@imatomix/mix-session':
+        specifier: workspace:*
+        version: link:../../packages/mix-session
+      '@imatomix/mix-static':
+        specifier: workspace:*
+        version: link:../../packages/mix-static
+      '@imatomix/mixer':
+        specifier: workspace:*
+        version: link:../../packages/mixer
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.1(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2))
+
   packages/mix-cors:
     devDependencies:
       '@imatomix/mixer':

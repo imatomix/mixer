@@ -1,0 +1,38 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+form {
+  display: inline;
+}
+label {
+  display: block;
+  margin: 0.5rem 0;
+}
+ul {
+  list-style: none;
+  padding: 0;
+}
+li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+li span {
+  flex: 1;
+}
+li.done span {
+  text-decoration: line-through;
+  color: #888;
+}
+.error {
+  color: #b00020;
+}
