@@ -59,14 +59,7 @@ export function createApp(options: AppOptions): Mixer<AppState> {
     }),
     ...(options.assets ? [options.assets] : []),
     csrf(),
-    // Pages show one user's data, so no cache may keep them
-    (ctx) => {
-      ctx.onResponseHeaders((headers) => {
-        if (!headers.has('Cache-Control')) {
-          headers.set('Cache-Control', 'private, no-store')
-        }
-      })
-    },
+    // mix-session marks every response with a session private, no-store, so signed-in pages are never cached
     session<SessionData>(
       options.sessionStore ? { store: options.sessionStore } : {},
     ),
@@ -86,23 +79,24 @@ export function createApp(options: AppOptions): Mixer<AppState> {
       ctx.state.session.set('userId', user.id)
       ctx.state.session.set('userName', user.name)
       ctx.state.log.info('signed in', { userId: user.id })
-      return redirect('/', { status: 303 })
+      return seeOther('/')
     }),
 
     post('/logout', (ctx) => {
       ctx.state.session.destroy()
-      return redirect('/login', { status: 303 })
+      return seeOther('/login')
     }),
 
+    // Components run in order, so everything below needs a signed-in user
+    (ctx) => (signedInUser(ctx) ? undefined : seeOther('/login')),
+
     get('/', async (ctx) => {
-      const user = signedInUser(ctx)
-      if (!user) return redirect('/login', { status: 303 })
+      const user = currentUser(ctx)
       return htmlResponse(listPage(user.name, await todos.list(user.id)))
     }),
 
     post('/todos', async (ctx) => {
-      const user = signedInUser(ctx)
-      if (!user) return redirect('/login', { status: 303 })
+      const user = currentUser(ctx)
       const title = field(await ctx.form(), 'title').trim()
       if (title.length === 0 || title.length > TITLE_LENGTH) {
         const list = listPage(
@@ -114,22 +108,18 @@ export function createApp(options: AppOptions): Mixer<AppState> {
       }
       const todo = await todos.add(user.id, title)
       ctx.state.log.info('todo added', { todoId: todo.id })
-      return redirect('/', { status: 303 })
+      return seeOther('/')
     }),
 
     post('/todos/:id/toggle', async (ctx, { id }) => {
-      const user = signedInUser(ctx)
-      if (!user) return redirect('/login', { status: 303 })
-      const todo = await ownTodo(user.id, id)
+      const todo = await ownTodo(currentUser(ctx).id, id)
       await todos.update({ ...todo, done: !todo.done })
-      return redirect('/', { status: 303 })
+      return seeOther('/')
     }),
 
     post('/todos/:id/delete', async (ctx, { id }) => {
-      const user = signedInUser(ctx)
-      if (!user) return redirect('/login', { status: 303 })
-      await todos.remove(await ownTodo(user.id, id))
-      return redirect('/', { status: 303 })
+      await todos.remove(await ownTodo(currentUser(ctx).id, id))
+      return seeOther('/')
     }),
   )
 
@@ -141,6 +131,18 @@ export function createApp(options: AppOptions): Mixer<AppState> {
   }
 
   return app
+}
+
+/** After a POST, send the browser to a page with GET, so reloading does not send the form again */
+function seeOther(path: string): Response {
+  return redirect(path, { status: 303 })
+}
+
+/** The signed-in user, for routes after the sign-in check */
+function currentUser(ctx: { state: AppState }): { id: string; name: string } {
+  const user = signedInUser(ctx)
+  if (!user) throw new HttpError(401)
+  return user
 }
 
 function signedInUser(ctx: {
