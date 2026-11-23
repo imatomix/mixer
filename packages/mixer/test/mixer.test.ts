@@ -493,3 +493,84 @@ describe('env and waitUntil', () => {
     expect(error).toHaveBeenCalled()
   })
 })
+
+describe('client address', () => {
+  const addresses = (ctx: {
+    ip: string | undefined
+    remoteAddress: string | undefined
+  }) => ({
+    ip: ctx.ip ?? null,
+    remoteAddress: ctx.remoteAddress ?? null,
+  })
+  const request = (headers: Record<string, string> = {}) =>
+    new Request('http://localhost/', { headers })
+
+  it('leaves both undefined through fetch, which has no connection to report', async () => {
+    const res = await new Mixer().mix(addresses).fetch(request())
+    expect(await res.json()).toEqual({ ip: null, remoteAddress: null })
+  })
+
+  it('uses remoteAddress from handle, normalized, and ignores X-Forwarded-For without trustedProxies', async () => {
+    const res = await new Mixer()
+      .mix(addresses)
+      .handle(request({ 'x-forwarded-for': '1.1.1.1' }), {
+        remoteAddress: '::ffff:203.0.113.9',
+      })
+    expect(await res.json()).toEqual({
+      ip: '203.0.113.9',
+      remoteAddress: '203.0.113.9',
+    })
+  })
+
+  it('resolves the client behind trusted proxies', async () => {
+    const res = await new Mixer({ trustedProxies: ['10.0.0.0/8'] })
+      .mix(addresses)
+      .handle(request({ 'x-forwarded-for': '6.6.6.6, 198.51.100.7' }), {
+        remoteAddress: '10.0.0.2',
+      })
+    expect(await res.json()).toEqual({
+      ip: '198.51.100.7',
+      remoteAddress: '10.0.0.2',
+    })
+  })
+
+  it('takes clientIp as already resolved and never reads X-Forwarded-For for it', async () => {
+    const res = await new Mixer({ trustedProxies: ['10.0.0.0/8'] })
+      .mix(addresses)
+      .handle(request({ 'x-forwarded-for': '6.6.6.6' }), {
+        clientIp: '10.0.0.3',
+      })
+    expect(await res.json()).toEqual({ ip: '10.0.0.3', remoteAddress: null })
+  })
+
+  it('leaves invalid addresses undefined', async () => {
+    const res = await new Mixer().mix(addresses).handle(request(), {
+      remoteAddress: 'nonsense',
+      clientIp: 'fe80::1%eth0',
+    })
+    expect(await res.json()).toEqual({ ip: null, remoteAddress: null })
+  })
+
+  it('passes env and executionContext through handle, also when detached', async () => {
+    const waitUntil = vi.fn()
+    const { handle } = new Mixer<
+      Record<string, unknown>,
+      { KEY: string }
+    >().mix((ctx) => {
+      ctx.waitUntil(Promise.resolve())
+      return ctx.env.KEY
+    })
+    const res = await handle(request(), {
+      env: { KEY: 'value' },
+      executionContext: { waitUntil },
+    })
+    expect(await res.text()).toBe('value')
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects invalid trustedProxies', () => {
+    expect(() => new Mixer({ trustedProxies: ['example.com'] })).toThrow(
+      /trustedProxies/,
+    )
+  })
+})

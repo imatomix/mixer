@@ -7,6 +7,12 @@ import {
   joinVary,
   toResponse,
 } from './finalize.js'
+import {
+  normalizeIp,
+  type ProxyRange,
+  parseProxies,
+  resolveClientIp,
+} from './ip.js'
 
 export type Component<S extends State = State, E = unknown> = (
   ctx: Context<S, E>,
@@ -23,13 +29,34 @@ export interface MixerOptions<S extends State = State, E = unknown> {
   basePath?: string
   /** Maximum request body size in bytes (default 3 MB) */
   bodyLimit?: number
+  /**
+   * Reverse proxies whose X-Forwarded-For is trusted, as IP addresses or CIDR ranges such as `10.0.0.0/8`.
+   * Without it, ctx.ip is the direct peer and X-Forwarded-For is ignored
+   */
+  trustedProxies?: readonly string[]
   onError?: ErrorHandler<S, E>
+}
+
+export interface HandleOptions<E = unknown> {
+  env?: E
+  executionContext?: ExecutionContextLike
+  /**
+   * The IP address of the direct peer (the socket), as Node and Bun report it. ctx.ip is resolved from it, with
+   * X-Forwarded-For when it is one of trustedProxies
+   */
+  remoteAddress?: string
+  /**
+   * A client address the platform or framework has already resolved (Cloudflare's CF-Connecting-IP, SvelteKit's
+   * getClientAddress()). Used as ctx.ip as it is, without reading X-Forwarded-For
+   */
+  clientIp?: string
 }
 
 export class Mixer<S extends State = State, E = unknown> {
   readonly #components: Component<S, E>[] = []
   readonly #basePath: string
   readonly #bodyLimit: number
+  readonly #trustedProxies: ProxyRange[]
   readonly #onError: ErrorHandler<S, E> | undefined
 
   constructor(options: MixerOptions<S, E> = {}) {
@@ -42,6 +69,7 @@ export class Mixer<S extends State = State, E = unknown> {
       )
     }
     this.#bodyLimit = bodyLimit
+    this.#trustedProxies = parseProxies(options.trustedProxies ?? [])
     this.#onError = options.onError
   }
 
@@ -51,18 +79,43 @@ export class Mixer<S extends State = State, E = unknown> {
   }
 
   /** Handles a request. Defined as a property so that it can be passed around without its object */
-  readonly fetch = async (
+  readonly fetch = (
     request: Request,
     env?: E,
     executionContext?: ExecutionContextLike,
+  ): Promise<Response> =>
+    this.handle(request, {
+      ...(env === undefined ? {} : { env }),
+      ...(executionContext === undefined ? {} : { executionContext }),
+    })
+
+  /**
+   * Handles a request like fetch, with the connection details an adapter knows (the peer's address). Defined as
+   * a property so that it can be passed around without its object
+   */
+  readonly handle = async (
+    request: Request,
+    { env, executionContext, remoteAddress, clientIp }: HandleOptions<E> = {},
   ): Promise<Response> => {
     const pathname = new URL(request.url).pathname
     const path = stripBasePath(pathname, this.#basePath)
+    const peer =
+      remoteAddress === undefined ? undefined : normalizeIp(remoteAddress)
     const ctx = new Context<S, E>(request, {
       path: path ?? pathname,
       bodyLimit: this.#bodyLimit,
       env: env as E,
       executionContext,
+      remoteAddress: peer,
+      // An address the platform resolved is final; only a direct peer goes through trustedProxies
+      ip:
+        clientIp === undefined
+          ? resolveClientIp(
+              peer,
+              request.headers.get('x-forwarded-for'),
+              this.#trustedProxies,
+            )
+          : normalizeIp(clientIp),
     })
 
     let response: Response
