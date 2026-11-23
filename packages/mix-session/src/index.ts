@@ -28,6 +28,13 @@ export interface SessionOptions {
   absoluteTtl?: number | false
   /** Cookie attributes. Defaults to the same as mixer's ctx.cookies (HttpOnly, Secure, SameSite=Lax) */
   cookie?: Omit<CookieOptions, 'maxAge' | 'expires'>
+  /**
+   * Cache-Control for every response to a request with a session (one was loaded, or the response sets or clears
+   * its cookie), replacing any other value: such responses show one user's data, and an accidental `public` would
+   * hand it to others. Defaults to `private, no-store`. Another policy must include unqualified `private` or `no-store` and not
+   * `public`; false leaves caching to the app
+   */
+  cacheControl?: string | false
 }
 
 /** Type of the value added to `ctx.state`. Use it as `Mixer<SessionState>` */
@@ -48,6 +55,9 @@ export function session<D extends SessionData = SessionData>(
   const rolling = options.rolling ?? false
   const absoluteTtl = options.absoluteTtl ?? 604_800
   checkCookiePrefix(name, cookie)
+  const cacheControl = checkCacheControl(
+    options.cacheControl ?? 'private, no-store',
+  )
   if (!Number.isInteger(ttl) || ttl < 1) {
     throw new Error(`mix-session: ttl must be an integer of 1 or more: ${ttl}`)
   }
@@ -80,6 +90,14 @@ export function session<D extends SessionData = SessionData>(
     )
     ;(ctx.state as SessionState<D>).session = session
 
+    if (cacheControl !== false) {
+      ctx.onResponseHeaders((headers) => {
+        const setsCookie = headers
+          .getSetCookie()
+          .some((line) => line.startsWith(`${name}=`))
+        if (live || setsCookie) headers.set('Cache-Control', cacheControl)
+      })
+    }
     ctx.onBeforeSend(() =>
       save(ctx, session, live?.createdAt ?? Date.now(), expiredId),
     )
@@ -142,8 +160,6 @@ export function session<D extends SessionData = SessionData>(
 
   function issueCookie(ctx: Context, id: string, seconds: number): void {
     ctx.cookies.set(name, id, { ...cookie, maxAge: seconds })
-    // If a response with Set-Cookie were stored in a shared cache, other users would receive the same session
-    ctx.headers.set('Cache-Control', 'private, no-store')
   }
 }
 
@@ -214,4 +230,32 @@ function generateId(): string {
 
 function isEmpty(data: object): boolean {
   return Object.keys(data).length === 0
+}
+
+/** Only unqualified private/no-store protects the whole response; quoted commas are not separators. */
+function checkCacheControl(value: string | false): string | false {
+  if (value === false) return false
+  const directive =
+    / *([!#$%&'*+.^_`|~0-9a-z-]+)(?:=(?:[!#$%&'*+.^_`|~0-9a-z-]+|"(?:[^"\\]|\\.)*"))? *(?:,|$)/giy
+  let protectedResponse = false
+  let valid = /^[ -~]+$/.test(value)
+  let offset = 0
+  while (valid && offset < value.length) {
+    const match = directive.exec(value)
+    if (!match) {
+      valid = false
+      break
+    }
+    offset = directive.lastIndex
+    const name = match[1]?.toLowerCase()
+    const hasArgument = match[0].includes('=')
+    if (name === 'public') valid = false
+    if (!hasArgument && (name === 'private' || name === 'no-store')) {
+      protectedResponse = true
+    }
+  }
+  if (valid && protectedResponse) return value
+  throw new TypeError(
+    `mix-session: cacheControl must include unqualified private or no-store and not public, or be false: ${JSON.stringify(value)}`,
+  )
 }

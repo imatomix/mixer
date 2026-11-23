@@ -45,7 +45,7 @@ app.mix(
 - Cookie には **32 バイトの乱数の ID だけ**を入れ、データはサーバ側のストアに置く。データがブラウザに渡らないので暗号化はしていない
 - **書き込むまでセッションを作らない**。訪問しただけではストアにも Cookie にも何も作られない
 - 変更があったときだけ、応答の直前（`ctx.onBeforeSend`）にストアへ保存し Cookie を発行する。`session.get('cart').push(item)` のように値の中を変えた場合も変更として扱う
-- Set-Cookie を出す応答は `Cache-Control: private, no-store` にする（共有キャッシュから他の利用者に同じセッションが配られないように）
+- セッションのあるリクエスト（読み込んだか、応答がその Cookie を設定・削除する）への応答はすべて `Cache-Control: private, no-store` にし、ほかの値は置き換える。エラーの応答や返した `Response` も同じ。そうしたページは 1 人の利用者のデータを見せるので、どのキャッシュにも残さず、うっかり `public` にしても他の人に配られない。静的ファイルなどキャッシュさせたいものは、`session()` より**前に** mix する
 - コンポーネントが返した `Response`、`404`、エラーの応答を含め、すべての応答で保存する
 - セッション ID は Web Crypto（`crypto.getRandomValues`）で作る
 
@@ -70,6 +70,7 @@ app.mix(
 | `rolling` | `false` | 読むだけのリクエストでも期限を延ばす |
 | `absoluteTtl` | `604800`（7 日） | 使われ続けていても、この秒数でセッションを終える。セッションを作ったときと作り直したとき（ログインなど）に数え直す。`false` で無効 |
 | `cookie` | mixer の既定（HttpOnly・Secure・SameSite=Lax・Path=/） | Cookie の属性。http の localhost で開発するときは `{ secure: false }` |
+| `cacheControl` | `'private, no-store'` | セッションのある応答の Cache-Control。別の指定は 引数なしの `private` か `no-store`（`=...` を付けない）を含み、`public` を含まないこと（`'private, max-age=60'` など）。`false` ならキャッシュはアプリに任せる |
 
 ## ストア
 
