@@ -45,6 +45,74 @@ await serve(app, { port: 3000 })
 
 > どのパッケージも 0.x なので、マイナーバージョンの間で API が変わることがある。
 
+## おすすめの組み合わせ
+
+コンポーネントは mix した順に動き、その順番も安全の一部になる。出発点を 2 つ示す。
+
+### ブラウザにページを返すアプリ
+
+```ts
+import { Mixer, redirect } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
+import { csrf } from '@imatomix/mix-csrf'
+import { type LoggerState, logger } from '@imatomix/mix-logger'
+import { createRouter } from '@imatomix/mix-router'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
+import { type SessionState, session } from '@imatomix/mix-session'
+import { serveStatic } from '@imatomix/mix-static'
+
+type State = LoggerState & SessionState<{ userId: string }>
+const { get, post } = createRouter<State>()
+
+const app = new Mixer<State>().mix(
+  logger(), // 最初に。すべてのリクエストとエラーを 1 つの ID で記録する
+  secureHeaders({ csp: { 'default-src': ["'self'"] } }),
+  serveStatic('public'), // ファイルをキャッシュさせるため session() より前に
+  csrf(), // 状態を変えるものより前に
+  session(), // ログイン中のページをキャッシュに残さない
+  get('/login', loginPage),
+  post('/login', signIn), // 成功したら ctx.state.session.regenerate() を呼ぶ
+  (ctx) =>
+    ctx.state.session.get('userId') ? undefined : redirect('/login', { status: 303 }),
+  get('/', home), // ここから下はログインが必要
+)
+
+await serve(app, { port: 3000 })
+```
+
+- フォームは `ctx.form()` で読み、値はすべて確かめる。POST には `redirect(path, { status: 303 })` で答える
+- mixer は HTML を作らない。ページに入れるものはすべてエスケープするか、エスケープしてくれるテンプレートのライブラリを使う
+- [examples/todo](examples/todo) は、この形で作った完全なアプリ。テスト付きで、Node.js・Bun・Workers で動く
+
+### JSON の API
+
+```ts
+import { HttpError, Mixer } from '@imatomix/mixer'
+import { serve } from '@imatomix/mixer/node'
+import { cors } from '@imatomix/mix-cors'
+import { type LoggerState, logger } from '@imatomix/mix-logger'
+import { createRouter } from '@imatomix/mix-router'
+
+const { post } = createRouter<LoggerState>()
+
+const app = new Mixer<LoggerState>().mix(
+  logger(),
+  cors({ origin: 'https://app.example.com' }), // 別のサイトのブラウザから呼ばれるときだけ
+  post('/items', async (ctx) => {
+    const data = await ctx.json() // 本文が JSON でなければ 415
+    if (typeof data !== 'object' || data === null) throw new HttpError(400)
+    // ...使う前に各フィールドを確かめる
+    ctx.status = 201
+    return data
+  }),
+)
+
+await serve(app, { port: 3000 })
+```
+
+- `Authorization` ヘッダーのトークンで認証するなら、CSRF 対策はいらない。Cookie で認証する API なら、ルートより前に `csrf()` を置き、mix-cors で認証情報付きの送信を許したオリジンを `trustedOrigins` にも並べる
+- Bun では `serve` を `@imatomix/mixer/bun` から読み込む。Cloudflare Workers では `export default app`
+
 ## 開発
 
 このリポジトリは [pnpm](https://pnpm.io/) のワークスペース。
