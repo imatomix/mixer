@@ -77,10 +77,21 @@ async function todoIds(user: ReturnType<typeof browser>) {
 }
 
 describe('signing in', () => {
-  it('sends signed-out visitors to the login page', async () => {
-    const res = await browser(setup().app).get('/')
-    expect(res.status).toBe(303)
-    expect(res.headers.get('location')).toBe('/login')
+  it.each(['/', '/missing'])(
+    'sends signed-out visitors of %s to the login page',
+    async (path) => {
+      const res = await browser(setup().app).get(path)
+      expect(res.status).toBe(303)
+      expect(res.headers.get('location')).toBe('/login')
+    },
+  )
+
+  it('lets anyone cache the login page, but never a signed-in page', async () => {
+    const { app } = setup()
+    const login = await browser(app).get('/login')
+    expect(login.headers.get('cache-control')).toBeNull()
+    const list = await (await signedIn(app)).get('/')
+    expect(list.headers.get('cache-control')).toBe('private, no-store')
   })
 
   it('shows the login form', async () => {
@@ -215,8 +226,8 @@ describe('protection', () => {
 })
 
 describe('errors', () => {
-  it('shows an HTML 404 page with the request ID', async () => {
-    const res = await browser(setup().app).get('/missing')
+  it('shows signed-in users an HTML 404 page with the request ID', async () => {
+    const res = await (await signedIn(setup().app)).get('/missing')
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(await res.text()).toContain(res.headers.get('x-request-id') ?? '-')

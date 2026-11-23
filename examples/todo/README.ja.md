@@ -16,9 +16,11 @@ pnpm --filter @imatomix/example-todo check:workers  # Node.js 互換なしの wo
 
 ## 示していること
 
-- コンポーネントの順番: `logger()`、CSP 付きの `secureHeaders()`、静的ファイル、`csrf()`、ページを保存させない指定、`session()`、ルート
+- コンポーネントの順番: `logger()`、CSP 付きの `secureHeaders()`、静的ファイル（キャッシュさせるため `session()` より前）、`csrf()`、`session()`（ログイン中のページをキャッシュに残さない）、ログインのルート、1 か所のログイン確認、それが必要なルート
 - `session.regenerate()` でのログイン、`session.destroy()` を呼ぶ POST でのログアウト、すべての POST のあとの `303` リダイレクト
+- コンポーネントは順に動くので、1 か所のログイン確認がそのあとのすべてのルートに効く。ログインしていない人が存在しないパスを開いたときもログインページに送る
+- フォームは `ctx.form()` で読む。フォーム以外には `415` を返す
 - 別のユーザーの Todo には決して届かない。検索にユーザーの ID を使い、存在しない Todo と他人の Todo は同じ `404` にする
 - すべての値をエスケープする小さな `html` タグ（`src/html.ts`）で組み立てる HTML
 - `onError` のエラーページにリクエスト ID を表示する。同じ ID がログと `X-Request-Id` にも出る
-- Node.js（`src/node.ts`）・Bun（`src/bun.ts`）・Cloudflare Workers（`src/worker.ts`）の入口。Workers では `public/` を Static Assets で配信し、mix-session の Redis ストアなどの外部セッションストアを使う
+- mixer の安全な既定付きの `serve()` を使う Node.js（`src/node.ts`）と Bun（`src/bun.ts`）、Cloudflare Workers（`src/worker.ts`）の入口。Workers では `public/` を Static Assets で配信し、mix-session の Redis ストアなどの外部セッションストアを使う
