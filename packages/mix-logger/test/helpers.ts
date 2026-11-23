@@ -8,7 +8,7 @@ export function app(...components: Component[]): App {
 
 /** Calls the app without starting a server */
 export function call(
-  target: App,
+  target: Pick<App, 'fetch'> | { fetch(request: Request): Promise<Response> },
   path = '/',
   init?: RequestInit,
 ): Promise<Response> {
