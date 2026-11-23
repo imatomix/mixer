@@ -92,6 +92,11 @@ async function smoke(fetch) {
   })
   expect('nosniff', hello.headers.get('x-content-type-options'), 'nosniff')
   expect('secure headers', hello.headers.get('x-frame-options'), 'DENY')
+  expect(
+    'request ID',
+    /^[0-9a-f-]{36}$/.test(hello.headers.get('x-request-id') ?? ''),
+    true,
+  )
 
   const outside = await fetch('/hello/mixer')
   await outside.text()

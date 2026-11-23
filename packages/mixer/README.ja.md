@@ -426,7 +426,7 @@ const app = new Mixer({ basePath: '/api' })
 | [@imatomix/mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers) | セキュリティヘッダー |
 | [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) | 静的ファイル（Node.js と Bun） |
 | [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) | サーバサイドセッション |
-| [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) | アクセスログ |
+| [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) | リクエスト単位のログ |
 
 ## 開発
 
