@@ -722,6 +722,30 @@ describe('error reports', () => {
     expect(reports).toContainEqual({ error: broken, phase: 'streamCancel' })
   })
 
+  it('keeps an asynchronous listener alive on platforms that stop after the response', async () => {
+    const waitUntil = vi.fn()
+    let finish: () => void = () => {}
+    const { handle } = new Mixer().mix(
+      (ctx) => {
+        ctx.onErrorReport(
+          () =>
+            new Promise<void>((resolve) => {
+              finish = resolve
+            }),
+        )
+      },
+      () => {
+        throw new Error('boom')
+      },
+    )
+    expect(
+      (await handle(request(), { executionContext: { waitUntil } })).status,
+    ).toBe(500)
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    finish()
+    await expect(waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined()
+  })
+
   it('keeps a failing listener from affecting the response or other listeners', async () => {
     const error = quiet()
     const reports: Report[] = []

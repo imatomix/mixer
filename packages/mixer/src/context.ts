@@ -164,7 +164,11 @@ export class Context<S extends State = State, E = unknown> {
       try {
         const result = listener({ error, phase })
         if (result instanceof Promise) {
-          result.catch((listenerError: unknown) => console.error(listenerError))
+          const handled = result.catch((listenerError: unknown) =>
+            console.error(listenerError),
+          )
+          // Like waitUntil work, so that a report sent over the network is not cut off after the response
+          this.#executionContext?.waitUntil(handled)
         }
       } catch (listenerError) {
         console.error(listenerError)
