@@ -5,8 +5,8 @@
 Web 標準の `Request` / `Response` で動く、小さな Web フレームワーク。アプリを関数の並びとして書くと、mixer がその戻り値を安全な応答にする。
 
 - **Web 標準。** `app.fetch(request)` は `Request` を受け取って `Response` を返すので、同じアプリが Node.js・Bun・Cloudflare Workers で動き、Next.js・Nuxt・SvelteKit・React Router の中でも動く
-- **何もしなくても安全。** セキュリティのためのヘッダ、Cookie の属性、Cookie を含む応答のキャッシュ、エラーの応答が、追加のコードなしで正しくなる（[後述](#何もしなくても安全)）
-- **必要なものだけ選べる。** ルーティング・CORS・静的ファイル・セッション・ログは[別のモジュール](#モジュール)で、どれも差し替えられる
+- **何もしなくても安全。** `nosniff`、Cookie の属性、Cookie を含む応答のキャッシュ、エラーの応答が、追加のコードなしで正しくなる（[後述](#何もしなくても安全)）
+- **必要なものだけ選べる。** ルーティング・CORS・CSRF 対策・セキュリティヘッダー・静的ファイル・セッション・ログは[別のモジュール](#モジュール)で、どれも差し替えられる
 - TypeScript 製・ESM のみ・依存ゼロ。Node.js 24 以上、Bun 1.4.4 以上、または Cloudflare Workers
 
 > mixer は 0.x なので、マイナーバージョンの間で API が変わることがある。
@@ -276,7 +276,9 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
 - Node.js の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
 
-mixer が代わりに決められないことが 1 つある。**メールやリダイレクトの絶対 URL を `ctx.url.host` から作らない。** `Host` ヘッダはクライアントが選ぶので、設定にあるオリジンを使う。
+アプリによって変わるものはモジュールに任せ、それぞれ 1 行で加える。CSRF 対策は [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf)、`X-Frame-Options`・`Referrer-Policy`・HSTS・CSP は [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers)。ブラウザにページを返すアプリは両方を加える。
+
+もう 1 つ、mixer が代わりに決められないことがある。**メールやリダイレクトの絶対 URL を `ctx.url.host` から作らない。** `Host` ヘッダはクライアントが選ぶので、設定にあるオリジンを使う。
 
 ## 詳しい説明
 
