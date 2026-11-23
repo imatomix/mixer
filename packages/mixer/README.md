@@ -5,8 +5,8 @@ English | [日本語](https://github.com/imatomix/mixer/blob/main/packages/mixer
 A small web framework built on the Web standard `Request` and `Response`. You write an app as a list of functions, and mixer turns what they return into a safe response.
 
 - **Web standard.** `app.fetch(request)` takes a `Request` and returns a `Response`, so the same app runs on Node.js, Bun, Cloudflare Workers, and inside Next.js, Nuxt, SvelteKit, or React Router
-- **Safe by default.** Security headers, cookie attributes, cache rules for cookies, and error responses are right without extra code ([see below](#safe-by-default))
-- **Pick what you need.** Routing, CORS, static files, sessions, and logging are [separate modules](#modules), and any of them can be replaced
+- **Safe by default.** `nosniff`, cookie attributes, cache rules for cookies, and error responses are right without extra code ([see below](#safe-by-default))
+- **Pick what you need.** Routing, CORS, CSRF protection, security headers, static files, sessions, and logging are [separate modules](#modules), and any of them can be replaced
 - TypeScript, ESM only, zero dependencies. Node.js 24 or later, Bun 1.4.4 or later, or Cloudflare Workers
 
 > mixer is at 0.x, so the API may change between minor versions.
@@ -276,7 +276,9 @@ Without any configuration:
 - `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
 - On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
 
-One thing mixer cannot decide for you: **do not build absolute URLs from `ctx.url.host`** (for emails or redirects). The client chooses the `Host` header; use an origin from your configuration.
+What depends on the app is left to modules, one line each: CSRF protection with [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf), and `X-Frame-Options`, `Referrer-Policy`, HSTS, or CSP with [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers). An app that serves pages to browsers should mix in both.
+
+One more thing mixer cannot decide for you: **do not build absolute URLs from `ctx.url.host`** (for emails or redirects). The client chooses the `Host` header; use an origin from your configuration.
 
 ## Reference
 

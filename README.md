@@ -7,13 +7,15 @@ A small web framework built on the Web standard `Request` and `Response`, safe b
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
-import { cors } from '@imatomix/mix-cors'
+import { csrf } from '@imatomix/mix-csrf'
 import { logger } from '@imatomix/mix-logger'
 import { get, post } from '@imatomix/mix-router'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
 
 const app = new Mixer().mix(
   logger(),
-  cors({ origin: 'https://example.com' }),
+  secureHeaders(),
+  csrf(),
   get('/hello/:name', (ctx, { name }) => ({ hello: name })),
   post('/echo', (ctx) => ctx.body()),
 )
@@ -22,7 +24,7 @@ await serve(app, { port: 3000 })
 ```
 
 - **Web standard.** `app.fetch(request)` returns a `Response`, so the same app runs on Node.js, Bun, Cloudflare Workers, and inside Next.js, Nuxt, SvelteKit, or React Router
-- **Safe by default.** Security headers, cookie attributes, caching of responses with cookies, error responses, and host checks are right without extra code
+- **Safe by default.** The core gets `nosniff`, cookie attributes, caching of responses with cookies, error responses, body limits, redirects, and host checks right without extra code. CSRF protection and security headers depend on the app, so they are one line each, as above
 - **Pick what you need.** The core has no dependencies; routing, CORS, CSRF protection, security headers, static files, sessions, and logging are separate packages, and every part is a plain function you can replace
 - **Typed.** Route parameters are inferred from the path, and `ctx.state` and `ctx.env` take your types
 
