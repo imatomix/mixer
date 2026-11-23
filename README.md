@@ -32,7 +32,7 @@ await serve(app, { port: 3000 })
 
 | Package | Description | Runs on |
 | --- | --- | --- |
-| [@imatomix/mixer](packages/mixer) | The core: components, `ctx`, responses, cookies, errors, and the Node.js adapter | Node.js, Bun, Workers |
+| [@imatomix/mixer](packages/mixer) | The core: components, `ctx`, responses, cookies, errors, and the Node.js and Bun adapters | Node.js, Bun, Workers |
 | [@imatomix/mix-router](packages/mix-router) | Type-safe router | Node.js, Bun, Workers |
 | [@imatomix/mix-cors](packages/mix-cors) | CORS | Node.js, Bun, Workers |
 | [@imatomix/mix-csrf](packages/mix-csrf) | CSRF protection with `Sec-Fetch-Site` and `Origin` | Node.js, Bun, Workers |
