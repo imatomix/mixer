@@ -215,7 +215,7 @@ export default {
 
 | パッケージ | Workers での扱い |
 | --- | --- |
-| mixer、mix-router、mix-cors、mix-logger | 対応 |
+| mixer、mix-router、mix-cors、mix-csrf、mix-logger | 対応 |
 | mix-session | 外部のストアを使えば対応（`MemoryStore` は 1 つの isolate の中にしかない） |
 | mix-static | 非対応（ファイルシステムがない）。Workers Static Assets を使う |
 | `@imatomix/mixer/node` | 使わない |
@@ -389,6 +389,7 @@ const app = new Mixer({ basePath: '/api' })
 | --- | --- |
 | [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) | 型安全なルーター |
 | [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) | CORS |
+| [@imatomix/mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf) | CSRF 対策 |
 | [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) | 静的ファイル（Node.js と Bun） |
 | [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) | サーバサイドセッション |
 | [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) | アクセスログ |

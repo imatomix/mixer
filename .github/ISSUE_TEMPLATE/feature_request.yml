@@ -10,6 +10,7 @@ body:
         - "@imatomix/mixer"
         - "@imatomix/mix-router"
         - "@imatomix/mix-cors"
+        - "@imatomix/mix-csrf"
         - "@imatomix/mix-static"
         - "@imatomix/mix-session"
         - "@imatomix/mix-logger"

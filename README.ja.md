@@ -23,7 +23,7 @@ await serve(app, { port: 3000 })
 
 - **Web 標準。** `app.fetch(request)` は `Response` を返すので、同じアプリが Node.js・Bun・Cloudflare Workers で動き、Next.js・Nuxt・SvelteKit・React Router の中でも動く
 - **何もしなくても安全。** セキュリティのためのヘッダ、Cookie の属性、Cookie を含む応答のキャッシュ、エラーの応答、ホスト名の確認が、追加のコードなしで正しくなる
-- **必要なものだけ選べる。** 本体は依存ゼロ。ルーティング・CORS・静的ファイル・セッション・ログは別のパッケージで、どの部品もただの関数なので差し替えられる
+- **必要なものだけ選べる。** 本体は依存ゼロ。ルーティング・CORS・CSRF 対策・静的ファイル・セッション・ログは別のパッケージで、どの部品もただの関数なので差し替えられる
 - **型が付く。** ルートのパラメータはパスから推論され、`ctx.state` と `ctx.env` には自分の型を付けられる
 
 ## パッケージ
@@ -33,6 +33,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mixer](packages/mixer) | 本体: コンポーネント、`ctx`、応答、Cookie、エラー、Node.js アダプタ | Node.js、Bun、Workers |
 | [@imatomix/mix-router](packages/mix-router) | 型安全なルーター | Node.js、Bun、Workers |
 | [@imatomix/mix-cors](packages/mix-cors) | CORS | Node.js、Bun、Workers |
+| [@imatomix/mix-csrf](packages/mix-csrf) | `Sec-Fetch-Site` と `Origin` による CSRF 対策 | Node.js、Bun、Workers |
 | [@imatomix/mix-static](packages/mix-static) | 静的ファイル | Node.js、Bun |
 | [@imatomix/mix-session](packages/mix-session) | サーバサイドセッション | Node.js、Bun、Workers（外部のストアを使う） |
 | [@imatomix/mix-logger](packages/mix-logger) | アクセスログ | Node.js、Bun、Workers |
