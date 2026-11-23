@@ -1,5 +1,5 @@
 import { type Component, HttpError, Mixer } from '@imatomix/mixer'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { type SecureHeadersOptions, secureHeaders } from '../src/index.js'
 import { app, call } from './helpers.js'
 
@@ -60,6 +60,21 @@ describe('defaults', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY')
   })
 
+  it('adds them to the 500 when an onBeforeSend hook throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await call(
+      app(secureHeaders(), (ctx) => {
+        ctx.onBeforeSend(() => {
+          throw new Error('hook broke')
+        })
+        return 'ok'
+      }),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-frame-options')).toBe('DENY')
+    consoleError.mockRestore()
+  })
+
   it('adds them to a returned Response that lacks them', async () => {
     const res = await call(app(secureHeaders(), () => new Response('raw')))
     expect(res.headers.get('x-frame-options')).toBe('DENY')
@@ -87,9 +102,9 @@ describe('overriding', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer')
   })
 
-  it('lets a later onBeforeSend hook remove a header', async () => {
+  it('lets a later onResponseHeaders listener remove a header', async () => {
     const headers = await headersFor(undefined, (ctx) => {
-      ctx.onBeforeSend(() => ctx.headers.delete('X-Frame-Options'))
+      ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
     })
     expect(headers.get('x-frame-options')).toBeNull()
   })

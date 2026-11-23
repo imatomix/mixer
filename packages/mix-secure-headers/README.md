@@ -76,15 +76,15 @@ get('/embed', (ctx) => {
 })
 ```
 
-To drop a header on one route, delete it in an `onBeforeSend` hook. Hooks run in the order they were added, so it runs after `secureHeaders()`:
+To drop a header on one route, delete it with mixer's `ctx.onResponseHeaders`. Listeners run in the order they were added, so it runs after `secureHeaders()`:
 
 ```ts
 get('/widget', (ctx) => {
-  ctx.onBeforeSend(() => ctx.headers.delete('X-Frame-Options'))
+  ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
   return widget
 })
 ```
 
-## Limits
+## How the headers are added
 
-The headers are added in an `onBeforeSend` hook, so two responses do not get them: the `404` for a request outside `basePath`, which is answered before any component runs, and the `500` when an `onBeforeSend` hook throws. Neither carries a page that a browser would render.
+`secureHeaders()` uses mixer's [`ctx.onResponseHeaders`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#hooks), so the headers reach the response actually sent, including the `500` when building a response fails. The only response without them is the `404` for a request outside `basePath`, which is answered before any component runs.
