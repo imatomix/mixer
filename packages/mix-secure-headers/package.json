@@ -1,0 +1,53 @@
+{
+  "name": "@imatomix/mix-secure-headers",
+  "version": "0.2.0",
+  "description": "Security headers for mixer",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "keywords": [
+    "mixer",
+    "security-headers",
+    "mix"
+  ],
+  "author": "Keita Imatomi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/imatomix/mixer.git",
+    "directory": "packages/mix-secure-headers"
+  },
+  "homepage": "https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers#readme",
+  "bugs": {
+    "url": "https://github.com/imatomix/mixer/issues"
+  },
+  "peerDependencies": {
+    "@imatomix/mixer": "^0.2.0"
+  },
+  "devDependencies": {
+    "@imatomix/mixer": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
