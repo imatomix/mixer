@@ -40,6 +40,11 @@ const DEFAULT_CLOSE_TIMEOUT = 10_000
 
 interface FetchApp {
   fetch: (request: Request) => Promise<Response>
+  /** A mixer app's handle, which takes the peer's address; other fetch handlers are served through fetch */
+  handle?: (
+    request: Request,
+    options: { remoteAddress?: string },
+  ) => Promise<Response>
 }
 
 /** Serves a mixer app with Node's http module */
@@ -166,7 +171,10 @@ async function handle(
       : {}),
   } as RequestInit)
 
-  const response = await app.fetch(request)
+  const remoteAddress = req.socket.remoteAddress
+  const response = app.handle
+    ? await app.handle(request, remoteAddress ? { remoteAddress } : {})
+    : await app.fetch(request)
   await writeResponse(req, res, response)
 }
 
