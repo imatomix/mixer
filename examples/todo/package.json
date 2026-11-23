@@ -1,0 +1,29 @@
+{
+  "name": "@imatomix/example-todo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A small todo app built with mixer and its modules, used to check them together",
+  "type": "module",
+  "scripts": {
+    "start": "pnpm --workspace-root build && node src/node.ts",
+    "start:bun": "pnpm --workspace-root build && bun src/bun.ts",
+    "check:bun": "pnpm --workspace-root build && bun scripts/check-bun.ts",
+    "check:workers": "pnpm --workspace-root build && node scripts/check-workers.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@imatomix/mix-csrf": "workspace:*",
+    "@imatomix/mix-logger": "workspace:*",
+    "@imatomix/mix-router": "workspace:*",
+    "@imatomix/mix-secure-headers": "workspace:*",
+    "@imatomix/mix-session": "workspace:*",
+    "@imatomix/mix-static": "workspace:*",
+    "@imatomix/mixer": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
