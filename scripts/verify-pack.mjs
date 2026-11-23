@@ -50,8 +50,13 @@ for (const { path, manifest } of packages) {
     .split('\n')
     .at(-1)
   const contents = run('tar', ['-tzf', tarball], work).split('\n')
-  const unexpected = contents.filter((file) =>
-    /^package\/(src|test)\//.test(file),
+  // src ships for the @imatomix/source condition and the source maps; tests and anything else in it never do
+  const unexpected = contents.filter(
+    (file) =>
+      /^package\/test\//.test(file) ||
+      (/^package\/src\//.test(file) &&
+        !/^package\/src\/[\w-]+\.ts$/.test(file)) ||
+      /\.test\.ts$/.test(file),
   )
   if (unexpected.length > 0) {
     throw new Error(
