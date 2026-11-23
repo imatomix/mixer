@@ -23,10 +23,14 @@ export type Component<S extends State = State, E = unknown> = (
   ctx: Context<S, E>,
 ) => unknown | Promise<unknown>
 
-/** Returns a value to use as the error response, or undefined for the default one */
+/**
+ * Returns a value to use as the error response, or undefined for the default one. ctx.state may be incomplete:
+ * the error can come before the components that fill it ran, or from a request outside basePath that no
+ * component saw, so its properties are optional here
+ */
 export type ErrorHandler<S extends State = State, E = unknown> = (
   error: unknown,
-  ctx: Context<S, E>,
+  ctx: Context<Partial<S>, E>,
 ) => unknown | Promise<unknown>
 
 export interface MixerOptions<S extends State = State, E = unknown> {
