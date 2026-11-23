@@ -70,7 +70,7 @@ app.mix(
 | `rolling` | `false` | Extend the expiry even on requests that only read the session |
 | `absoluteTtl` | `604800` (7 days) | Seconds after which a session ends however active it is. It restarts when a session is created or regenerated (such as on login). `false` turns it off |
 | `cookie` | mixer's defaults (HttpOnly, Secure, SameSite=Lax, Path=/) | Cookie attributes. Use `{ secure: false }` when developing on http://localhost |
-| `cacheControl` | `'private, no-store'` | Cache-Control for responses with a session. Another policy must include `private` or `no-store` and not `public` (such as `'private, max-age=60'`); `false` leaves caching to the app |
+| `cacheControl` | `'private, no-store'` | Cache-Control for responses with a session. Another policy must include an unqualified `private` or `no-store` (without `=...`) and not `public` (such as `'private, max-age=60'`); `false` leaves caching to the app |
 
 ## Stores
 

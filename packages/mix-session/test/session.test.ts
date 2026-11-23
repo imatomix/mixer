@@ -668,9 +668,27 @@ describe('caching of responses that carry a session', () => {
   })
 
   it.each([
+    'private="Set-Cookie", no-store',
+    'PRIVATE, max-age=60',
+    'private, extension="public, max-age=60"',
+    'no-store, extension="a\\"b, public"',
+  ])(
+    'accepts an unqualified protection with quoted values: %s',
+    (cacheControl) => {
+      expect(() => session({ cacheControl })).not.toThrow()
+    },
+  )
+
+  it.each([
     'public, max-age=60',
     'max-age=60',
     'private, public',
+    'private="Set-Cookie", max-age=60',
+    'private=Set-Cookie',
+    'no-store=anything',
+    'extension="ignored, private, ignored"',
+    'extension="ignored, no-store, ignored"',
+    'private, extension="unterminated',
     'private\r\nX-Injected: 1',
     '',
   ])(

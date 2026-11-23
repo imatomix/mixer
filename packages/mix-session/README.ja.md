@@ -70,7 +70,7 @@ app.mix(
 | `rolling` | `false` | 読むだけのリクエストでも期限を延ばす |
 | `absoluteTtl` | `604800`（7 日） | 使われ続けていても、この秒数でセッションを終える。セッションを作ったときと作り直したとき（ログインなど）に数え直す。`false` で無効 |
 | `cookie` | mixer の既定（HttpOnly・Secure・SameSite=Lax・Path=/） | Cookie の属性。http の localhost で開発するときは `{ secure: false }` |
-| `cacheControl` | `'private, no-store'` | セッションのある応答の Cache-Control。別の指定は `private` か `no-store` を含み、`public` を含まないこと（`'private, max-age=60'` など）。`false` ならキャッシュはアプリに任せる |
+| `cacheControl` | `'private, no-store'` | セッションのある応答の Cache-Control。別の指定は 引数なしの `private` か `no-store`（`=...` を付けない）を含み、`public` を含まないこと（`'private, max-age=60'` など）。`false` ならキャッシュはアプリに任せる |
 
 ## ストア
 

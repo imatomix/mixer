@@ -31,7 +31,7 @@ export interface SessionOptions {
   /**
    * Cache-Control for every response to a request with a session (one was loaded, or the response sets or clears
    * its cookie), replacing any other value: such responses show one user's data, and an accidental `public` would
-   * hand it to others. Defaults to `private, no-store`. Another policy must include `private` or `no-store` and not
+   * hand it to others. Defaults to `private, no-store`. Another policy must include unqualified `private` or `no-store` and not
    * `public`; false leaves caching to the app
    */
   cacheControl?: string | false
@@ -232,20 +232,30 @@ function isEmpty(data: object): boolean {
   return Object.keys(data).length === 0
 }
 
-/** A policy that keeps shared caches away: it has private or no-store and not public */
+/** Only unqualified private/no-store protects the whole response; quoted commas are not separators. */
 function checkCacheControl(value: string | false): string | false {
   if (value === false) return false
-  const directives = value
-    .split(',')
-    .map((directive) => directive.trim().toLowerCase().split('=')[0])
-  if (
-    /^[ -~]+$/.test(value) &&
-    (directives.includes('private') || directives.includes('no-store')) &&
-    !directives.includes('public')
-  ) {
-    return value
+  const directive =
+    / *([!#$%&'*+.^_`|~0-9a-z-]+)(?:=(?:[!#$%&'*+.^_`|~0-9a-z-]+|"(?:[^"\\]|\\.)*"))? *(?:,|$)/giy
+  let protectedResponse = false
+  let valid = /^[ -~]+$/.test(value)
+  let offset = 0
+  while (valid && offset < value.length) {
+    const match = directive.exec(value)
+    if (!match) {
+      valid = false
+      break
+    }
+    offset = directive.lastIndex
+    const name = match[1]?.toLowerCase()
+    const hasArgument = match[0].includes('=')
+    if (name === 'public') valid = false
+    if (!hasArgument && (name === 'private' || name === 'no-store')) {
+      protectedResponse = true
+    }
   }
+  if (valid && protectedResponse) return value
   throw new TypeError(
-    `mix-session: cacheControl must include private or no-store and not public, or be false: ${JSON.stringify(value)}`,
+    `mix-session: cacheControl must include unqualified private or no-store and not public, or be false: ${JSON.stringify(value)}`,
   )
 }
