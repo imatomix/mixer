@@ -106,9 +106,17 @@ const smoke = `${imports}
 ${checks}
 import { serve } from '@imatomix/mixer/node'
 
-type FetchApp = { fetch: (request: Request) => Promise<Response> }
+type FetchApp = {
+  fetch: (request: Request) => Promise<Response>
+  handle: (request: Request, options: { remoteAddress?: string | undefined }) => Promise<Response>
+}
+type BunServer = { requestIP(request: Request): { address: string } | null }
 type BunRuntime = {
-  serve(options: { port: number; hostname: string; fetch: FetchApp['fetch'] }): {
+  serve(options: {
+    port: number
+    hostname: string
+    fetch: (request: Request, server: BunServer) => Promise<Response>
+  }): {
     port: number
     stop(closeActiveConnections?: boolean): Promise<void>
   }
@@ -118,8 +126,13 @@ type BunRuntime = {
 async function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
   const bun = (globalThis as { Bun?: BunRuntime }).Bun
   if (!bun) return serve(app, { hostname: '127.0.0.1' })
-  // Only the request: Bun passes its server as the second argument, which would become ctx.env
-  const server = bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
+  // The peer's address through handle; passing app.fetch directly would put Bun's server into ctx.env
+  const server = bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: (request, bunServer) =>
+      app.handle(request, { remoteAddress: bunServer.requestIP(request)?.address }),
+  })
   return { port: server.port, close: () => server.stop(true) }
 }
 ${
@@ -129,14 +142,18 @@ import { Mixer } from '@imatomix/mixer'
 import { get } from '@imatomix/mix-router'
 
 const app = new Mixer().mix(
-  get('/hello/:name', (ctx, { name }) => ({ hello: name, envIsEmpty: ctx.env === undefined })),
+  get('/hello/:name', (ctx, { name }) => ({
+    hello: name,
+    envIsEmpty: ctx.env === undefined,
+    ip: ctx.ip,
+  })),
 )
 const server = await listen(app)
 const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
 await server.close()
 // Bun passes its server as fetch's second argument; it must not end up in ctx.env
-if (body.hello !== 'mixer' || body.envIsEmpty !== true) {
+if (body.hello !== 'mixer' || body.envIsEmpty !== true || body.ip !== '127.0.0.1') {
   throw new Error(\`mixer + mix-router smoke test failed: \${JSON.stringify(body)}\`)
 }
 `

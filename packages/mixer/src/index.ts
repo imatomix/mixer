@@ -14,6 +14,7 @@ export { HttpError, type HttpErrorOptions } from './errors.js'
 export {
   type Component,
   type ErrorHandler,
+  type HandleOptions,
   Mixer,
   type MixerOptions,
 } from './mixer.js'

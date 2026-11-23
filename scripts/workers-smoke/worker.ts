@@ -28,6 +28,7 @@ const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
   session(),
   logger({ write: writeLater }),
   get('/logged', () => lastLoggedPath),
+  get('/ip', (ctx) => ({ ip: ctx.ip ?? null })),
   get('/hello/:name', (ctx, { name }) => ({
     hello: name,
     greeting: ctx.env.GREETING,
@@ -55,4 +56,12 @@ const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
   get('/me', (ctx) => ({ user: ctx.state.session.get('user') ?? null })),
 )
 
-export default app satisfies ExportedHandler<Env>
+// CF-Connecting-IP is set by Cloudflare; mixer cannot tell that from a forged header, so the Worker passes it
+export default {
+  fetch: (request, env, executionContext) =>
+    app.handle(request, {
+      env,
+      executionContext,
+      clientIp: request.headers.get('cf-connecting-ip') ?? undefined,
+    }),
+} satisfies ExportedHandler<Env>

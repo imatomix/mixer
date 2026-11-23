@@ -698,3 +698,50 @@ describe('close', () => {
     },
   )
 })
+
+describe('client address', () => {
+  const addresses = new Mixer().mix((ctx) => ({
+    ip: ctx.ip ?? null,
+    remoteAddress: ctx.remoteAddress ?? null,
+  }))
+
+  it('passes the socket address, so ctx.ip is the connecting client', async () => {
+    const server = await start(addresses)
+    const res = await raw(
+      server.port,
+      'GET / HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-For: 1.1.1.1\r\nConnection: close\r\n\r\n',
+    )
+    expect(JSON.parse(body(res))).toEqual({
+      ip: '127.0.0.1',
+      remoteAddress: '127.0.0.1',
+    })
+  })
+
+  it('resolves X-Forwarded-For when the socket address is a trusted proxy', async () => {
+    const server = await start(
+      new Mixer({ trustedProxies: ['127.0.0.1'] }).mix((ctx) => ({
+        ip: ctx.ip,
+      })),
+    )
+    const res = await raw(
+      server.port,
+      'GET / HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-For: 198.51.100.7\r\nConnection: close\r\n\r\n',
+    )
+    expect(JSON.parse(body(res))).toEqual({ ip: '198.51.100.7' })
+  })
+
+  it('still serves an app that only has fetch', async () => {
+    const server = await serve(
+      { fetch: async () => new Response('plain fetch') },
+      { port: 0, hostname: '127.0.0.1' },
+    )
+    servers.push(server)
+    const res = await raw(
+      server.port,
+      'GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n',
+    )
+    // Without Content-Length the body is sent in chunks, so check that it is there
+    expect(status(res)).toBe(200)
+    expect(body(res)).toContain('plain fetch')
+  })
+})

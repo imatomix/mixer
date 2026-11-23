@@ -23,6 +23,8 @@ export interface ContextInit<E> {
   bodyLimit: number
   env: E
   executionContext: ExecutionContextLike | undefined
+  ip: string | undefined
+  remoteAddress: string | undefined
 }
 
 export class Context<S extends State = State, E = unknown> {
@@ -36,6 +38,14 @@ export class Context<S extends State = State, E = unknown> {
   state: S = {} as S
   /** Bindings passed to fetch(), such as Cloudflare Workers environment variables */
   readonly env: E
+  /**
+   * The client's IP address: the direct peer, or behind trustedProxies the address from X-Forwarded-For, or one
+   * the platform resolved (handle's clientIp). undefined when nothing supplied it (for example, through fetch).
+   * It can be wrong behind a misconfigured proxy, NAT, or VPN, so do not use it alone to authorize
+   */
+  readonly ip: string | undefined
+  /** The IP address of the direct peer (handle's remoteAddress), such as a reverse proxy */
+  readonly remoteAddress: string | undefined
 
   #headers = new Headers()
   readonly #bodyLimit: number
@@ -53,6 +63,8 @@ export class Context<S extends State = State, E = unknown> {
     this.method = request.method
     this.path = init.path
     this.env = init.env
+    this.ip = init.ip
+    this.remoteAddress = init.remoteAddress
     this.#bodyLimit = init.bodyLimit
     this.#executionContext = init.executionContext
   }
