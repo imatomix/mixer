@@ -3,9 +3,10 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import { type AddressInfo, isIP, type Socket } from 'node:net'
+import type { AddressInfo, Socket } from 'node:net'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { createHostCheck, isHostHeader, normalizeHost } from './hosts.js'
 
 export interface ServeOptions {
   /** Defaults to 0 (any free port) */
@@ -206,59 +207,12 @@ function requestUrl(req: IncomingMessage): URL | undefined {
     return undefined
   }
 
-  // Only host[:port]: a name or bracketed IPv6 address and a port of 1–65535. Comparing with the
-  // URL parser's output instead would reject valid spellings such as an explicit default port (:80)
-  const match = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::(\d{1,5}))?$/.exec(host)
-  if (!match) return undefined
-  const port = match[2]
-  if (port !== undefined && (Number(port) < 1 || Number(port) > 65535)) {
-    return undefined
-  }
+  if (!isHostHeader(host)) return undefined
   try {
     return new URL(`http://${host}${pathAndQuery}`)
   } catch {
     return undefined
   }
-}
-
-/**
- * Accepting only known host names defeats DNS rebinding (a page on another site reaching this server through
- * a name that resolves to it) and keeps a forged Host out of ctx.url
- */
-function createHostCheck(
-  allowedHosts: readonly string[] | true | undefined,
-  hostname: string,
-): (host: string) => boolean {
-  if (allowedHosts === true) return () => true
-  const allowed = new Set(['localhost', '127.0.0.1', '[::1]'])
-  const listening = canonicalIp(hostname)
-  if (listening && listening !== '0.0.0.0' && listening !== '[::]') {
-    allowed.add(listening)
-  }
-  for (const entry of allowedHosts ?? []) {
-    const name = canonicalIp(entry) ?? normalizeHost(entry)
-    if (!name || !/^(\[[0-9a-f:.]+\]|[a-z0-9-]+(\.[a-z0-9-]+)*)$/.test(name)) {
-      throw new TypeError(
-        `mixer: allowedHosts takes host names without a port or wildcard: ${JSON.stringify(entry)}`,
-      )
-    }
-    allowed.add(name)
-  }
-  return (host) => allowed.has(host) || host.endsWith('.localhost')
-}
-
-/**
- * The form URL gives an IP address (IPv6 in brackets), so that both spellings compare equal. A zone such as
- * `%eth0` is dropped: Node can listen on a scoped address, but URL rejects one and Host never carries it
- */
-function canonicalIp(value: string): string | undefined {
-  const bare = value.replace(/^\[(.*)\]$/, '$1').replace(/%.*$/, '')
-  if (!isIP(bare)) return undefined
-  return new URL(`http://${isIP(bare) === 6 ? `[${bare}]` : bare}`).hostname
-}
-
-function normalizeHost(host: string): string {
-  return host.toLowerCase().replace(/\.$/, '')
 }
 
 function requestHeaders(req: IncomingMessage): Headers {
