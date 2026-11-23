@@ -10,7 +10,7 @@
 ## インストール
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-session
+npm install @imatomix/mixer @imatomix/mix-session @imatomix/mix-router
 ```
 
 ## 使い方
@@ -18,10 +18,12 @@ npm install @imatomix/mixer @imatomix/mix-session
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { type SessionState, session } from '@imatomix/mix-session'
-import { get, post } from '@imatomix/mix-router'
+import { createRouter } from '@imatomix/mix-router'
 
 type Data = { user: string }
 
+// ルートは状態の型をアプリからではなく、ルーターから受け取る
+const { get, post } = createRouter<SessionState<Data>>()
 const app = new Mixer<SessionState<Data>>()
 
 app.mix(

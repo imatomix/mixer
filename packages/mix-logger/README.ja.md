@@ -10,7 +10,7 @@
 ## インストール
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-logger
+npm install @imatomix/mixer @imatomix/mix-logger @imatomix/mix-router
 ```
 
 ## 使い方

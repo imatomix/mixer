@@ -10,7 +10,7 @@ A small server-rendered todo app built with mixer and its modules: sign in, add,
 pnpm --filter @imatomix/example-todo start      # Node.js, http://localhost:3000, sign in as demo / demo
 pnpm --filter @imatomix/example-todo start:bun  # Bun
 pnpm --filter @imatomix/example-todo test       # tests through app.fetch
-pnpm --filter @imatomix/example-todo check:bun      # the browser flow on Bun.serve
+pnpm --filter @imatomix/example-todo check:bun      # the browser flow on Bun, through @imatomix/mixer/bun
 pnpm --filter @imatomix/example-todo check:workers  # the browser flow on workerd, without Node.js compatibility
 ```
 

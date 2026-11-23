@@ -10,7 +10,7 @@ Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/pac
 ## Install
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-session
+npm install @imatomix/mixer @imatomix/mix-session @imatomix/mix-router
 ```
 
 ## Usage
@@ -18,10 +18,12 @@ npm install @imatomix/mixer @imatomix/mix-session
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { type SessionState, session } from '@imatomix/mix-session'
-import { get, post } from '@imatomix/mix-router'
+import { createRouter } from '@imatomix/mix-router'
 
 type Data = { user: string }
 
+// Routes take the state type from their router, not from the app
+const { get, post } = createRouter<SessionState<Data>>()
 const app = new Mixer<SessionState<Data>>()
 
 app.mix(

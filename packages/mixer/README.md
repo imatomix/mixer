@@ -61,7 +61,6 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.ip` / `ctx.remoteAddress` | The client's IP address, and the direct peer's ([details](#client-ip-address)) |
 | `await ctx.json()` / `await ctx.form()` | The request body as JSON, or as `FormData` from a form or file upload ([details](#request-body)) |
 | `await ctx.text()` / `await ctx.bytes()` | The request body as a string or bytes |
-| `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
 | `ctx.onResponseHeaders(fn)` | Set headers on whatever response is sent, including errors ([details](#hooks)) |
