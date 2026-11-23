@@ -239,7 +239,7 @@ describe('X-Request-Id', () => {
     expect(res.headers.get('x-request-id')).toBe(log.events[0]?.requestId)
   })
 
-  it("keeps a returned Response's own value, which then differs from the logs", async () => {
+  it("replaces a returned Response's own value too", async () => {
     const log = collect()
     const res = await call(
       logged(
@@ -247,8 +247,27 @@ describe('X-Request-Id', () => {
         () => new Response('ok', { headers: { 'X-Request-Id': 'upstream' } }),
       ),
     )
-    expect(res.headers.get('x-request-id')).toBe('upstream')
-    expect(log.events[0]?.requestId).not.toBe('upstream')
+    expect(res.headers.get('x-request-id')).toBe(log.events[0]?.requestId)
+  })
+
+  it('sends the request ID on the 500 when building the response fails', async () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    for (const component of [
+      () => circular,
+      (ctx: { onBeforeSend(hook: () => void): void }) => {
+        ctx.onBeforeSend(() => {
+          throw new Error('hook broke')
+        })
+        return 'ok'
+      },
+    ]) {
+      const log = collect()
+      const res = await call(logged({ write: log.write }, component))
+      expect(res.status).toBe(500)
+      const access = log.events.find((event) => event.kind === 'access')
+      expect(res.headers.get('x-request-id')).toBe(access?.requestId)
+    }
   })
 
   it('uses another header name or none', async () => {

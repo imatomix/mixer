@@ -69,7 +69,7 @@ logger({
 | --- | --- | --- |
 | `write` | `'json'` | `'json'` は 1 行に 1 つの JSON、`'text'` は読みやすい 1 行を `console.log`（`ctx.state.log.error` を含め、レベルが `error` のイベントは `console.error`）に書く。関数を渡すと、代わりに各 `LogEvent` を受け取る |
 | `requestId` | 新しいランダムな UUID | ID をリクエストから取る `(ctx) => string \| undefined`。Cloudflare の `CF-Ray` など。実行環境やプロキシが付け、クライアントが付けられないヘッダーだけを使う。Cloudflare を前に置かない Node.js や Bun では、`CF-Ray` は誰でも送れる。無いか形が不正（`A-Z a-z 0-9 . _ : -` の 1〜128 文字以外）なら新しく作る |
-| `header` | `'X-Request-Id'` | ID を載せる応答ヘッダー。`false` なら付けない。ハンドラーが `ctx.headers` に設定した値は置き換えるので、応答とログの ID はそろう。自分の値を持つ `Response` を返したとき（別のサービスの応答をそのまま返すなど）はその値が残り、ログの ID とは食い違う |
+| `header` | `'X-Request-Id'` | ID を載せる応答ヘッダー。`false` なら付けない。応答の組み立てが失敗したときの `500` を含め、実際に送るすべての応答に付け、ほかの値（ハンドラーが設定した値や、別のサービスの応答をそのまま返した `Response` の値）は置き換える。利用者が目にする ID は必ずログにある。上流の ID をそのまま返したいときは、`requestId` でその ID を選ぶか、ヘッダーを付けない |
 
 開発中は `'text'` のほうが読みやすい。
 

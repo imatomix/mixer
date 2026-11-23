@@ -121,8 +121,9 @@ export function logger(options: LoggerOptions = {}): Component {
       })
     })
     if (header !== false) {
-      ctx.onBeforeSend(() => {
-        ctx.headers.set(header, requestId)
+      // On every response actually sent, so that whatever a user sees can be found in the logs
+      ctx.onResponseHeaders((headers) => {
+        headers.set(header, requestId)
       })
     }
     ctx.onResponse(({ status, headers }) => {
