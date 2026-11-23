@@ -2,6 +2,7 @@
 // It is copied into the scratch consumer project and imports the packed packages as users would.
 
 import { cors } from '@imatomix/mix-cors'
+import { csrf } from '@imatomix/mix-csrf'
 import { type LogEntry, logger } from '@imatomix/mix-logger'
 import { createRouter } from '@imatomix/mix-router'
 import { type SessionState, session } from '@imatomix/mix-session'
@@ -25,6 +26,7 @@ const writeLater = (entry: LogEntry) =>
 
 const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
   cors({ origin: 'https://a.example' }),
+  csrf(),
   session(),
   logger({ write: writeLater }),
   get('/logged', () => lastLoggedPath),

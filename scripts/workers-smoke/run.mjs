@@ -103,6 +103,14 @@ async function smoke(fetch) {
   })
   expect('JSON body', await echo.json(), { a: 1 })
 
+  const crossSite = await fetch('/api/echo', {
+    method: 'POST',
+    headers: { 'sec-fetch-site': 'cross-site', 'content-type': 'text/plain' },
+    body: 'x',
+  })
+  await crossSite.text()
+  expect('cross-site POST', crossSite.status, 403)
+
   // Written out by hand: Miniflare's own fetch does not recognize Node's FormData
   const field = (value) =>
     `--b\r\nContent-Disposition: form-data; name="a"\r\n\r\n${value}\r\n`
