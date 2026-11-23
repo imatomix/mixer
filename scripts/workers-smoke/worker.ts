@@ -3,7 +3,7 @@
 
 import { cors } from '@imatomix/mix-cors'
 import { csrf } from '@imatomix/mix-csrf'
-import { type LogEntry, logger } from '@imatomix/mix-logger'
+import { type LogEvent, logger } from '@imatomix/mix-logger'
 import { createRouter } from '@imatomix/mix-router'
 import { secureHeaders } from '@imatomix/mix-secure-headers'
 import { type SessionState, session } from '@imatomix/mix-session'
@@ -17,10 +17,10 @@ const { get, post } = createRouter<SessionState, Env>()
 // Set by a log write that finishes after the response, to prove that ctx.waitUntil reached workerd
 let lastLoggedPath = ''
 
-const writeLater = (entry: LogEntry) =>
+const writeLater = (event: LogEvent) =>
   new Promise<void>((resolve) => {
     setTimeout(() => {
-      lastLoggedPath = entry.path
+      if (event.kind === 'access') lastLoggedPath = event.path
       resolve()
     }, 50)
   })

@@ -331,18 +331,39 @@ ${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'
-import { type LogEntry, logger } from '@imatomix/mix-logger'
+import { type LogEvent, type LoggerState, logger } from '@imatomix/mix-logger'
 
-let resolveEntry: (entry: LogEntry) => void = () => {}
-const logged = new Promise<LogEntry>((resolve) => {
-  resolveEntry = resolve
+const events: LogEvent[] = []
+let resolveAccess: () => void = () => {}
+const accessed = new Promise<void>((resolve) => {
+  resolveAccess = resolve
 })
-const loggerApp = new LoggerMixer().mix(logger({ write: (entry) => resolveEntry(entry) }), () => 'logged')
+const loggerApp = new LoggerMixer<LoggerState>().mix(
+  logger({
+    write: (event) => {
+      events.push(event)
+      if (event.kind === 'access') resolveAccess()
+    },
+  }),
+  (ctx) => {
+    ctx.state.log.info('handled')
+    return 'logged'
+  },
+)
 const loggerServer = await listen(loggerApp)
-await (await fetch(\`http://127.0.0.1:\${loggerServer.port}/log?secret=1\`)).text()
-const entry = await logged
+const loggedResponse = await fetch(\`http://127.0.0.1:\${loggerServer.port}/log?secret=1\`)
+await loggedResponse.text()
+await accessed
 await loggerServer.close()
-if (entry.method !== 'GET' || entry.path !== '/log' || entry.status !== 200) {
+const [handled, access] = events
+if (
+  handled?.message !== 'handled' ||
+  access?.method !== 'GET' ||
+  access.path !== '/log' ||
+  access.status !== 200 ||
+  handled.requestId !== access.requestId ||
+  loggedResponse.headers.get('x-request-id') !== access.requestId
+) {
   throw new Error('mixer + mix-logger smoke test failed')
 }
 `
