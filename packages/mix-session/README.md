@@ -45,7 +45,7 @@ app.mix(
 - The cookie holds **only a 32-byte random ID**, and the data lives in a server-side store. The data never reaches the browser, so it is not encrypted
 - **No session is created until something is written.** Visiting alone creates nothing in the store or in cookies
 - Only when something changed, the session is saved to the store and the cookie is issued right before the response (`ctx.onBeforeSend`). A change made inside a value, such as `session.get('cart').push(item)`, counts too
-- Responses that send Set-Cookie get `Cache-Control: private, no-store` (so shared caches never hand the same session to other users)
+- Every response to a request with a session (one was loaded, or the response sets or clears its cookie) gets `Cache-Control: private, no-store`, replacing any other value, including on error responses and returned `Response`s. Such pages show one user's data, so no cache may keep them, and an accidental `public` cannot hand them to others. Mix in what should stay cacheable, such as static files, **before** `session()`
 - Sessions are saved for every response, including a `Response` returned by a component, `404`, and error responses
 - Session IDs come from Web Crypto (`crypto.getRandomValues`)
 
@@ -70,6 +70,7 @@ app.mix(
 | `rolling` | `false` | Extend the expiry even on requests that only read the session |
 | `absoluteTtl` | `604800` (7 days) | Seconds after which a session ends however active it is. It restarts when a session is created or regenerated (such as on login). `false` turns it off |
 | `cookie` | mixer's defaults (HttpOnly, Secure, SameSite=Lax, Path=/) | Cookie attributes. Use `{ secure: false }` when developing on http://localhost |
+| `cacheControl` | `'private, no-store'` | Cache-Control for responses with a session. Another policy must include `private` or `no-store` and not `public` (such as `'private, max-age=60'`); `false` leaves caching to the app |
 
 ## Stores
 

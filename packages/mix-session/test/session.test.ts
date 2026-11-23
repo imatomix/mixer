@@ -605,3 +605,78 @@ describe('runtime independence', () => {
     expect(res.headers.get('cache-control')).not.toMatch(/public/)
   })
 })
+
+describe('caching of responses that carry a session', () => {
+  const ID = 'a'.repeat(43)
+
+  async function loaded(
+    component: Parameters<typeof app>[0],
+    options: Parameters<typeof session>[0] = {},
+  ) {
+    const store = new MemoryStore()
+    await seed(store, ID, { user: 'alice' })
+    return call(app(session({ ...options, store }), component), '/', {
+      headers: cookieHeader(ID),
+    })
+  }
+
+  it('makes a response for a loaded session private and no-store, even over a public policy', async () => {
+    const res = await loaded((ctx) => {
+      ctx.headers.set('Cache-Control', 'public, max-age=60')
+      return `hello ${(ctx.state as State).session.get('user')}`
+    })
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('covers a returned Response and error responses too', async () => {
+    const returned = await loaded(
+      () =>
+        new Response('raw', {
+          headers: { 'Cache-Control': 'public, max-age=60' },
+        }),
+    )
+    expect(returned.headers.get('cache-control')).toBe('private, no-store')
+
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failed = await loaded(() => {
+      throw new Error('boom')
+    })
+    expect(failed.status).toBe(500)
+    expect(failed.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('leaves responses without a session alone', async () => {
+    const target = app(session(), (ctx) => {
+      ctx.headers.set('Cache-Control', 'public, max-age=60')
+      return 'public page'
+    })
+    const fresh = await call(target)
+    expect(fresh.headers.get('cache-control')).toBe('public, max-age=60')
+    const unknown = await call(target, '/', { headers: cookieHeader(ID) })
+    expect(unknown.headers.get('cache-control')).toBe('public, max-age=60')
+  })
+
+  it('takes another private policy, or false to leave caching to the app', async () => {
+    const page = (ctx: { headers: Headers }) => {
+      ctx.headers.set('Cache-Control', 'public, max-age=60')
+      return 'ok'
+    }
+    const custom = await loaded(page, { cacheControl: 'private, max-age=60' })
+    expect(custom.headers.get('cache-control')).toBe('private, max-age=60')
+    const off = await loaded(page, { cacheControl: false })
+    expect(off.headers.get('cache-control')).toBe('public, max-age=60')
+  })
+
+  it.each([
+    'public, max-age=60',
+    'max-age=60',
+    'private, public',
+    'private\r\nX-Injected: 1',
+    '',
+  ])(
+    'rejects %j, which would let shared caches keep a session',
+    (cacheControl) => {
+      expect(() => session({ cacheControl })).toThrow(/cacheControl/)
+    },
+  )
+})
