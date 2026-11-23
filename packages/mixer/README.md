@@ -58,6 +58,7 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.status` / `ctx.headers` | Status (default `200`) and headers of the response being built |
 | `ctx.state` | Values passed to later components |
 | `ctx.env` | Bindings and settings passed as the second argument of `app.fetch` |
+| `ctx.ip` / `ctx.remoteAddress` | The client's IP address, and the direct peer's ([details](#client-ip-address)) |
 | `await ctx.body()` | The request body, parsed by Content-Type, including forms and file uploads ([details](#request-body)) |
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
@@ -167,7 +168,7 @@ await serve(app, {
 
 - Other host names get an empty `400` and never reach the app; the first one is logged with `console.warn`
 - A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
-- `X-Forwarded-*` headers are not used
+- `X-Forwarded-For` is read only for `trustedProxies` ([client IP address](#client-ip-address)); `X-Forwarded-Proto` and `X-Forwarded-Host` are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
 - `server.close()` stops accepting connections, closes idle ones, and ends each remaining connection once its requests have been answered. After `timeout` (10 seconds by default; `server.close({ timeout: 30_000 })`) it cuts the rest, which aborts their `ctx.request.signal`. Call it on `SIGTERM` to deploy without dropping requests
@@ -175,10 +176,15 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
+Bun.serve({
+  port: 3000,
+  hostname: '127.0.0.1',
+  fetch: (request, server) =>
+    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
+})
 ```
 
-Pass only the request: Bun calls `fetch(request, server)`, and its server would otherwise become `ctx.env`. `Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
+`app.handle()` passes the peer's address for `ctx.ip`. Do not pass `app.fetch` itself: Bun calls `fetch(request, server)`, and its server would become `ctx.env`. `Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
 
 ### Cloudflare Workers
 
@@ -188,6 +194,19 @@ type Env = { DATABASE_URL: string }
 const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATABASE_URL)
 
 export default app satisfies ExportedHandler<Env>
+```
+
+For `ctx.ip`, pass the address Cloudflare resolved. mixer does not read `CF-Connecting-IP` by itself, because elsewhere anyone can send that header:
+
+```ts
+export default {
+  fetch: (request, env, executionContext) =>
+    app.handle(request, {
+      env,
+      executionContext,
+      clientIp: request.headers.get('cf-connecting-ip') ?? undefined,
+    }),
+} satisfies ExportedHandler<Env>
 ```
 
 - `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` hands work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
@@ -203,7 +222,7 @@ export default app satisfies ExportedHandler<Env>
 
 ### Inside frameworks
 
-Mount mixer on a catch-all route of your framework, set `basePath` to that route's path, and pass only the `Request`: frameworks give handlers other arguments, which would otherwise become `ctx.env`.
+Mount mixer on a catch-all route of your framework, set `basePath` to that route's path, and pass only the `Request`: frameworks give handlers other arguments, which would otherwise become `ctx.env`. For `ctx.ip`, use `app.handle(request, { clientIp })` with the framework's own address API, such as SvelteKit's `getClientAddress()`.
 
 **Next.js** (App Router), `app/api/[[...path]]/route.ts`:
 
@@ -254,11 +273,32 @@ Without any configuration:
 - Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`
 - `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
+- `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
 - On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
 
 One thing mixer cannot decide for you: **do not build absolute URLs from `ctx.url.host`** (for emails or redirects). The client chooses the `Host` header; use an origin from your configuration.
 
 ## Reference
+
+### Client IP address
+
+`ctx.ip` is the client's IP address, and `ctx.remoteAddress` the address of the direct peer (such as a reverse proxy). Both are normalized (an IPv4-mapped IPv6 address becomes IPv4) and are `undefined` when nothing supplied them: `app.fetch` alone knows no connection.
+
+Adapters pass the address through `app.handle(request, options)`, which otherwise works like `app.fetch`:
+
+| Option | Where it comes from | `ctx.ip` |
+| --- | --- | --- |
+| `remoteAddress` | The socket: `serve()` passes it on Node.js, and `server.requestIP(request)` on Bun | The peer, or behind `trustedProxies` the client from `X-Forwarded-For` |
+| `clientIp` | An address the platform or framework already resolved: Cloudflare's `CF-Connecting-IP`, SvelteKit's `getClientAddress()` | That address as it is; `X-Forwarded-For` is not read |
+
+Behind reverse proxies, list them in `trustedProxies`. `X-Forwarded-For` is read only when the peer is one of them: from the right, trusted proxies are skipped and the first other address is the client, so values a client prepends are ignored. A malformed hop that has to be read, or a header over 8 KiB or 32 hops, falls back to the peer.
+
+```ts
+const app = new Mixer({ trustedProxies: ['10.0.0.0/8', '::1'] })
+```
+
+An IP address can be wrong behind a misconfigured proxy, NAT, or VPN, and many users can share one. Use it for logs and rate limits, not alone to decide who someone is.
+
 
 ### Returning a Response
 
@@ -339,6 +379,7 @@ const app = new Mixer({ basePath: '/api' })
 | `basePath` | none | Path the app is mounted on |
 | `bodyLimit` | 3 MB | Largest request body that `ctx.body()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
 | `onError` | none | `(error, ctx) => value` to shape error responses |
+| `trustedProxies` | none | Reverse proxies (IP addresses or CIDR ranges) whose `X-Forwarded-For` is read for `ctx.ip` |
 
 ## Modules
 

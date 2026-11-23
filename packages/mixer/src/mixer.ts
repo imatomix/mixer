@@ -38,18 +38,18 @@ export interface MixerOptions<S extends State = State, E = unknown> {
 }
 
 export interface HandleOptions<E = unknown> {
-  env?: E
-  executionContext?: ExecutionContextLike
+  env?: E | undefined
+  executionContext?: ExecutionContextLike | undefined
   /**
    * The IP address of the direct peer (the socket), as Node and Bun report it. ctx.ip is resolved from it, with
    * X-Forwarded-For when it is one of trustedProxies
    */
-  remoteAddress?: string
+  remoteAddress?: string | undefined
   /**
    * A client address the platform or framework has already resolved (Cloudflare's CF-Connecting-IP, SvelteKit's
    * getClientAddress()). Used as ctx.ip as it is, without reading X-Forwarded-For
    */
-  clientIp?: string
+  clientIp?: string | undefined
 }
 
 export class Mixer<S extends State = State, E = unknown> {
@@ -83,11 +83,7 @@ export class Mixer<S extends State = State, E = unknown> {
     request: Request,
     env?: E,
     executionContext?: ExecutionContextLike,
-  ): Promise<Response> =>
-    this.handle(request, {
-      ...(env === undefined ? {} : { env }),
-      ...(executionContext === undefined ? {} : { executionContext }),
-    })
+  ): Promise<Response> => this.handle(request, { env, executionContext })
 
   /**
    * Handles a request like fetch, with the connection details an adapter knows (the peer's address). Defined as

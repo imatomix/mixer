@@ -58,6 +58,7 @@ app.mix(
 | `ctx.status` / `ctx.headers` | 組み立て中の応答のステータス（既定 `200`）とヘッダ |
 | `ctx.state` | 後のコンポーネントに渡す値 |
 | `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
+| `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](#クライアントの-ip-アドレス)） |
 | `await ctx.body()` | Content-Type に応じて解析したリクエストボディ。フォームとファイルのアップロードも含む（[詳細](#リクエストボディ)） |
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
@@ -167,7 +168,7 @@ await serve(app, {
 
 - ほかのホスト名へのリクエストは本文なしの `400` になってアプリに届かない。最初の 1 回だけ `console.warn` に出る
 - `Host` がない、複数ある、単純なホスト名とポート以外のものは `400` になる
-- `X-Forwarded-*` ヘッダは使わない
+- `X-Forwarded-For` は `trustedProxies` のときだけ読む（[クライアントの IP アドレス](#クライアントの-ip-アドレス)）。`X-Forwarded-Proto` と `X-Forwarded-Host` は使わない
 - コンポーネントがリクエストボディを読まなかったとき（`413` のあとなど）は、残りを読まずに接続を閉じる
 - クライアントが切断すると `ctx.request.signal` が中断され、ストリーミング中の本文も止まる
 - `server.close()` は新しい接続の受け付けを止め、待機中の接続を閉じ、接続ごとに、処理中のリクエストに応答し終えたら閉じる。`timeout`（既定 10 秒。`server.close({ timeout: 30_000 })`）を過ぎたら残りを切り、その `ctx.request.signal` を中断する。`SIGTERM` を受けたときに呼べば、リクエストを落とさずに入れ替えられる
@@ -175,10 +176,15 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({ port: 3000, hostname: '127.0.0.1', fetch: (request) => app.fetch(request) })
+Bun.serve({
+  port: 3000,
+  hostname: '127.0.0.1',
+  fetch: (request, server) =>
+    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
+})
 ```
 
-`request` だけを渡す。Bun は `fetch(request, server)` と呼ぶので、そのまま渡すと Bun のサーバーが `ctx.env` に入ってしまう。`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
+`app.handle()` で接続元のアドレスを渡し、`ctx.ip` に使う。`app.fetch` をそのまま渡してはいけない。Bun は `fetch(request, server)` と呼ぶので、Bun のサーバーが `ctx.env` に入ってしまう。`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
 
 ### Cloudflare Workers
 
@@ -188,6 +194,19 @@ type Env = { DATABASE_URL: string }
 const app = new Mixer<Record<string, unknown>, Env>().mix((ctx) => ctx.env.DATABASE_URL)
 
 export default app satisfies ExportedHandler<Env>
+```
+
+`ctx.ip` には、Cloudflare が確定させたアドレスを渡す。mixer は `CF-Connecting-IP` を自分では読まない。Cloudflare の外では誰でもこのヘッダを送れるため。
+
+```ts
+export default {
+  fetch: (request, env, executionContext) =>
+    app.handle(request, {
+      env,
+      executionContext,
+      clientIp: request.headers.get('cf-connecting-ip') ?? undefined,
+    }),
+} satisfies ExportedHandler<Env>
 ```
 
 - `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される。mix-router を使うときは、`createRouter<State, Env>()` にもバインディングの型を渡す
@@ -203,7 +222,7 @@ export default app satisfies ExportedHandler<Env>
 
 ### フレームワークの中で使う
 
-フレームワークのキャッチオールのルートに mixer を置き、そのルートのパスを `basePath` に設定して、`Request` だけを渡す。フレームワークはハンドラにほかの引数も渡すので、そのまま渡すと `ctx.env` に入ってしまう。
+フレームワークのキャッチオールのルートに mixer を置き、そのルートのパスを `basePath` に設定して、`Request` だけを渡す。フレームワークはハンドラにほかの引数も渡すので、そのまま渡すと `ctx.env` に入ってしまう。`ctx.ip` には、SvelteKit の `getClientAddress()` のようなフレームワークのアドレスの取り方を使い、`app.handle(request, { clientIp })` で渡す。
 
 **Next.js**（App Router）、`app/api/[[...path]]/route.ts`:
 
@@ -254,11 +273,32 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる
 - `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
+- `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
 - Node.js の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
 
 mixer が代わりに決められないことが 1 つある。**メールやリダイレクトの絶対 URL を `ctx.url.host` から作らない。** `Host` ヘッダはクライアントが選ぶので、設定にあるオリジンを使う。
 
 ## 詳しい説明
+
+### クライアントの IP アドレス
+
+`ctx.ip` はクライアントの IP アドレス、`ctx.remoteAddress` は直接の接続元（リバースプロキシなど）の IP アドレス。どちらも正規化され（IPv6 の形の IPv4 は IPv4 になる）、何も渡されなければ `undefined`。`app.fetch` だけでは接続の情報がない。
+
+アダプタは `app.handle(request, options)` でアドレスを渡す。それ以外は `app.fetch` と同じ。
+
+| オプション | どこから来るか | `ctx.ip` |
+| --- | --- | --- |
+| `remoteAddress` | ソケット。Node.js では `serve()` が渡し、Bun では `server.requestIP(request)` | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
+| `clientIp` | 実行環境やフレームワークが確定させたアドレス（Cloudflare の `CF-Connecting-IP`、SvelteKit の `getClientAddress()`） | そのアドレス。`X-Forwarded-For` は読まない |
+
+リバースプロキシの後ろで動かすときは、それを `trustedProxies` に並べる。`X-Forwarded-For` を読むのは、接続元がその一覧に入るときだけ。右から見ていき、信用するプロキシを飛ばして、最初のほかのアドレスをクライアントとするので、クライアントが前に付け足した値は無視される。読む必要のある段が不正なとき、ヘッダが 8 KiB か 32 段を超えるときは、接続元に戻す。
+
+```ts
+const app = new Mixer({ trustedProxies: ['10.0.0.0/8', '::1'] })
+```
+
+IP アドレスは、プロキシの設定の誤り・NAT・VPN で正しくないことがあり、大勢で 1 つを共有することもある。ログやレート制限に使い、それだけで相手が誰かを決めない。
+
 
 ### Response を返す
 
@@ -339,6 +379,7 @@ const app = new Mixer({ basePath: '/api' })
 | `basePath` | なし | アプリを置くパス |
 | `bodyLimit` | 3 MB | `ctx.body()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413` |
 | `onError` | なし | エラーの応答を組み立てる `(error, ctx) => value` |
+| `trustedProxies` | なし | `ctx.ip` のために `X-Forwarded-For` を読む、リバースプロキシ（IP アドレスか CIDR の範囲） |
 
 ## モジュール
 

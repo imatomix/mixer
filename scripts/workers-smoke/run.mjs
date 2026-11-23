@@ -154,6 +154,13 @@ async function smoke(fetch) {
   const me = await fetch('/api/me', { headers: { cookie: sid ?? '' } })
   expect('session', await me.json(), { user: 'mixer' })
 
+  const ip = await fetch('/api/ip', {
+    headers: { 'cf-connecting-ip': '198.51.100.7' },
+  })
+  expect('client IP from CF-Connecting-IP', await ip.json(), {
+    ip: '198.51.100.7',
+  })
+
   const key = await (await fetch('/api/key')).text()
   expect('Redis session key', /^mix-session:[A-Za-z0-9_-]{43}$/.test(key), true)
 
