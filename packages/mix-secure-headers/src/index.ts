@@ -100,9 +100,9 @@ export function secureHeaders(options: SecureHeadersOptions = {}): Component {
   )
 
   return (ctx) => {
-    ctx.onBeforeSend(() => {
+    ctx.onResponseHeaders((response) => {
       for (const [name, value] of headers) {
-        if (!ctx.headers.has(name)) ctx.headers.set(name, value)
+        if (!response.has(name)) response.set(name, value)
       }
     })
   }

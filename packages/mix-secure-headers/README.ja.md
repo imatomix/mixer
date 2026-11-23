@@ -76,15 +76,15 @@ get('/embed', (ctx) => {
 })
 ```
 
-あるルートでヘッダーを外すには、`onBeforeSend` のフックで消す。フックは追加した順に動くので、`secureHeaders()` のあとに動く。
+あるルートでヘッダーを外すには、mixer の `ctx.onResponseHeaders` で消す。リスナーは追加した順に動くので、`secureHeaders()` のあとに動く。
 
 ```ts
 get('/widget', (ctx) => {
-  ctx.onBeforeSend(() => ctx.headers.delete('X-Frame-Options'))
+  ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
   return widget
 })
 ```
 
-## 限界
+## ヘッダーの付け方
 
-ヘッダーは `onBeforeSend` のフックで付けるので、次の 2 つの応答には付かない。`basePath` の外へのリクエストに返す `404`（コンポーネントが動く前に応答する）と、`onBeforeSend` のフックが例外を投げたときの `500`。どちらもブラウザが表示するページではない。
+`secureHeaders()` は mixer の [`ctx.onResponseHeaders`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#フック) を使うので、応答の組み立てが失敗したときの `500` を含め、実際に送る応答にヘッダーが付く。付かないのは、どのコンポーネントも動く前に応答する、`basePath` の外へのリクエストへの `404` だけ。
