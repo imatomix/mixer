@@ -1,5 +1,5 @@
 import type { Component, Context, CookieOptions } from '@imatomix/mixer'
-import { Session } from './session.js'
+import { Session, snapshot } from './session.js'
 import { MemoryStore, type SessionData, type SessionStore } from './store.js'
 
 export { Session } from './session.js'
@@ -92,7 +92,7 @@ export function session<D extends SessionData = SessionData>(
     createdAt: number,
     expiredId: string | undefined,
   ): Promise<void> {
-    const { data, change } = session.snapshot()
+    const { data, change } = snapshot(session)
     const currentId = session.id
     const created =
       change === 'regenerated' || (change === 'modified' && !currentId)

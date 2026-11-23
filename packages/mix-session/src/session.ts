@@ -3,6 +3,17 @@ import type { SessionData } from './store.js'
 /** What to do when saving */
 export type SessionChange = 'none' | 'modified' | 'regenerated' | 'destroyed'
 
+let snapshotOf: <D extends SessionData>(
+  session: Session<D>,
+) => { data: Partial<D>; change: SessionChange }
+
+/** What mix-session saves: the data and how it changed. Not exported from the package */
+export function snapshot<D extends SessionData>(
+  session: Session<D>,
+): { data: Partial<D>; change: SessionChange } {
+  return snapshotOf(session)
+}
+
 export class Session<D extends SessionData = SessionData> {
   #data: Partial<D>
   readonly #loadedId: string | undefined
@@ -20,10 +31,6 @@ export class Session<D extends SessionData = SessionData> {
   /** ID of the session loaded from the store. undefined for a new session until it is saved */
   get id(): string | undefined {
     return this.#loadedId
-  }
-
-  get isEmpty(): boolean {
-    return Object.keys(this.#data).length === 0
   }
 
   get<K extends keyof D & string>(key: K): D[K] | undefined {
@@ -54,8 +61,11 @@ export class Session<D extends SessionData = SessionData> {
     this.#change = 'destroyed'
   }
 
-  /** @internal Used when saving */
-  snapshot(): { data: Partial<D>; change: SessionChange } {
+  static {
+    snapshotOf = (session) => session.#snapshot()
+  }
+
+  #snapshot(): { data: Partial<D>; change: SessionChange } {
     const changedInside =
       this.#change === 'none' && JSON.stringify(this.#data) !== this.#loadedJson
     return {
