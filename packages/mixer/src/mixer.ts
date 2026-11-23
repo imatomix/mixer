@@ -130,7 +130,10 @@ export class Mixer<S extends State = State, E = unknown> {
           : await this.#respondToError(thrown, ctx, 'handling')
     }
 
-    const final = finalizeResponse(response, ctx.method)
+    const final = finalizeResponse(
+      ctx.applyResponseHeaders(response),
+      ctx.method,
+    )
     await ctx.runOnResponse(final)
     return final
   }
