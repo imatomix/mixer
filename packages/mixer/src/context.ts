@@ -48,6 +48,21 @@ export interface ContextInit<E> {
   remoteAddress: string | undefined
 }
 
+/**
+ * What mixer runs on a Context while answering. Filled in by Context's static block, so these reach its private
+ * parts; the package's entry point does not export it, so it is not part of the public API
+ */
+export interface ContextInternals {
+  draft(ctx: Context): Draft
+  resetDraft(ctx: Context, draft: Draft): void
+  runBeforeSend(ctx: Context): Promise<void>
+  runOnResponse(ctx: Context, response: Response): Promise<void>
+  reportError(ctx: Context, error: unknown, phase: ErrorPhase): void
+  applyResponseHeaders(ctx: Context, response: Response): Response
+}
+
+export const internal = {} as ContextInternals
+
 export class Context<S extends State = State, E = unknown> {
   readonly request: Request
   readonly url: URL
@@ -116,7 +131,7 @@ export class Context<S extends State = State, E = unknown> {
   waitUntil(promise: Promise<unknown>): void {
     const observed = promise.then(
       () => undefined,
-      (error: unknown) => this.reportError(error, 'waitUntil'),
+      (error: unknown) => this.#reportError(error, 'waitUntil'),
     )
     this.#executionContext?.waitUntil(observed)
   }
@@ -188,8 +203,22 @@ export class Context<S extends State = State, E = unknown> {
     this.#responseHeadersListeners.push(listener)
   }
 
-  /** @internal Each listener edits a copy that is kept only if it does not throw */
-  applyResponseHeaders(response: Response): Response {
+  static {
+    Object.assign(internal, {
+      draft: (ctx: Context) => ctx.#draft(),
+      resetDraft: (ctx: Context, draft: Draft) => ctx.#resetDraft(draft),
+      runBeforeSend: (ctx: Context) => ctx.#runBeforeSend(),
+      runOnResponse: (ctx: Context, response: Response) =>
+        ctx.#runOnResponse(response),
+      reportError: (ctx: Context, error: unknown, phase: ErrorPhase) =>
+        ctx.#reportError(error, phase),
+      applyResponseHeaders: (ctx: Context, response: Response) =>
+        ctx.#applyResponseHeaders(response),
+    } satisfies ContextInternals)
+  }
+
+  /** Each listener edits a copy that is kept only if it does not throw */
+  #applyResponseHeaders(response: Response): Response {
     if (this.#responseHeadersListeners.length === 0) return response
     let headers = new Headers(response.headers)
     for (const listener of this.#responseHeadersListeners) {
@@ -198,7 +227,7 @@ export class Context<S extends State = State, E = unknown> {
         listener(edited, { status: response.status })
         headers = edited
       } catch (error) {
-        this.reportError(error, 'headers')
+        this.#reportError(error, 'headers')
       }
     }
     // A Response from fetch() or Response.redirect() has immutable headers, so it is rebuilt without reading the body
@@ -209,8 +238,8 @@ export class Context<S extends State = State, E = unknown> {
     })
   }
 
-  /** @internal A failing listener is logged directly, so reporting never loops or affects the response */
-  reportError(error: unknown, phase: ErrorPhase): void {
+  /** A failing listener is logged directly, so reporting never loops or affects the response */
+  #reportError(error: unknown, phase: ErrorPhase): void {
     if (this.#errorListeners.length === 0) {
       console.error(
         `mixer: ${this.method} ${this.url.pathname} (${phase})`,
@@ -234,25 +263,23 @@ export class Context<S extends State = State, E = unknown> {
     }
   }
 
-  /** @internal */
-  get draft(): Draft {
+  #draft(): Draft {
     return { status: this.status, headers: this.#headers }
   }
 
-  /** @internal Replaces the draft, for error responses */
-  resetDraft(draft: Draft): void {
+  /** Replaces the draft, for error responses */
+  #resetDraft(draft: Draft): void {
     this.status = draft.status
     this.#headers = draft.headers
   }
 
-  /** @internal Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
-  async runBeforeSend(): Promise<void> {
+  /** Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
+  async #runBeforeSend(): Promise<void> {
     const hooks = this.#beforeSendHooks.splice(0)
     for (const hook of hooks) await hook()
   }
 
-  /** @internal */
-  async runOnResponse(response: Response): Promise<void> {
+  async #runOnResponse(response: Response): Promise<void> {
     this.#final = true
     for (const hook of this.#responseHooks) {
       try {
@@ -261,7 +288,7 @@ export class Context<S extends State = State, E = unknown> {
           headers: new Headers(response.headers),
         })
       } catch (error) {
-        this.reportError(error, 'onResponse')
+        this.#reportError(error, 'onResponse')
       }
     }
   }
