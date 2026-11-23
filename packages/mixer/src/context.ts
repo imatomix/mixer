@@ -23,6 +23,7 @@ export type ErrorPhase =
   | 'onResponse'
   | 'waitUntil'
   | 'streamCancel'
+  | 'headers'
 
 export interface ErrorReport {
   readonly error: unknown
@@ -32,6 +33,10 @@ export interface ErrorReport {
 type BeforeSendHook = () => void | Promise<void>
 type ResponseHook = (info: ResponseInfo) => void | Promise<void>
 type ErrorListener = (report: ErrorReport) => void | Promise<void>
+type ResponseHeadersListener = (
+  headers: Headers,
+  info: { readonly status: number },
+) => void
 
 export interface ContextInit<E> {
   path: string
@@ -70,6 +75,7 @@ export class Context<S extends State = State, E = unknown> {
   #beforeSendHooks: BeforeSendHook[] = []
   readonly #responseHooks: ResponseHook[] = []
   readonly #errorListeners: ErrorListener[] = []
+  readonly #responseHeadersListeners: ResponseHeadersListener[] = []
   #final = false
 
   constructor(request: Request, init: ContextInit<E>) {
@@ -149,6 +155,38 @@ export class Context<S extends State = State, E = unknown> {
    */
   onErrorReport(listener: (report: ErrorReport) => void | Promise<void>): void {
     this.#errorListeners.push(listener)
+  }
+
+  /**
+   * Registers a listener that edits the headers of the response actually sent, whatever produced it: a normal
+   * response, an error, onError, a returned Response, or the 500 after a failing hook. For headers every response
+   * needs, such as security headers or a request ID. It runs once and synchronously; it cannot change the status.
+   * A listener that throws is reported with phase 'headers' and its changes are dropped. mixer's own guarantees
+   * (nosniff, private caching of responses with cookies, no body for HEAD) are applied after it
+   */
+  onResponseHeaders(listener: ResponseHeadersListener): void {
+    this.#responseHeadersListeners.push(listener)
+  }
+
+  /** @internal Each listener edits a copy that is kept only if it does not throw */
+  applyResponseHeaders(response: Response): Response {
+    if (this.#responseHeadersListeners.length === 0) return response
+    let headers = new Headers(response.headers)
+    for (const listener of this.#responseHeadersListeners) {
+      const edited = new Headers(headers)
+      try {
+        listener(edited, { status: response.status })
+        headers = edited
+      } catch (error) {
+        this.reportError(error, 'headers')
+      }
+    }
+    // A Response from fetch() or Response.redirect() has immutable headers, so it is rebuilt without reading the body
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   }
 
   /** @internal A failing listener is logged directly, so reporting never loops or affects the response */

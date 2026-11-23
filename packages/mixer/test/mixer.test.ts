@@ -791,3 +791,152 @@ describe('error reports', () => {
     expect(error).not.toHaveBeenCalled()
   })
 })
+
+describe('response headers', () => {
+  function decorated(
+    options: ConstructorParameters<typeof Mixer>[0],
+    ...components: Component[]
+  ) {
+    return new Mixer(options).mix(
+      (ctx) => {
+        ctx.onResponseHeaders((headers, { status }) => {
+          headers.set('X-Request-Id', 'abc')
+          headers.set('X-Status', String(status))
+        })
+      },
+      ...components,
+    )
+  }
+
+  it.each<[string, Component[], number]>([
+    ['a normal response', [() => 'ok'], 200],
+    [
+      'an HttpError',
+      [
+        () => {
+          throw new HttpError(403)
+        },
+      ],
+      403,
+    ],
+    ['no matching component', [], 404],
+    ['a returned Response', [() => new Response('raw', { status: 201 })], 201],
+    [
+      'a returned Response with immutable headers',
+      [() => Response.redirect('http://localhost/next', 302)],
+      302,
+    ],
+  ])('adds headers to %s', async (_label, components, status) => {
+    const res = await call(decorated({}, ...components))
+    expect(res.status).toBe(status)
+    expect(res.headers.get('x-request-id')).toBe('abc')
+    expect(res.headers.get('x-status')).toBe(String(status))
+  })
+
+  it('adds headers to the response onError returned', async () => {
+    const res = await call(
+      decorated({ onError: () => ({ handled: true }) }, () => {
+        throw new Error('boom')
+      }),
+    )
+    expect(await res.json()).toEqual({ handled: true })
+    expect(res.headers.get('x-request-id')).toBe('abc')
+  })
+
+  it('adds headers to the 500 when a later onBeforeSend hook throws', async () => {
+    quiet()
+    const res = await call(
+      decorated({}, (ctx) => {
+        ctx.onBeforeSend(() => {
+          throw new Error('hook broke')
+        })
+        return 'ok'
+      }),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-request-id')).toBe('abc')
+  })
+
+  it('adds headers to the 500 when the value cannot be serialized', async () => {
+    quiet()
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const res = await call(decorated({}, () => circular))
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-request-id')).toBe('abc')
+  })
+
+  it("can see and replace a returned Response's own headers", async () => {
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onResponseHeaders((headers) => {
+          headers.set('X-Seen', headers.get('X-Upstream') ?? 'none')
+          headers.set('X-Upstream', 'replaced')
+        })
+      },
+      () => new Response('raw', { headers: { 'X-Upstream': 'upstream' } }),
+    )
+    const res = await call(app)
+    expect(res.headers.get('x-seen')).toBe('upstream')
+    expect(res.headers.get('x-upstream')).toBe('replaced')
+    expect(await res.text()).toBe('raw')
+  })
+
+  it('runs listeners in order, reports one that throws, and drops its partial changes', async () => {
+    const reports: unknown[] = []
+    const broken = new Error('listener broke')
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onErrorReport(({ error, phase }) => {
+          reports.push([phase, error])
+        })
+        ctx.onResponseHeaders((headers) => {
+          headers.set('X-Order', 'first')
+        })
+        ctx.onResponseHeaders((headers) => {
+          headers.set('X-Partial', 'yes')
+          throw broken
+        })
+        ctx.onResponseHeaders((headers) => {
+          headers.append('X-Order', 'third')
+        })
+      },
+      () => 'ok',
+    )
+    const res = await call(app)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-order')).toBe('first, third')
+    expect(res.headers.get('x-partial')).toBeNull()
+    expect(reports).toEqual([['headers', broken]])
+  })
+
+  it('cannot undo what mixer guarantees for every response', async () => {
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onResponseHeaders((headers) => {
+          headers.delete('X-Content-Type-Options')
+          headers.set('Cache-Control', 'public, max-age=60')
+        })
+        ctx.cookies.set('sid', 'x')
+      },
+      () => 'ok',
+    )
+    const res = await call(app, '/', { method: 'HEAD' })
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('cache-control')).toBe('private, max-age=60')
+    expect(res.body).toBeNull()
+  })
+
+  it('keeps every Set-Cookie header', async () => {
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onResponseHeaders(() => {})
+        ctx.cookies.set('a', '1')
+        ctx.cookies.set('b', '2')
+      },
+      () => 'ok',
+    )
+    const res = await call(app)
+    expect(res.headers.getSetCookie()).toHaveLength(2)
+  })
+})
