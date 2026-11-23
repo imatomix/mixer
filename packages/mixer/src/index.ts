@@ -1,6 +1,8 @@
 export type { FormBody, MultipartBody } from './body.js'
 export {
   Context,
+  type ErrorPhase,
+  type ErrorReport,
   type ExecutionContextLike,
   type ResponseInfo,
   type State,

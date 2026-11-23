@@ -63,6 +63,7 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
+| `ctx.onErrorReport(fn)` | Receive unexpected errors for this request ([details](#error-reports)) |
 | `ctx.waitUntil(promise)` | Run work after the response without delaying it ([details](#ctxwaituntil)) |
 
 ### What a component can return
@@ -125,6 +126,22 @@ const app = new Mixer({
   onError: (error, ctx) => ({ message: 'Sorry', status: ctx.status }),
 })
 ```
+
+### Error reports
+
+Unexpected errors are logged with `console.error`, together with the request's method and path: errors a component throws (also when `onError` turns them into a response), failures of `onError` and of hooks, rejected `ctx.waitUntil()` work, and streams that fail to cancel. An `HttpError` below `500` is part of the response, not a failure, so it is not logged.
+
+To send them somewhere else, such as your logger with the request's ID, register `ctx.onErrorReport(fn)`. While at least one listener is registered, mixer stops logging them itself. A listener that throws is logged and does not affect the response. A listener may return a Promise, for example to send the report over the network; the response does not wait for it, and it is kept alive like `ctx.waitUntil()` work.
+
+```ts
+app.mix((ctx) => {
+  ctx.onErrorReport(({ error, phase }) => {
+    myLogger.error({ method: ctx.method, path: ctx.url.pathname, phase, error })
+  })
+})
+```
+
+`phase` is one of `'handling'`, `'onError'`, `'beforeSend'`, `'onResponse'`, `'waitUntil'`, and `'streamCancel'`. Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
 
 ### Types
 
@@ -325,11 +342,11 @@ app
   })
 ```
 
-`ctx.onResponse(fn)` runs once the final response is ready, with a snapshot `{ status, headers }` (changing it has no effect). It runs before `app.fetch` resolves, so keep it short and pass slow work to `ctx.waitUntil()`. A failing hook is logged and does not affect the response.
+`ctx.onResponse(fn)` runs once the final response is ready, with a snapshot `{ status, headers }` (changing it has no effect). It runs before `app.fetch` resolves, so keep it short and pass slow work to `ctx.waitUntil()`. A failing hook is [reported](#error-reports) and does not affect the response.
 
 ### ctx.waitUntil()
 
-Runs work after the response without making the response wait. On a long-running server (`serve()`, `Bun.serve`) the work finishes as the process keeps running, and a failure is logged. On platforms that may stop after the response, pass the platform's background-work API as the third argument, as in `app.fetch(request, env, { waitUntil })`; on Cloudflare Workers, `export default app` does this for you.
+Runs work after the response without making the response wait. On a long-running server (`serve()`, `Bun.serve`) the work finishes as the process keeps running, and a failure is [reported](#error-reports). On platforms that may stop after the response, pass the platform's background-work API as the third argument, as in `app.fetch(request, env, { waitUntil })`; on Cloudflare Workers, `export default app` does this for you.
 
 ### Cookies
 

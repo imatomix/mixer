@@ -63,6 +63,7 @@ app.mix(
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
+| `ctx.onErrorReport(fn)` | このリクエストの想定外のエラーを受け取る（[詳細](#エラーの報告)） |
 | `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](#ctxwaituntil)） |
 
 ### 返せる値
@@ -125,6 +126,22 @@ const app = new Mixer({
   onError: (error, ctx) => ({ message: 'Sorry', status: ctx.status }),
 })
 ```
+
+### エラーの報告
+
+想定外のエラーは、リクエストのメソッドとパスを添えて `console.error` に出す。コンポーネントが投げたエラー（`onError` が応答に変えた場合も）、`onError` やフックの失敗、`ctx.waitUntil()` に渡した処理の失敗、止められなかったストリームが対象。`500` 未満の `HttpError` は失敗ではなく応答の一部なので、出さない。
+
+リクエストの ID を付けて自分のロガーに送るなど、別の場所に送るときは `ctx.onErrorReport(fn)` を登録する。リスナーが 1 つでもあれば、mixer 自身は出さない。例外を投げたリスナーはログに出るだけで、応答には影響しない。ネットワーク越しに送るなど、リスナーは Promise を返してもよい。応答はそれを待たず、`ctx.waitUntil()` に渡した処理と同じように最後まで実行される。
+
+```ts
+app.mix((ctx) => {
+  ctx.onErrorReport(({ error, phase }) => {
+    myLogger.error({ method: ctx.method, path: ctx.url.pathname, phase, error })
+  })
+})
+```
+
+`phase` は `'handling'`・`'onError'`・`'beforeSend'`・`'onResponse'`・`'waitUntil'`・`'streamCancel'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
 
 ### 型
 
@@ -325,11 +342,11 @@ app
   })
 ```
 
-`ctx.onResponse(fn)` は、最終的な応答ができたあとに、スナップショット `{ status, headers }` を受け取って実行される（変えても応答には影響しない）。`app.fetch` が返る前に実行されるので、短く保ち、時間のかかる処理は `ctx.waitUntil()` に渡す。失敗はログに出るだけで、応答には影響しない。
+`ctx.onResponse(fn)` は、最終的な応答ができたあとに、スナップショット `{ status, headers }` を受け取って実行される（変えても応答には影響しない）。`app.fetch` が返る前に実行されるので、短く保ち、時間のかかる処理は `ctx.waitUntil()` に渡す。失敗は[報告](#エラーの報告)されるだけで、応答には影響しない。
 
 ### ctx.waitUntil()
 
-応答を待たせずに、応答のあとで処理を実行する。動き続けるサーバー（`serve()`、`Bun.serve`）では、プロセスが動き続けるので処理は最後まで実行され、失敗はログに出る。応答のあとで止まりうる環境では、その環境の応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。Cloudflare Workers では `export default app` がこれを代わりに行う。
+応答を待たせずに、応答のあとで処理を実行する。動き続けるサーバー（`serve()`、`Bun.serve`）では、プロセスが動き続けるので処理は最後まで実行され、失敗は[報告](#エラーの報告)される。応答のあとで止まりうる環境では、その環境の応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。Cloudflare Workers では `export default app` がこれを代わりに行う。
 
 ### Cookie
 
