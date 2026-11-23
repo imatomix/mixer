@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { HttpError, Mixer, type ResponseInfo } from '../src/index.js'
+import {
+  type Component,
+  HttpError,
+  Mixer,
+  type ResponseInfo,
+} from '../src/index.js'
 import { call, trackedStream } from './helpers.js'
 
 afterEach(() => {
@@ -572,5 +577,193 @@ describe('client address', () => {
     expect(() => new Mixer({ trustedProxies: ['example.com'] })).toThrow(
       /trustedProxies/,
     )
+  })
+})
+
+describe('error reports', () => {
+  type Report = { error: unknown; phase: string }
+  const request = () => new Request('http://localhost/')
+
+  function reporting(...components: Component[]) {
+    const reports: Report[] = []
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onErrorReport((report) => {
+          reports.push(report)
+        })
+      },
+      ...components,
+    )
+    return { app, reports }
+  }
+
+  it('reports an error a component threw', async () => {
+    const boom = new Error('boom')
+    const { app, reports } = reporting(() => {
+      throw boom
+    })
+    expect((await call(app)).status).toBe(500)
+    expect(reports).toEqual([{ error: boom, phase: 'handling' }])
+  })
+
+  it('reports an HttpError of 500 or more but not one below 500', async () => {
+    const unavailable = new HttpError(503)
+    const { app, reports } = reporting((ctx) => {
+      if (ctx.url.pathname === '/503') throw unavailable
+      throw new HttpError(403)
+    })
+    await call(app, '/403')
+    await call(app, '/missing-is-404-too')
+    await call(app, '/503')
+    expect(reports).toEqual([{ error: unavailable, phase: 'handling' }])
+  })
+
+  it('reports the original error even when onError turns it into a response', async () => {
+    const boom = new Error('boom')
+    const reports: Report[] = []
+    const app = new Mixer({ onError: () => ({ handled: true }) }).mix(
+      (ctx) => {
+        ctx.onErrorReport((report) => {
+          reports.push(report)
+        })
+      },
+      () => {
+        throw boom
+      },
+    )
+    expect(await (await call(app)).json()).toEqual({ handled: true })
+    expect(reports).toEqual([{ error: boom, phase: 'handling' }])
+  })
+
+  it('reports an onError failure', async () => {
+    const boom = new Error('boom')
+    const broken = new Error('onError broke')
+    const reports: Report[] = []
+    const app = new Mixer({
+      onError: () => {
+        throw broken
+      },
+    }).mix(
+      (ctx) => {
+        ctx.onErrorReport((report) => {
+          reports.push(report)
+        })
+      },
+      () => {
+        throw boom
+      },
+    )
+    expect((await call(app)).status).toBe(500)
+    expect(reports).toEqual([
+      { error: boom, phase: 'handling' },
+      { error: broken, phase: 'onError' },
+    ])
+  })
+
+  it('reports an onBeforeSend failure', async () => {
+    const broken = new Error('hook broke')
+    const { app, reports } = reporting((ctx) => {
+      ctx.onBeforeSend(() => {
+        throw broken
+      })
+      return 'ok'
+    })
+    expect((await call(app)).status).toBe(500)
+    expect(reports).toEqual([{ error: broken, phase: 'beforeSend' }])
+  })
+
+  it('reports an onResponse failure', async () => {
+    const broken = new Error('response hook broke')
+    const { app, reports } = reporting((ctx) => {
+      ctx.onResponse(() => {
+        throw broken
+      })
+      return 'ok'
+    })
+    expect((await call(app)).status).toBe(200)
+    expect(reports).toEqual([{ error: broken, phase: 'onResponse' }])
+  })
+
+  it.each([
+    ['without an execution context', undefined],
+    ['with an execution context', { waitUntil: vi.fn() }],
+  ])('reports a failing waitUntil promise %s', async (_, executionContext) => {
+    const broken = new Error('background failed')
+    const reports: Report[] = []
+    const { handle } = new Mixer().mix((ctx) => {
+      ctx.onErrorReport((report) => {
+        reports.push(report)
+      })
+      ctx.waitUntil(Promise.reject(broken))
+      return 'ok'
+    })
+    expect((await handle(request(), { executionContext })).status).toBe(200)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reports).toEqual([{ error: broken, phase: 'waitUntil' }])
+    if (executionContext) {
+      expect(executionContext.waitUntil).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('reports a stream that fails to cancel', async () => {
+    const broken = new Error('cancel failed')
+    const { app, reports } = reporting((ctx) => {
+      ctx.onBeforeSend(() => {
+        throw new Error('hook broke')
+      })
+      return new ReadableStream({
+        cancel() {
+          throw broken
+        },
+      })
+    })
+    await call(app)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reports).toContainEqual({ error: broken, phase: 'streamCancel' })
+  })
+
+  it('keeps a failing listener from affecting the response or other listeners', async () => {
+    const error = quiet()
+    const reports: Report[] = []
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onErrorReport(() => {
+          throw new Error('listener broke')
+        })
+        ctx.onErrorReport(async () => {
+          throw new Error('async listener broke')
+        })
+        ctx.onErrorReport((report) => {
+          reports.push(report)
+        })
+      },
+      () => {
+        throw new Error('boom')
+      },
+    )
+    expect((await call(app)).status).toBe(500)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reports).toHaveLength(1)
+    expect(error).toHaveBeenCalledTimes(2)
+  })
+
+  it('logs with the method and path when nobody listens', async () => {
+    const error = quiet()
+    const boom = new Error('boom')
+    const app = new Mixer().mix(() => {
+      throw boom
+    })
+    await call(app, '/todos?secret=1', { method: 'POST' })
+    expect(error).toHaveBeenCalledTimes(1)
+    expect(error).toHaveBeenCalledWith('mixer: POST /todos (handling)', boom)
+  })
+
+  it('does not log to the console when a listener takes the report', async () => {
+    const error = quiet()
+    const { app } = reporting(() => {
+      throw new Error('boom')
+    })
+    await call(app)
+    expect(error).not.toHaveBeenCalled()
   })
 })

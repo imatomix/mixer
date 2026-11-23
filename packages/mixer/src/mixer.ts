@@ -1,5 +1,10 @@
 import { DEFAULT_BODY_LIMIT } from './body.js'
-import { Context, type ExecutionContextLike, type State } from './context.js'
+import {
+  Context,
+  type ErrorPhase,
+  type ExecutionContextLike,
+  type State,
+} from './context.js'
 import { HttpError } from './errors.js'
 import {
   errorDraft,
@@ -118,8 +123,11 @@ export class Mixer<S extends State = State, E = unknown> {
     try {
       if (path === undefined) throw new HttpError(404)
       response = await this.#respond(ctx, await this.#run(ctx))
-    } catch (error) {
-      response = await this.#respondToError(error, ctx)
+    } catch (thrown) {
+      response =
+        thrown instanceof BeforeSendFailure
+          ? await this.#respondToError(thrown.error, ctx, 'beforeSend')
+          : await this.#respondToError(thrown, ctx, 'handling')
     }
 
     const final = finalizeResponse(response, ctx.method)
@@ -140,14 +148,19 @@ export class Mixer<S extends State = State, E = unknown> {
       await ctx.runBeforeSend()
     } catch (error) {
       // The value will never be sent, so release a stream it holds (for example, an open file)
-      cancelBody(value)
-      throw error
+      cancelBody(value, ctx)
+      throw new BeforeSendFailure(error)
     }
     return toResponse(value, ctx.draft, ctx.url.pathname)
   }
 
-  async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
+  async #respondToError(
+    error: unknown,
+    ctx: Context<S, E>,
+    phase: ErrorPhase,
+  ): Promise<Response> {
     const status = error instanceof HttpError ? error.status : 500
+    if (status >= 500) ctx.reportError(error, phase)
     const draft = errorDraft(ctx.headers, status)
     if (error instanceof HttpError) {
       addHeaders(draft.headers, error.headers, { cookies: true })
@@ -159,14 +172,16 @@ export class Mixer<S extends State = State, E = unknown> {
       try {
         value = await this.#onError(error, ctx)
       } catch (handlerError) {
-        console.error(handlerError)
+        ctx.reportError(handlerError, 'onError')
       }
       // A failure while sending onError's value is a hook failure, not an onError failure, so it is a 500
       if (value !== undefined) {
         try {
           return await this.#respond(ctx, value)
-        } catch (hookError) {
-          return respondToHookFailure(hookError, ctx)
+        } catch (thrown) {
+          return thrown instanceof BeforeSendFailure
+            ? respondToHookFailure(thrown.error, ctx, 'beforeSend')
+            : respondToHookFailure(thrown, ctx, 'onError')
         }
       }
       const fresh = errorDraft(draft.headers, status)
@@ -179,7 +194,7 @@ export class Mixer<S extends State = State, E = unknown> {
     try {
       await ctx.runBeforeSend()
     } catch (hookError) {
-      return respondToHookFailure(hookError, ctx)
+      return respondToHookFailure(hookError, ctx, 'beforeSend')
     }
     return defaultErrorResponse(error, ctx)
   }
@@ -209,11 +224,17 @@ function addHeaders(
     target.append('Set-Cookie', cookie)
 }
 
+/** Marks an error thrown by an onBeforeSend hook, so it is reported as such */
+class BeforeSendFailure {
+  constructor(readonly error: unknown) {}
+}
+
 function respondToHookFailure(
   error: unknown,
   ctx: Context<State, unknown>,
+  phase: ErrorPhase,
 ): Response {
-  console.error(error)
+  ctx.reportError(error, phase)
   ctx.resetDraft(errorDraft(ctx.headers, 500))
   return toResponse({ error: 'Internal Server Error' }, ctx.draft)
 }
@@ -225,18 +246,19 @@ function defaultErrorResponse(
   if (error instanceof HttpError && error.expose) {
     return toResponse({ error: error.message }, ctx.draft)
   }
-  console.error(error)
   return toResponse({ error: 'Internal Server Error' }, ctx.draft)
 }
 
-function cancelBody(value: unknown): void {
+function cancelBody(value: unknown, ctx: Context<State, unknown>): void {
   const stream =
     value instanceof ReadableStream
       ? value
       : value instanceof Response
         ? value.body
         : null
-  stream?.cancel().catch((error: unknown) => console.error(error))
+  stream
+    ?.cancel()
+    .catch((error: unknown) => ctx.reportError(error, 'streamCancel'))
 }
 
 function normalizeBasePath(basePath: string | undefined): string {

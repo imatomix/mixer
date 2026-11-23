@@ -15,8 +15,23 @@ export interface ResponseInfo {
   readonly headers: Headers
 }
 
+/** Where an error reported through ctx.onErrorReport() happened */
+export type ErrorPhase =
+  | 'handling'
+  | 'onError'
+  | 'beforeSend'
+  | 'onResponse'
+  | 'waitUntil'
+  | 'streamCancel'
+
+export interface ErrorReport {
+  readonly error: unknown
+  readonly phase: ErrorPhase
+}
+
 type BeforeSendHook = () => void | Promise<void>
 type ResponseHook = (info: ResponseInfo) => void | Promise<void>
+type ErrorListener = (report: ErrorReport) => void | Promise<void>
 
 export interface ContextInit<E> {
   path: string
@@ -54,6 +69,7 @@ export class Context<S extends State = State, E = unknown> {
   #cookies: Cookies | undefined
   #beforeSendHooks: BeforeSendHook[] = []
   readonly #responseHooks: ResponseHook[] = []
+  readonly #errorListeners: ErrorListener[] = []
   #final = false
 
   constructor(request: Request, init: ContextInit<E>) {
@@ -86,14 +102,14 @@ export class Context<S extends State = State, E = unknown> {
 
   /**
    * Keeps background work alive after the response. On Cloudflare Workers it is passed to
-   * waitUntil; elsewhere it is not awaited, and a failure is only logged
+   * waitUntil; elsewhere it is not awaited. A failure is reported like any other error
    */
   waitUntil(promise: Promise<unknown>): void {
-    if (this.#executionContext) {
-      this.#executionContext.waitUntil(promise)
-      return
-    }
-    promise.catch((error: unknown) => console.error(error))
+    const observed = promise.then(
+      () => undefined,
+      (error: unknown) => this.reportError(error, 'waitUntil'),
+    )
+    this.#executionContext?.waitUntil(observed)
   }
 
   /** A stream can be read only once, so the result is cached to allow calling this any number of times */
@@ -126,6 +142,36 @@ export class Context<S extends State = State, E = unknown> {
     this.#responseHooks.push(hook)
   }
 
+  /**
+   * Registers a listener for unexpected errors while handling this request, including those that onError turned
+   * into a response and those after the response (onResponse hooks, waitUntil). HttpErrors below 500 are not
+   * reported. Without a listener, mixer logs them with console.error together with the method and path
+   */
+  onErrorReport(listener: (report: ErrorReport) => void | Promise<void>): void {
+    this.#errorListeners.push(listener)
+  }
+
+  /** @internal A failing listener is logged directly, so reporting never loops or affects the response */
+  reportError(error: unknown, phase: ErrorPhase): void {
+    if (this.#errorListeners.length === 0) {
+      console.error(
+        `mixer: ${this.method} ${this.url.pathname} (${phase})`,
+        error,
+      )
+      return
+    }
+    for (const listener of this.#errorListeners) {
+      try {
+        const result = listener({ error, phase })
+        if (result instanceof Promise) {
+          result.catch((listenerError: unknown) => console.error(listenerError))
+        }
+      } catch (listenerError) {
+        console.error(listenerError)
+      }
+    }
+  }
+
   /** @internal */
   get draft(): Draft {
     return { status: this.status, headers: this.#headers }
@@ -153,7 +199,7 @@ export class Context<S extends State = State, E = unknown> {
           headers: new Headers(response.headers),
         })
       } catch (error) {
-        console.error(error)
+        this.reportError(error, 'onResponse')
       }
     }
   }
