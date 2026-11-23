@@ -23,7 +23,7 @@ await serve(app, { port: 3000 })
 
 - **Web standard.** `app.fetch(request)` returns a `Response`, so the same app runs on Node.js, Bun, Cloudflare Workers, and inside Next.js, Nuxt, SvelteKit, or React Router
 - **Safe by default.** Security headers, cookie attributes, caching of responses with cookies, error responses, and host checks are right without extra code
-- **Pick what you need.** The core has no dependencies; routing, CORS, static files, sessions, and logging are separate packages, and every part is a plain function you can replace
+- **Pick what you need.** The core has no dependencies; routing, CORS, CSRF protection, static files, sessions, and logging are separate packages, and every part is a plain function you can replace
 - **Typed.** Route parameters are inferred from the path, and `ctx.state` and `ctx.env` take your types
 
 ## Packages
@@ -33,6 +33,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mixer](packages/mixer) | The core: components, `ctx`, responses, cookies, errors, and the Node.js adapter | Node.js, Bun, Workers |
 | [@imatomix/mix-router](packages/mix-router) | Type-safe router | Node.js, Bun, Workers |
 | [@imatomix/mix-cors](packages/mix-cors) | CORS | Node.js, Bun, Workers |
+| [@imatomix/mix-csrf](packages/mix-csrf) | CSRF protection with `Sec-Fetch-Site` and `Origin` | Node.js, Bun, Workers |
 | [@imatomix/mix-static](packages/mix-static) | Static files | Node.js, Bun |
 | [@imatomix/mix-session](packages/mix-session) | Server-side sessions | Node.js, Bun, Workers (with an external store) |
 | [@imatomix/mix-logger](packages/mix-logger) | Access logs | Node.js, Bun, Workers |

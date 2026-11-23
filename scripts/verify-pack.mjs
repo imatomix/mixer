@@ -287,6 +287,26 @@ if (simple.headers.get('access-control-allow-origin') !== '*' || preflight.statu
     : ''
 }
 ${
+  dependencies['@imatomix/mix-csrf']
+    ? `
+import { Mixer as CsrfMixer } from '@imatomix/mixer'
+import { csrf } from '@imatomix/mix-csrf'
+
+const csrfApp = new CsrfMixer().mix(csrf(), () => 'csrf ok')
+const csrfServer = await listen(csrfApp)
+const csrfBase = \`http://127.0.0.1:\${csrfServer.port}\`
+const sameOrigin = await fetch(csrfBase, { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' } })
+const sameOriginText = await sameOrigin.text()
+const crossSite = await fetch(csrfBase, { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })
+await crossSite.text()
+await csrfServer.close()
+if (sameOriginText !== 'csrf ok' || crossSite.status !== 403) {
+  throw new Error('mixer + mix-csrf smoke test failed')
+}
+`
+    : ''
+}
+${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'
