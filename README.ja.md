@@ -32,7 +32,7 @@ await serve(app, { port: 3000 })
 
 | パッケージ | 説明 | 動く場所 |
 | --- | --- | --- |
-| [@imatomix/mixer](packages/mixer) | 本体: コンポーネント、`ctx`、応答、Cookie、エラー、Node.js アダプタ | Node.js、Bun、Workers |
+| [@imatomix/mixer](packages/mixer) | 本体: コンポーネント、`ctx`、応答、Cookie、エラー、Node.js・Bun アダプタ | Node.js、Bun、Workers |
 | [@imatomix/mix-router](packages/mix-router) | 型安全なルーター | Node.js、Bun、Workers |
 | [@imatomix/mix-cors](packages/mix-cors) | CORS | Node.js、Bun、Workers |
 | [@imatomix/mix-csrf](packages/mix-csrf) | `Sec-Fetch-Site` と `Origin` による CSRF 対策 | Node.js、Bun、Workers |

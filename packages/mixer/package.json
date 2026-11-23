@@ -13,6 +13,11 @@
       "@imatomix/source": "./src/node.ts",
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./bun": {
+      "@imatomix/source": "./src/bun.ts",
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js"
     }
   },
   "main": "./dist/index.js",

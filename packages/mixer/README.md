@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-Open http://localhost:3000. On Bun, use `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` instead; see [Running the app](#running-the-app) for the other places.
+Open http://localhost:3000. On Bun, use `serve` imported from `@imatomix/mixer/bun` instead; see [Running the app](#running-the-app) for the other places.
 
 ## The basics
 
@@ -194,15 +194,14 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({
-  port: 3000,
-  hostname: '127.0.0.1',
-  fetch: (request, server) =>
-    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
-})
+import { serve } from '@imatomix/mixer/bun'
+
+const server = await serve(app, { port: 3000 })
+// When shutting down:
+await server.close()
 ```
 
-`app.handle()` passes the peer's address for `ctx.ip`. Do not pass `app.fetch` itself: Bun calls `fetch(request, server)`, and its server would become `ctx.env`. `Bun.serve` does not check host names; the host check above belongs to `serve()` from `@imatomix/mixer/node`.
+Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option.
 
 ### Cloudflare Workers
 
@@ -292,7 +291,7 @@ Without any configuration:
 - `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
 - `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
-- On Node.js, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
+- On Node.js and Bun, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
 
 What depends on the app is left to modules, one line each: CSRF protection with [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf), and `X-Frame-Options`, `Referrer-Policy`, HSTS, or CSP with [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers). An app that serves pages to browsers should mix in both.
 
@@ -308,7 +307,7 @@ Adapters pass the address through `app.handle(request, options)`, which otherwis
 
 | Option | Where it comes from | `ctx.ip` |
 | --- | --- | --- |
-| `remoteAddress` | The socket: `serve()` passes it on Node.js, and `server.requestIP(request)` on Bun | The peer, or behind `trustedProxies` the client from `X-Forwarded-For` |
+| `remoteAddress` | The socket: the Node.js and Bun adapters pass it to `app.handle()` | The peer, or behind `trustedProxies` the client from `X-Forwarded-For` |
 | `clientIp` | An address the platform or framework already resolved: Cloudflare's `CF-Connecting-IP`, SvelteKit's `getClientAddress()` | That address as it is; `X-Forwarded-For` is not read |
 
 Behind reverse proxies, list them in `trustedProxies`. `X-Forwarded-For` is read only when the peer is one of them: from the right, trusted proxies are skipped and the first other address is the client, so values a client prepends are ignored. A malformed hop that has to be read, or a header over 8 KiB or 32 hops, falls back to the peer.

@@ -26,7 +26,7 @@ const app = new Mixer().mix(() => 'Hello mixer')
 await serve(app, { port: 3000 })
 ```
 
-http://localhost:3000 を開く。Bun では代わりに `Bun.serve({ port: 3000, fetch: (request) => app.fetch(request) })` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
+http://localhost:3000 を開く。Bun では代わりに `@imatomix/mixer/bun` からインポートした `serve` を使う。ほかの動かし方は[アプリを動かす](#アプリを動かす)を参照。
 
 ## 基本
 
@@ -194,15 +194,14 @@ await serve(app, {
 ### Bun
 
 ```ts
-Bun.serve({
-  port: 3000,
-  hostname: '127.0.0.1',
-  fetch: (request, server) =>
-    app.handle(request, { remoteAddress: server.requestIP(request)?.address }),
-})
+import { serve } from '@imatomix/mixer/bun'
+
+const server = await serve(app, { port: 3000 })
+// 終了するとき:
+await server.close()
 ```
 
-`app.handle()` で接続元のアドレスを渡し、`ctx.ip` に使う。`app.fetch` をそのまま渡してはいけない。Bun は `fetch(request, server)` と呼ぶので、Bun のサーバーが `ctx.env` に入ってしまう。`Bun.serve` はホスト名を確かめない。上のホスト名の確認は `@imatomix/mixer/node` の `serve()` のもの。
+Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。
 
 ### Cloudflare Workers
 
@@ -292,7 +291,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
 - `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
-- Node.js の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
+- Node.js と Bun の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
 
 アプリによって変わるものはモジュールに任せ、それぞれ 1 行で加える。CSRF 対策は [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf)、`X-Frame-Options`・`Referrer-Policy`・HSTS・CSP は [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers)。ブラウザにページを返すアプリは両方を加える。
 
@@ -308,7 +307,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 
 | オプション | どこから来るか | `ctx.ip` |
 | --- | --- | --- |
-| `remoteAddress` | ソケット。Node.js では `serve()` が渡し、Bun では `server.requestIP(request)` | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
+| `remoteAddress` | ソケット。Node.js と Bun のアダプタが `app.handle()` に渡す | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
 | `clientIp` | 実行環境やフレームワークが確定させたアドレス（Cloudflare の `CF-Connecting-IP`、SvelteKit の `getClientAddress()`） | そのアドレス。`X-Forwarded-For` は読まない |
 
 リバースプロキシの後ろで動かすときは、それを `trustedProxies` に並べる。`X-Forwarded-For` を読むのは、接続元がその一覧に入るときだけ。右から見ていき、信用するプロキシを飛ばして、最初のほかのアドレスをクライアントとするので、クライアントが前に付け足した値は無視される。読む必要のある段が不正なとき、ヘッダが 8 KiB か 32 段を超えるときは、接続元に戻す。
