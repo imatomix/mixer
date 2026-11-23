@@ -35,6 +35,8 @@ function defaultMessage(status: number): string {
       return 'Not Found'
     case 413:
       return 'Payload Too Large'
+    case 415:
+      return 'Unsupported Media Type'
     default:
       return status < 500 ? 'Client Error' : 'Internal Server Error'
   }

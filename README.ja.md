@@ -17,7 +17,7 @@ const app = new Mixer().mix(
   secureHeaders(),
   csrf(),
   get('/hello/:name', (ctx, { name }) => ({ hello: name })),
-  post('/echo', (ctx) => ctx.body()),
+  post('/echo', (ctx) => ctx.json()),
 )
 
 await serve(app, { port: 3000 })

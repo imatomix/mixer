@@ -2,8 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { Mixer } from '../src/index.js'
 import { call } from './helpers.js'
 
-const echoBody = (options?: { bodyLimit?: number }) =>
-  new Mixer(options).mix(async (ctx) => ({ body: await ctx.body() }))
+const echoJson = (options?: { bodyLimit?: number }) =>
+  new Mixer(options).mix(async (ctx) => ({ json: await ctx.json() }))
+
+const echoForm = (options?: { bodyLimit?: number }) =>
+  new Mixer(options).mix(async (ctx) => {
+    const form = await ctx.form()
+    const fields: Record<string, string[]> = Object.create(null)
+    for (const key of new Set(form.keys())) {
+      fields[key] = form
+        .getAll(key)
+        .map((value) =>
+          typeof value === 'string' ? value : `file:${value.name}`,
+        )
+    }
+    return fields
+  })
 
 const post = (
   body: NonNullable<RequestInit['body']>,
@@ -14,82 +28,162 @@ const post = (
   ...(headers ? { headers } : {}),
 })
 
-describe('request body', () => {
-  it('parses application/json as JSON', async () => {
+describe('ctx.json()', () => {
+  it.each([
+    'application/json',
+    'application/json; charset=utf-8',
+    'Application/JSON',
+    'application/problem+json',
+  ])('parses %s', async (type) => {
     const res = await call(
-      echoBody(),
+      echoJson(),
       '/',
-      post(JSON.stringify({ name: 'ミキサー' }), {
-        'content-type': 'application/json',
-      }),
+      post(JSON.stringify({ name: 'ミキサー' }), { 'content-type': type }),
     )
-    expect(await res.json()).toEqual({ body: { name: 'ミキサー' } })
+    expect(await res.json()).toEqual({ json: { name: 'ミキサー' } })
   })
 
-  it('parses forms and turns repeated keys into arrays', async () => {
+  it.each([
+    ['a form', 'application/x-www-form-urlencoded', 'a=1'],
+    ['multipart', 'multipart/form-data; boundary=x', '--x--\r\n'],
+    [
+      'text/plain, which browsers send cross-site without a preflight',
+      'text/plain',
+      '{"a":1}',
+    ],
+  ])(
+    'answers 415 for %s, so a JSON route cannot be reached by a cross-site form',
+    async (_label, type, body) => {
+      const res = await call(
+        echoJson(),
+        '/',
+        post(body, { 'content-type': type }),
+      )
+      expect(res.status).toBe(415)
+    },
+  )
+
+  it('answers 415 without a Content-Type', async () => {
+    const res = await call(echoJson(), '/', {
+      method: 'POST',
+      body: new Uint8Array([123, 125]),
+    })
+    expect(res.status).toBe(415)
+  })
+
+  it('checks the type before reading, so an oversized body of the wrong type is 415', async () => {
     const res = await call(
-      echoBody(),
+      echoJson({ bodyLimit: 1 }),
+      '/',
+      post('x'.repeat(100), { 'content-type': 'text/plain' }),
+    )
+    expect(res.status).toBe(415)
+  })
+
+  it.each([
+    ['invalid JSON', '{broken'],
+    ['an empty body', ''],
+  ])('answers 400 for %s', async (_label, body) => {
+    const res = await call(
+      echoJson(),
+      '/',
+      post(body, { 'content-type': 'application/json' }),
+    )
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('ctx.form()', () => {
+  it('reads a urlencoded form, keeping repeated keys', async () => {
+    const res = await call(
+      echoForm(),
       '/',
       post(new URLSearchParams('a=1&b=2&b=3')),
     )
-    expect(await res.json()).toEqual({ body: { a: '1', b: ['2', '3'] } })
+    expect(await res.json()).toEqual({ a: ['1'], b: ['2', '3'] })
   })
 
-  it('treats __proto__ and constructor as plain keys', async () => {
-    const app = new Mixer().mix(async (ctx) => {
-      const body = (await ctx.body()) as Record<string, unknown>
-      return {
-        keys: Object.keys(body),
-        proto: Object.getPrototypeOf(body),
-        body,
-      }
-    })
+  it('treats __proto__ and constructor as plain field names', async () => {
     const res = await call(
-      app,
+      echoForm(),
       '/',
-      post(new URLSearchParams('__proto__=x&constructor=y&constructor=z')),
+      post(new URLSearchParams('__proto__=x&constructor=y')),
     )
     expect(await res.json()).toEqual({
-      keys: ['__proto__', 'constructor'],
-      proto: null,
-      body: { ['__proto__']: 'x', constructor: ['y', 'z'] },
+      ['__proto__']: ['x'],
+      constructor: ['y'],
     })
   })
 
-  it('treats text/* as a string', async () => {
-    const res = await call(echoBody(), '/', post('plain text'))
-    expect(await res.json()).toEqual({ body: 'plain text' })
-  })
-
-  it('returns bytes for other content types', async () => {
+  it('reads multipart fields and files', async () => {
+    const form = new FormData()
+    form.append('title', 'ミキサー')
+    form.append(
+      'file',
+      new File(['hello'], 'hello.txt', { type: 'text/plain' }),
+    )
     const app = new Mixer().mix(async (ctx) => {
-      const body = await ctx.body()
+      const body = await ctx.form()
+      const file = body.get('file')
       return {
-        isBytes: body instanceof Uint8Array,
-        length: (body as Uint8Array).length,
+        title: body.get('title'),
+        file:
+          file instanceof File
+            ? [file.name, file.type, await file.text()]
+            : null,
       }
     })
+    const res = await call(app, '/', { method: 'POST', body: form })
+    expect(await res.json()).toEqual({
+      title: 'ミキサー',
+      file: ['hello.txt', 'text/plain', 'hello'],
+    })
+  })
+
+  it.each([
+    ['JSON', 'application/json', '{"a":1}'],
+    ['text', 'text/plain', 'a=1'],
+  ])('answers 415 for %s', async (_label, type, body) => {
     const res = await call(
-      app,
+      echoForm(),
       '/',
-      post(new Uint8Array([1, 2, 3]), {
-        'content-type': 'application/octet-stream',
-      }),
+      post(body, { 'content-type': type }),
     )
-    expect(await res.json()).toEqual({ isBytes: true, length: 3 })
+    expect(res.status).toBe(415)
   })
 
-  it('returns undefined for an empty body', async () => {
-    const app = new Mixer().mix(async (ctx) => ({
-      isUndefined: (await ctx.body()) === undefined,
-    }))
-    expect(await (await call(app)).json()).toEqual({ isUndefined: true })
+  it.each([
+    [
+      'a malformed multipart body',
+      'multipart/form-data; boundary=x',
+      'not multipart',
+    ],
+    ['a missing boundary', 'multipart/form-data', '--x\r\n'],
+  ])('answers 400 for %s', async (_label, type, body) => {
+    const res = await call(
+      echoForm(),
+      '/',
+      post(body, { 'content-type': type }),
+    )
+    expect(res.status).toBe(400)
   })
 
-  it('returns the same content however many times body(), text(), and bytes() are called', async () => {
+  it('applies bodyLimit to uploads', async () => {
+    const form = new FormData()
+    form.append('file', new File(['x'.repeat(100)], 'big.txt'))
+    const res = await call(echoForm({ bodyLimit: 10 }), '/', {
+      method: 'POST',
+      body: form,
+    })
+    expect(res.status).toBe(413)
+  })
+})
+
+describe('reading the body', () => {
+  it('returns the same content however many times json(), text(), and bytes() are called', async () => {
     const app = new Mixer().mix(async (ctx) => ({
       text: await ctx.text(),
-      body: await ctx.body(),
+      json: await ctx.json(),
       bytes: (await ctx.bytes()).length,
       again: await ctx.text(),
     }))
@@ -100,7 +194,7 @@ describe('request body', () => {
     )
     expect(await res.json()).toEqual({
       text: '{"x":1}',
-      body: { x: 1 },
+      json: { x: 1 },
       bytes: 7,
       again: '{"x":1}',
     })
@@ -124,21 +218,9 @@ describe('request body', () => {
     expect(await res.text()).toBe('あいう')
   })
 
-  it('returns 400 for invalid JSON', async () => {
-    const res = await call(
-      echoBody(),
-      '/',
-      post('{broken', { 'content-type': 'application/json' }),
-    )
-    expect(res.status).toBe(400)
-  })
-
   it('returns 413 when Content-Length is over the limit', async () => {
-    const res = await call(
-      echoBody({ bodyLimit: 10 }),
-      '/',
-      post('x'.repeat(100)),
-    )
+    const app = new Mixer({ bodyLimit: 10 }).mix((ctx) => ctx.text())
+    const res = await call(app, '/', post('x'.repeat(100)))
     expect(res.status).toBe(413)
   })
 
@@ -150,7 +232,8 @@ describe('request body', () => {
         controller.close()
       },
     })
-    const res = await call(echoBody({ bodyLimit: 10 }), '/', {
+    const app = new Mixer({ bodyLimit: 10 }).mix((ctx) => ctx.text())
+    const res = await call(app, '/', {
       method: 'POST',
       body: stream,
       duplex: 'half',
@@ -159,11 +242,8 @@ describe('request body', () => {
   })
 
   it('returns 400 when Content-Length is not a number', async () => {
-    const res = await call(
-      echoBody(),
-      '/',
-      post('x', { 'content-length': 'abc' }),
-    )
+    const app = new Mixer().mix((ctx) => ctx.text())
+    const res = await call(app, '/', post('x', { 'content-length': 'abc' }))
     expect(res.status).toBe(400)
   })
 })
@@ -177,72 +257,8 @@ describe('bodyLimit option', () => {
   )
 
   it('accepts 0, which allows no body', async () => {
-    const res = await call(echoBody({ bodyLimit: 0 }), '/', {
-      method: 'POST',
-      body: 'x',
-    })
-    expect(res.status).toBe(413)
-  })
-})
-
-describe('multipart/form-data', () => {
-  const upload = () => {
-    const form = new FormData()
-    form.append('title', 'ミキサー')
-    form.append('tag', 'a')
-    form.append('tag', 'b')
-    form.append(
-      'file',
-      new File(['hello'], 'hello.txt', { type: 'text/plain' }),
-    )
-    return form
-  }
-
-  it('parses fields and files into the same shape as urlencoded forms', async () => {
-    const app = new Mixer().mix(async (ctx) => {
-      const body = (await ctx.body()) as Record<string, unknown>
-      const file = body.file as File
-      return {
-        title: body.title,
-        tag: body.tag,
-        file: [file instanceof File, file.name, file.type, await file.text()],
-        prototype: Object.getPrototypeOf(body),
-      }
-    })
-    const res = await call(app, '/', { method: 'POST', body: upload() })
-    expect(await res.json()).toEqual({
-      title: 'ミキサー',
-      tag: ['a', 'b'],
-      file: [true, 'hello.txt', 'text/plain', 'hello'],
-      prototype: null,
-    })
-  })
-
-  it('answers 400 for a malformed multipart body', async () => {
-    const res = await call(
-      echoBody(),
-      '/',
-      post('not multipart', {
-        'content-type': 'multipart/form-data; boundary=x',
-      }),
-    )
-    expect(res.status).toBe(400)
-  })
-
-  it('answers 400 when the boundary is missing', async () => {
-    const res = await call(
-      echoBody(),
-      '/',
-      post('--x\r\n', { 'content-type': 'multipart/form-data' }),
-    )
-    expect(res.status).toBe(400)
-  })
-
-  it('applies bodyLimit to uploads', async () => {
-    const res = await call(echoBody({ bodyLimit: 10 }), '/', {
-      method: 'POST',
-      body: upload(),
-    })
+    const app = new Mixer({ bodyLimit: 0 }).mix((ctx) => ctx.text())
+    const res = await call(app, '/', { method: 'POST', body: 'x' })
     expect(res.status).toBe(413)
   })
 })

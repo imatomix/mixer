@@ -222,7 +222,15 @@ describe('errors', () => {
     expect(await res.text()).toContain(res.headers.get('x-request-id') ?? '-')
   })
 
-  it('answers a malformed form with an HTML 400 page', async () => {
+  it('answers a form without a field with an HTML 400 page', async () => {
+    const res = await browser(setup().app).post('/login', { name: 'alice' })
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain(
+      'The form field &quot;password&quot; is missing',
+    )
+  })
+
+  it('answers JSON sent to a form route with an HTML 415 page', async () => {
     const res = await setup().app.fetch(
       new Request(`${ORIGIN}/login`, {
         method: 'POST',
@@ -230,13 +238,11 @@ describe('errors', () => {
           'content-type': 'application/json',
           'sec-fetch-site': 'same-origin',
         },
-        body: '{"name": 1}',
+        body: '{"name": "alice"}',
       }),
     )
-    expect(res.status).toBe(400)
-    expect(await res.text()).toContain(
-      'The form field &quot;name&quot; is missing',
-    )
+    expect(res.status).toBe(415)
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8')
   })
 
   it('shows an HTML 500 page without details and logs the error with the same ID', async () => {
