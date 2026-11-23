@@ -5,14 +5,17 @@
   "type": "module",
   "exports": {
     ".": {
+      "@imatomix/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./testing": {
+      "@imatomix/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
     },
     "./redis": {
+      "@imatomix/source": "./src/redis.ts",
       "types": "./dist/redis.d.ts",
       "import": "./dist/redis.js"
     }

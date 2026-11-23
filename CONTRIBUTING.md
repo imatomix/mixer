@@ -87,7 +87,7 @@ The goal is that users can pick only the modules they need and replace any of th
 Open an issue first. A new package should not be something that fits better as an extension of an existing package or as a primitive in mixer itself.
 
 1. **Package structure.** Copy the setup from an existing module such as `packages/mix-cors`:
-   - `package.json`: `"type": "module"`, `exports` (`types` + `import`), `files: ["dist"]`, `engines.node: ">=24"`, the same `scripts`, `peerDependencies` on `@imatomix/mixer`, and `devDependencies` with `"@imatomix/mixer": "workspace:*"` plus `catalog:` entries for `@types/node`, `tsup`, `typescript`, and `vitest`. Start at the version of the other packages.
+   - `package.json`: `"type": "module"`, `exports` (`@imatomix/source` pointing at `src`, then `types` + `import`, so that other workspace packages and examples resolve it without a build), `files: ["dist"]`, `engines.node: ">=24"`, the same `scripts`, `peerDependencies` on `@imatomix/mixer`, and `devDependencies` with `"@imatomix/mixer": "workspace:*"` plus `catalog:` entries for `@types/node`, `tsup`, `typescript`, and `vitest`. Start at the version of the other packages.
    - `tsconfig.json`, `tsconfig.build.json`, `tsup.config.ts`, and `vitest.config.ts`. The vitest config is required so that mixer resolves from `src` through the `@imatomix/source` condition.
    - Run `pnpm install`.
 2. **Tests first.** Write `test/*.test.ts` for the behavior you want, watch the tests fail, then implement `src/index.ts`. Export one function that takes options and returns a `Component`.
