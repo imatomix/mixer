@@ -5,6 +5,7 @@ import { cors } from '@imatomix/mix-cors'
 import { csrf } from '@imatomix/mix-csrf'
 import { type LogEntry, logger } from '@imatomix/mix-logger'
 import { createRouter } from '@imatomix/mix-router'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
 import { type SessionState, session } from '@imatomix/mix-session'
 import { sessionKey } from '@imatomix/mix-session/redis'
 import { HttpError, Mixer } from '@imatomix/mixer'
@@ -25,6 +26,7 @@ const writeLater = (entry: LogEntry) =>
   })
 
 const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
+  secureHeaders(),
   cors({ origin: 'https://a.example' }),
   csrf(),
   session(),
