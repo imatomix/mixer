@@ -307,6 +307,27 @@ if (sameOriginText !== 'csrf ok' || crossSite.status !== 403) {
     : ''
 }
 ${
+  dependencies['@imatomix/mix-secure-headers']
+    ? `
+import { Mixer as HeadersMixer } from '@imatomix/mixer'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
+
+const headersApp = new HeadersMixer().mix(secureHeaders({ hsts: true }))
+const headersServer = await listen(headersApp)
+const missing = await fetch(\`http://127.0.0.1:\${headersServer.port}/missing\`)
+await missing.text()
+await headersServer.close()
+if (
+  missing.status !== 404 ||
+  missing.headers.get('x-frame-options') !== 'DENY' ||
+  missing.headers.get('strict-transport-security') !== 'max-age=31536000'
+) {
+  throw new Error('mixer + mix-secure-headers smoke test failed')
+}
+`
+    : ''
+}
+${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'
