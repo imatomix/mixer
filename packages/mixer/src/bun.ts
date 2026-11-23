@@ -62,7 +62,17 @@ export async function serve(
       let host: string | undefined
       if (header && isHostHeader(header)) {
         try {
-          host = normalizeHost(new URL(`http://${header}`).hostname)
+          const authority = new URL(`http://${header}`)
+          const target = new URL(request.url)
+          // Bun preserves absolute-form request targets, which can disagree with Host.
+          if (
+            normalizeHost(target.hostname) !==
+              normalizeHost(authority.hostname) ||
+            target.port !== authority.port
+          ) {
+            return new Response(null, { status: 400 })
+          }
+          host = normalizeHost(authority.hostname)
         } catch {
           // A syntactically plausible Host can still contain an invalid IP address.
         }

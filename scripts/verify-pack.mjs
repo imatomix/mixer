@@ -126,6 +126,7 @@ import { get } from '@imatomix/mix-router'
 const app = new Mixer().mix(
   get('/hello/:name', (ctx, { name }) => ({
     hello: name,
+    host: ctx.url.hostname,
     envIsEmpty: ctx.env === undefined,
     ip: ctx.ip,
   })),
@@ -134,20 +135,30 @@ const server = await listen(app)
 const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
 // Fetch may replace Host; use HTTP directly to put the forged header on the wire.
-const forgedStatus = await new Promise<number | undefined>((resolve, reject) => {
+const sendHostProbe = (path: string, host: string) => new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
   const request = httpRequest({
-    hostname: '127.0.0.1', port: server.port, path: '/hello/mixer',
-    headers: { host: 'evil.example' },
+    hostname: '127.0.0.1', port: server.port, path,
+    headers: { host },
   }, (response) => {
-    response.resume()
-    response.on('end', () => resolve(response.statusCode))
+    let body = ''
+    response.setEncoding('utf8')
+    response.on('data', (chunk) => { body += chunk })
+    response.on('end', () => resolve({ status: response.statusCode, body }))
     response.on('error', reject)
   })
   request.on('error', reject)
   request.end()
 })
+const forgedStatus = await sendHostProbe('/hello/mixer', 'evil.example')
+const absoluteStatus = await sendHostProbe('http://evil.example/hello/mixer', 'localhost')
 await server.close()
-if (forgedStatus !== 400) throw new Error('The adapter accepted a forged Host')
+if (forgedStatus.status !== 400) throw new Error('The adapter accepted a forged Host')
+// Runtimes may normalize absolute-form targets; any forwarded URL must use the checked Host.
+if (absoluteStatus.status !== 400 && (
+  absoluteStatus.status !== 200 || JSON.parse(absoluteStatus.body).host !== 'localhost'
+)) {
+  throw new Error('The adapter forwarded a mismatched absolute-form authority')
+}
 // Bun passes its server as fetch's second argument; it must not end up in ctx.env
 if (body.hello !== 'mixer' || body.envIsEmpty !== true || body.ip !== '127.0.0.1') {
   throw new Error(\`mixer + mix-router smoke test failed: \${JSON.stringify(body)}\`)

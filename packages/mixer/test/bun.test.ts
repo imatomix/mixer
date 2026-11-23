@@ -107,6 +107,20 @@ describe('serve() on Bun', () => {
     },
   )
 
+  it('rejects a URL authority that differs from the validated Host', async () => {
+    const fetch = vi.fn(async () => new Response('unexpected'))
+    await serve({ fetch })
+    if (!started) throw new Error('serve() did not start Bun.serve')
+    const response = await started.fetch(
+      new Request('http://evil.example/foo', {
+        headers: { host: 'localhost' },
+      }),
+      fakeServer,
+    )
+    expect(response.status).toBe(400)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('rejects a request without a Host header', async () => {
     await serve(app)
     expect((await send(undefined)).status).toBe(400)
