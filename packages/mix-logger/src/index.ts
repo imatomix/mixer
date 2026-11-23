@@ -47,7 +47,7 @@ export type LoggerState = { log: RequestLogger }
 export interface LoggerOptions {
   /**
    * Where events go. `'json'` (default) writes one JSON object per line, and `'text'` one readable line, through
-   * console.log (console.error for errors). A function receives each event; a returned Promise is not awaited but
+   * console.log (console.error for the error level). A function receives each event; a returned Promise is not awaited but
    * handed to ctx.waitUntil, so that serverless runtimes keep it alive
    */
   write?: 'json' | 'text' | ((event: LogEvent) => void | Promise<void>)
@@ -180,7 +180,7 @@ function toWriter(
   const format = write === 'text' ? formatLogEvent : formatJson
   return (event) => {
     const line = format(event)
-    if (event.kind === 'error') console.error(line)
+    if (event.level === 'error') console.error(line)
     else console.log(line)
   }
 }

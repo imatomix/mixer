@@ -352,6 +352,20 @@ describe('output', () => {
     expect(consoleLog).toHaveBeenCalledTimes(1)
   })
 
+  it('writes events at the error level through console.error, including those from handlers', async () => {
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await call(
+      logged({ write: 'text' }, (ctx) => {
+        ctx.state.log.error('payment failed')
+        return 'ok'
+      }),
+    )
+    expect(consoleError).toHaveBeenCalledTimes(1)
+    expect(String(consoleError.mock.calls[0]?.[0])).toContain('payment failed')
+    expect(consoleLog).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps the fixed fields when a handler passes fields with the same names', async () => {
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
     await call(

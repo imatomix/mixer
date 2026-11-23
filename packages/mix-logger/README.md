@@ -67,7 +67,7 @@ logger({
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `write` | `'json'` | `'json'` writes one JSON object per line and `'text'` one readable line, through `console.log` (`console.error` for errors). A function receives each `LogEvent` instead |
+| `write` | `'json'` | `'json'` writes one JSON object per line and `'text'` one readable line, through `console.log` (`console.error` for events at the `error` level, including `ctx.state.log.error`). A function receives each `LogEvent` instead |
 | `requestId` | a new random UUID | `(ctx) => string \| undefined` to take the ID from the request, such as Cloudflare's `CF-Ray`. Use only a header that your platform or proxy sets and clients cannot: on Node.js or Bun without Cloudflare in front, anyone can send `CF-Ray`. A missing or malformed value (anything but 1 to 128 of `A-Z a-z 0-9 . _ : -`) gets a new random ID |
 | `header` | `'X-Request-Id'` | Response header that carries the ID, or `false` for none. It replaces a value a handler set in `ctx.headers`, so the response matches the logs. A `Response` returned with its own value (for example, passed through from another service) keeps that value, which then differs from the logs |
 
