@@ -47,8 +47,18 @@ describe('parseProxies', () => {
     '10.0.0.0/',
     '10.0.0.0/8/8',
     '',
+    '::ffff:0:0/95',
   ])('rejects %j', (entry) => {
     expect(() => parseProxies([entry])).toThrow(/trustedProxies/)
+  })
+
+  it('accepts IPv4-mapped IPv6 ranges as the IPv4 range they stand for', () => {
+    const resolve = (entry: string, peer: string) =>
+      resolveClientIp(peer, '198.51.100.7', parseProxies([entry]))
+    expect(resolve('::ffff:10.0.0.0/104', '10.1.2.3')).toBe('198.51.100.7')
+    expect(resolve('::ffff:10.0.0.0/104', '11.1.2.3')).toBe('11.1.2.3')
+    expect(resolve('::ffff:10.0.0.1/128', '10.0.0.1')).toBe('198.51.100.7')
+    expect(resolve('::ffff:10.0.0.1', '10.0.0.1')).toBe('198.51.100.7')
   })
 })
 

@@ -1,6 +1,8 @@
 /** An IP address as bytes: 4 for IPv4, 16 for IPv6 */
 interface Address {
   bytes: Uint8Array
+  /** Written as an IPv4-mapped IPv6 address (::ffff:a.b.c.d) and turned into IPv4 */
+  mapped?: boolean
 }
 
 export interface ProxyRange extends Address {
@@ -26,19 +28,22 @@ export function parseProxies(entries: readonly string[]): ProxyRange[] {
   return entries.map((entry) => {
     const [text = '', prefixText, ...rest] = entry.split('/')
     const address = parse(text)
-    const bits = (address?.bytes.length ?? 0) * 8
+    const bits = address?.mapped ? 128 : (address?.bytes.length ?? 0) * 8
     const prefix = prefixText === undefined ? bits : Number(prefixText)
+    // A mapped range stands for the IPv4 range under it, so it cannot be wider than ::ffff:0:0/96
+    const lowest = address?.mapped ? 96 : 0
     if (
       !address ||
       rest.length > 0 ||
       (prefixText !== undefined && !/^\d{1,3}$/.test(prefixText)) ||
-      prefix > bits
+      prefix > bits ||
+      prefix < lowest
     ) {
       throw new TypeError(
         `mixer: trustedProxies takes IP addresses or CIDR ranges such as 10.0.0.0/8: ${JSON.stringify(entry)}`,
       )
     }
-    return { bytes: address.bytes, prefix }
+    return { bytes: address.bytes, prefix: prefix - lowest }
   })
 }
 
@@ -109,7 +114,7 @@ function parse(input: string): Address | undefined {
     bytes.subarray(0, 10).every((byte) => byte === 0) &&
     bytes[10] === 0xff &&
     bytes[11] === 0xff
-  return { bytes: mapped ? bytes.slice(12) : bytes }
+  return mapped ? { bytes: bytes.slice(12), mapped } : { bytes }
 }
 
 /** Expands the canonical IPv6 form URL gives (hexadecimal groups, at most one `::`) into 16 bytes */
