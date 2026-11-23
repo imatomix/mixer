@@ -63,6 +63,7 @@ app.mix(
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
+| `ctx.onResponseHeaders(fn)` | エラーを含め、実際に送る応答のヘッダーを設定する（[詳細](#フック)） |
 | `ctx.onErrorReport(fn)` | このリクエストの想定外のエラーを受け取る（[詳細](#エラーの報告)） |
 | `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](#ctxwaituntil)） |
 
@@ -141,7 +142,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` は `'handling'`・`'onError'`・`'beforeSend'`・`'onResponse'`・`'waitUntil'`・`'streamCancel'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
+`phase` は `'handling'`・`'onError'`・`'beforeSend'`・`'onResponse'`・`'waitUntil'`・`'streamCancel'`・`'headers'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
 
 ### 型
 
@@ -343,6 +344,19 @@ app
 ```
 
 `ctx.onResponse(fn)` は、最終的な応答ができたあとに、スナップショット `{ status, headers }` を受け取って実行される（変えても応答には影響しない）。`app.fetch` が返る前に実行されるので、短く保ち、時間のかかる処理は `ctx.waitUntil()` に渡す。失敗は[報告](#エラーの報告)されるだけで、応答には影響しない。
+
+`ctx.onResponseHeaders(fn)` は、セキュリティヘッダーやリクエスト ID のように、すべての応答に必要なヘッダーのためのもの。`onBeforeSend` は応答を組み立てる前に 1 回だけ動くので、そのあと組み立てが失敗して mixer が代わりに `500` を返すと、設定したものは失われる。`onResponseHeaders` は、何が作ったかに関係なく、実際に送る応答に対して動く。通常の応答、`HttpError`、`onError`、返した `Response`（それ自身のヘッダーも見て置き換えられる）、その `500`。1 回だけ同期的に動き、ヘッダーと最終的な `status` を受け取る。ステータスは変えられない。例外を投げたリスナーは phase `'headers'` で[報告](#エラーの報告)され、その変更は捨てられる。mixer 自身が保証するもの（`nosniff`、Cookie 付きの応答を共有キャッシュに置かせないこと、`HEAD` に本文を付けないこと）は、そのあとで適用する。
+
+```ts
+app.mix((ctx) => {
+  const id = crypto.randomUUID()
+  ctx.onResponseHeaders((headers) => {
+    headers.set('X-Request-Id', id)
+  })
+})
+```
+
+`onBeforeSend` は、セッションを保存して Cookie を付けるなど、後のコンポーネントがしたことに応じて 1 回だけ行う処理に使う。
 
 ### ctx.waitUntil()
 

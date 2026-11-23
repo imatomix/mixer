@@ -63,6 +63,7 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
+| `ctx.onResponseHeaders(fn)` | Set headers on whatever response is sent, including errors ([details](#hooks)) |
 | `ctx.onErrorReport(fn)` | Receive unexpected errors for this request ([details](#error-reports)) |
 | `ctx.waitUntil(promise)` | Run work after the response without delaying it ([details](#ctxwaituntil)) |
 
@@ -141,7 +142,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` is one of `'handling'`, `'onError'`, `'beforeSend'`, `'onResponse'`, `'waitUntil'`, and `'streamCancel'`. Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
+`phase` is one of `'handling'`, `'onError'`, `'beforeSend'`, `'onResponse'`, `'waitUntil'`, `'streamCancel'`, and `'headers'`. Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
 
 ### Types
 
@@ -343,6 +344,19 @@ app
 ```
 
 `ctx.onResponse(fn)` runs once the final response is ready, with a snapshot `{ status, headers }` (changing it has no effect). It runs before `app.fetch` resolves, so keep it short and pass slow work to `ctx.waitUntil()`. A failing hook is [reported](#error-reports) and does not affect the response.
+
+`ctx.onResponseHeaders(fn)` is for headers that every response needs, such as security headers or a request ID. `onBeforeSend` runs once, before the response is built, so what it sets is lost when building the response then fails and mixer answers `500` instead. `onResponseHeaders` runs on the response actually sent, whatever produced it: a normal response, an `HttpError`, `onError`, a returned `Response` (whose own headers it can see and replace), or that `500`. It runs once and synchronously, receives the headers and the final `status`, and cannot change the status. A listener that throws is [reported](#error-reports) with phase `'headers'` and its changes are dropped. mixer's own guarantees (`nosniff`, private caching of responses with cookies, no body for `HEAD`) are applied after it.
+
+```ts
+app.mix((ctx) => {
+  const id = crypto.randomUUID()
+  ctx.onResponseHeaders((headers) => {
+    headers.set('X-Request-Id', id)
+  })
+})
+```
+
+Keep `onBeforeSend` for work that depends on what later components did and should happen once, such as saving a session and setting its cookie.
 
 ### ctx.waitUntil()
 
