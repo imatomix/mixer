@@ -215,7 +215,7 @@ export default {
 
 | Package | On Workers |
 | --- | --- |
-| mixer, mix-router, mix-cors, mix-csrf, mix-logger | Supported |
+| mixer, mix-router, mix-cors, mix-csrf, mix-secure-headers, mix-logger | Supported |
 | mix-session | Supported with an external store (`MemoryStore` lives in one isolate) |
 | mix-static | Not supported (no file system); use Workers Static Assets |
 | `@imatomix/mixer/node` | Not used |
@@ -390,6 +390,7 @@ Install only the ones you need. Each is a component, so you can replace any of t
 | [@imatomix/mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) | Type-safe router |
 | [@imatomix/mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) | CORS |
 | [@imatomix/mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf) | CSRF protection |
+| [@imatomix/mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers) | Security headers |
 | [@imatomix/mix-static](https://github.com/imatomix/mixer/tree/main/packages/mix-static) | Static files (Node.js and Bun) |
 | [@imatomix/mix-session](https://github.com/imatomix/mixer/tree/main/packages/mix-session) | Server-side sessions |
 | [@imatomix/mix-logger](https://github.com/imatomix/mixer/tree/main/packages/mix-logger) | Access logs |

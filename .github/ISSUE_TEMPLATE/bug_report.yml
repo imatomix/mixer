@@ -15,6 +15,7 @@ body:
         - "@imatomix/mix-router"
         - "@imatomix/mix-cors"
         - "@imatomix/mix-csrf"
+        - "@imatomix/mix-secure-headers"
         - "@imatomix/mix-static"
         - "@imatomix/mix-session"
         - "@imatomix/mix-logger"
