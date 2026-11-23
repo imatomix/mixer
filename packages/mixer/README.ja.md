@@ -59,7 +59,8 @@ app.mix(
 | `ctx.state` | 後のコンポーネントに渡す値 |
 | `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
 | `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](#クライアントの-ip-アドレス)） |
-| `await ctx.body()` | Content-Type に応じて解析したリクエストボディ。フォームとファイルのアップロードも含む（[詳細](#リクエストボディ)） |
+| `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](#リクエストボディ)） |
+| `await ctx.text()` / `await ctx.bytes()` | 文字列またはバイト列として読んだリクエストボディ |
 | `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
@@ -228,7 +229,7 @@ export default {
 
 - `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される。mix-router を使うときは、`createRouter<State, Env>()` にもバインディングの型を渡す
 - PR ごとに、workerd の互換日付 `2026-07-30`、Node 互換を切った状態（`no_nodejs_compat`、`no_nodejs_compat_v2`）で動作を確かめ、`@cloudflare/workers-types` で型も確かめている。mixer に `nodejs_compat` は要らない
-- `bodyLimit` が効くのは `ctx.body()`・`ctx.text()`・`ctx.bytes()` で読んだときだけで、`ctx.request` を直接読むと効かない。`ctx.waitUntil()` に渡した処理には Workers の時間の上限がかかる
+- `bodyLimit` が効くのは `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` で読んだときだけで、`ctx.request` を直接読むと効かない。`ctx.waitUntil()` に渡した処理には Workers の時間の上限がかかる
 
 | パッケージ | Workers での扱い |
 | --- | --- |
@@ -287,7 +288,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - Cookie は `HttpOnly; Secure; SameSite=Lax; Path=/`。値はエンコードされ、ヘッダを注入できる名前・パス・ドメインは拒否される
 - Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になり、共有キャッシュがほかの人に渡すことがない
 - `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直し、引き継ぐのは `Access-Control-*`・`Vary`・`Set-Cookie` だけなので、通常の応答のための `Location` や `Cache-Control` がエラーに紛れ込まない
-- 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる
+- 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる。`ctx.json()` と `ctx.form()` は自分の Content-Type だけを受け付ける（それ以外は `415`）ので、JSON のルートが別サイトのフォームを解析することはない
 - `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
 - `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
@@ -384,16 +385,30 @@ ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 
 ### リクエストボディ
 
-`ctx.body()` は求められたときだけボディを読み、何度呼んでも同じ結果を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込むので、大きなファイルを受け取るときは上限を上げる。とても大きなファイルを流しながら保存する使い方には向かない。
+ルートが受け取るボディの種類を明示する。それぞれの読み方は自分の Content-Type だけを受け付け、それ以外は何も読まずに `415` を返す。
 
-| Content-Type | 結果 |
-| --- | --- |
-| `application/json`、`*+json` | 解析した値（不正なら `400`） |
-| `application/x-www-form-urlencoded` | `{ key: value }`（同じキーは配列） |
-| `multipart/form-data` | 同じ形。アップロードされたファイルは `File`（不正なら `400`） |
-| `text/*` または指定なし | 文字列 |
-| それ以外 | `Uint8Array` |
-| 空のボディ | `undefined` |
+| メソッド | 受け付けるもの | 結果 |
+| --- | --- | --- |
+| `ctx.json()` | `application/json`、`application/*+json` | 解析した値。型は `unknown`（不正か空なら `400`） |
+| `ctx.form()` | `application/x-www-form-urlencoded`、`multipart/form-data` | `FormData`。`get(name)`・`getAll(name)` で文字列、アップロードは `File` が得られる（不正なら `400`） |
+| `ctx.text()` / `ctx.bytes()` | 何でも | 文字列 / `Uint8Array` |
+
+そのため JSON のルートが、ブラウザが別のサイトから事前の確認なしに送れるフォームや `text/plain` を解析することはない。ただの別サイトのフォームから JSON のルートに届かなくなるが、Cookie に頼るルートの CSRF 対策の代わりにはならない。そうしたルートには mix-csrf を使う。
+
+値はクライアントから来るので、使う前に確かめる。`ctx.json()` が `unknown` を返すのはそのため。
+
+```ts
+post('/todos', async (ctx) => {
+  const form = await ctx.form()
+  const title = form.get('title')
+  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
+    throw new HttpError(422, 'A title is between 1 and 200 characters')
+  }
+  // ...
+})
+```
+
+ボディは求められたときだけ読み、どの読み方も何度呼んでも同じ内容を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込むので、大きなファイルを受け取るときは上限を上げる。とても大きなファイルを流しながら保存する使い方には向かない。
 
 ### basePath
 
@@ -409,7 +424,7 @@ const app = new Mixer({ basePath: '/api' })
 | オプション | 既定 | 説明 |
 | --- | --- | --- |
 | `basePath` | なし | アプリを置くパス |
-| `bodyLimit` | 3 MB | `ctx.body()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413` |
+| `bodyLimit` | 3 MB | `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413` |
 | `onError` | なし | エラーの応答を組み立てる `(error, ctx) => value` |
 | `trustedProxies` | なし | `ctx.ip` のために `X-Forwarded-For` を読む、リバースプロキシ（IP アドレスか CIDR の範囲） |
 

@@ -59,7 +59,8 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.state` | Values passed to later components |
 | `ctx.env` | Bindings and settings passed as the second argument of `app.fetch` |
 | `ctx.ip` / `ctx.remoteAddress` | The client's IP address, and the direct peer's ([details](#client-ip-address)) |
-| `await ctx.body()` | The request body, parsed by Content-Type, including forms and file uploads ([details](#request-body)) |
+| `await ctx.json()` / `await ctx.form()` | The request body as JSON, or as `FormData` from a form or file upload ([details](#request-body)) |
+| `await ctx.text()` / `await ctx.bytes()` | The request body as a string or bytes |
 | `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
 | `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
@@ -228,7 +229,7 @@ export default {
 
 - `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` hands work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
 - Checked on every pull request on workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
-- `bodyLimit` applies when the body is read through `ctx.body()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
+- `bodyLimit` applies when the body is read through `ctx.json()`, `ctx.form()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
 
 | Package | On Workers |
 | --- | --- |
@@ -287,7 +288,7 @@ Without any configuration:
 - Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/`. Values are encoded, and names, paths, and domains that could inject headers are rejected
 - A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
 - Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, keeping only `Access-Control-*`, `Vary`, and `Set-Cookie`, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error
-- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`
+- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`. `ctx.json()` and `ctx.form()` accept only their own Content-Type (`415` otherwise), so a JSON route never parses a cross-site form
 - `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
 - `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
@@ -384,16 +385,30 @@ ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 
 ### Request body
 
-`ctx.body()` reads the body only when asked, and returns the same result however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
+Say which kind of body a route expects. Each reader accepts only its own Content-Type and answers `415` otherwise, before reading anything:
 
-| Content-Type | Result |
-| --- | --- |
-| `application/json`, `*+json` | The parsed value (`400` if invalid) |
-| `application/x-www-form-urlencoded` | `{ key: value }` (repeated keys become arrays) |
-| `multipart/form-data` | The same shape; uploaded files are `File` objects (`400` if malformed) |
-| `text/*` or none | A string |
-| Anything else | A `Uint8Array` |
-| Empty body | `undefined` |
+| Method | Accepts | Result |
+| --- | --- | --- |
+| `ctx.json()` | `application/json`, `application/*+json` | The parsed value as `unknown` (`400` if invalid or empty) |
+| `ctx.form()` | `application/x-www-form-urlencoded`, `multipart/form-data` | `FormData`: `get(name)` and `getAll(name)` give strings, or `File`s for uploads (`400` if malformed) |
+| `ctx.text()` / `ctx.bytes()` | anything | A string / a `Uint8Array` |
+
+A JSON route therefore never parses a form or `text/plain`, which browsers send from other sites without asking first. That keeps a JSON route from being reached by a plain cross-site form, but it does not replace CSRF protection for routes that rely on cookies: use mix-csrf for those.
+
+The values come from the client, so check them before use; `ctx.json()` returns `unknown` for that reason:
+
+```ts
+post('/todos', async (ctx) => {
+  const form = await ctx.form()
+  const title = form.get('title')
+  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
+    throw new HttpError(422, 'A title is between 1 and 200 characters')
+  }
+  // ...
+})
+```
+
+The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
 
 ### basePath
 
@@ -409,7 +424,7 @@ const app = new Mixer({ basePath: '/api' })
 | Option | Default | Description |
 | --- | --- | --- |
 | `basePath` | none | Path the app is mounted on |
-| `bodyLimit` | 3 MB | Largest request body that `ctx.body()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
+| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
 | `onError` | none | `(error, ctx) => value` to shape error responses |
 | `trustedProxies` | none | Reverse proxies (IP addresses or CIDR ranges) whose `X-Forwarded-For` is read for `ctx.ip` |
 

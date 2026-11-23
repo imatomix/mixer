@@ -2,11 +2,6 @@ import { HttpError } from './errors.js'
 
 export const DEFAULT_BODY_LIMIT = 1024 * 1024 * 3
 
-export type FormBody = Record<string, string | string[]>
-
-/** A multipart/form-data body: fields are strings and uploads are Files, repeated names become arrays */
-export type MultipartBody = Record<string, string | File | (string | File)[]>
-
 export async function readBytes(
   request: Request,
   limit = DEFAULT_BODY_LIMIT,
@@ -43,68 +38,42 @@ export async function readBytes(
   return bytes
 }
 
-export async function parseBody(
-  bytes: Uint8Array,
-  contentType: string | null,
-): Promise<unknown> {
-  if (bytes.length === 0) return undefined
-  const text = () => new TextDecoder().decode(bytes)
+/** The media type of a Content-Type header, lowercased and without parameters */
+export function mediaType(contentType: string | null): string {
+  return contentType?.split(';')[0]?.trim().toLowerCase() ?? ''
+}
 
-  const mimeType = contentType?.split(';')[0]?.trim().toLowerCase() ?? ''
+export function isJson(contentType: string | null): boolean {
+  const type = mediaType(contentType)
+  return type === 'application/json' || /^application\/[^/]+\+json$/.test(type)
+}
 
-  if (mimeType === 'application/json' || mimeType.endsWith('+json')) {
-    try {
-      return JSON.parse(text())
-    } catch (error) {
-      throw new HttpError(400, 'Invalid JSON body', { cause: error })
-    }
+export function isForm(contentType: string | null): boolean {
+  const type = mediaType(contentType)
+  return (
+    type === 'application/x-www-form-urlencoded' ||
+    type === 'multipart/form-data'
+  )
+}
+
+export function parseJson(bytes: Uint8Array): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes))
+  } catch (error) {
+    throw new HttpError(400, 'Invalid JSON body', { cause: error })
   }
-
-  if (mimeType === 'application/x-www-form-urlencoded') {
-    return collectFields(new URLSearchParams(text()))
-  }
-
-  if (mimeType === 'multipart/form-data') {
-    return parseMultipart(bytes, contentType ?? '')
-  }
-
-  if (mimeType === '' || mimeType.startsWith('text/')) {
-    return text()
-  }
-
-  return bytes
 }
 
 // The bytes were read within bodyLimit, so the Web standard parser cannot be made to buffer more than that
-async function parseMultipart(
+export async function parseForm(
   bytes: Uint8Array,
   contentType: string,
-): Promise<MultipartBody> {
-  let form: FormData
+): Promise<FormData> {
   try {
-    form = await new Response(bytes, {
+    return await new Response(bytes, {
       headers: { 'content-type': contentType },
     }).formData()
   } catch (error) {
-    throw new HttpError(400, 'Invalid multipart body', { cause: error })
+    throw new HttpError(400, 'Invalid form body', { cause: error })
   }
-  return collectFields(form)
-}
-
-function collectFields<V>(
-  entries: Iterable<[string, V]>,
-): Record<string, V | V[]> {
-  // With a plain object, __proto__ would replace the prototype and keys would mix with inherited values such as constructor
-  const form: Record<string, V | V[]> = Object.create(null)
-  for (const [key, value] of entries) {
-    const existing = form[key]
-    if (existing === undefined) {
-      form[key] = value
-    } else if (Array.isArray(existing)) {
-      existing.push(value)
-    } else {
-      form[key] = [existing, value]
-    }
-  }
-  return form
 }
