@@ -27,7 +27,7 @@ const app = new Mixer<LoggerState>()
 app.mix(
   logger(),
   post('/todos', async (ctx) => {
-    const todo = await saveTodo(await ctx.body())
+    const todo = await saveTodo(await ctx.json())
     ctx.state.log.info('created', { todoId: todo.id })
     return todo
   }),

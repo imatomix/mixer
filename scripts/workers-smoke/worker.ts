@@ -37,7 +37,8 @@ const app = new Mixer<SessionState, Env>({ basePath: '/api' }).mix(
     hello: name,
     greeting: ctx.env.GREETING,
   })),
-  post('/echo', (ctx) => ctx.body()),
+  post('/echo', (ctx) => ctx.json()),
+  post('/form', async (ctx) => ({ a: (await ctx.form()).getAll('a') })),
   get('/stream', () => {
     const encoder = new TextEncoder()
     return new ReadableStream<Uint8Array>({

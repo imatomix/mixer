@@ -26,7 +26,7 @@ app.mix(
   get('/users/:id', (ctx, { id }) => ({ id })), // GET and HEAD /users/42 → { "id": "42" }
   post('/users', async (ctx) => {
     ctx.status = 201
-    return await ctx.body()
+    return await ctx.json()
   }),
 )
 

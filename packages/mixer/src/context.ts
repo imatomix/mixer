@@ -1,5 +1,6 @@
-import { parseBody, readBytes } from './body.js'
+import { isForm, isJson, parseForm, parseJson, readBytes } from './body.js'
 import { Cookies } from './cookies.js'
+import { HttpError } from './errors.js'
 import type { Draft } from './finalize.js'
 
 export type State = Record<string, unknown>
@@ -95,7 +96,9 @@ export class Context<S extends State = State, E = unknown> {
 
   constructor(request: Request, init: ContextInit<E>) {
     this.request = request
-    // The host comes from the client's Host header and cannot be trusted; never use it for security decisions
+    // The host comes from the request's Host header, which any client can set: never build links or redirects
+    // from it, or trust it to identify the server. (A browser cannot change it, which is why mix-csrf may compare
+    // a browser's Origin with it)
     this.url = new URL(request.url)
     this.method = request.method
     this.path = init.path
@@ -143,11 +146,28 @@ export class Context<S extends State = State, E = unknown> {
     return new TextDecoder().decode(await this.bytes())
   }
 
-  async body<T = unknown>(): Promise<T> {
-    return (await parseBody(
-      await this.bytes(),
-      this.request.headers.get('content-type'),
-    )) as T
+  /**
+   * The body parsed as JSON. Only for application/json (or another +json type): anything else is 415 before the
+   * body is read, so a JSON route cannot be reached by a form or text/plain that browsers send cross-site without
+   * a preflight. The value is unknown: check it before use
+   */
+  async json(): Promise<unknown> {
+    if (!isJson(this.request.headers.get('content-type'))) {
+      throw new HttpError(415, 'Expected a JSON body')
+    }
+    return parseJson(await this.bytes())
+  }
+
+  /**
+   * The body as FormData. Only for application/x-www-form-urlencoded and multipart/form-data: anything else is
+   * 415 before the body is read. Values are strings, or Files for uploads; check them before use
+   */
+  async form(): Promise<FormData> {
+    const contentType = this.request.headers.get('content-type')
+    if (!isForm(contentType)) {
+      throw new HttpError(415, 'Expected a form body')
+    }
+    return parseForm(await this.bytes(), contentType ?? '')
   }
 
   /** Registers work to run right before the final Response is built (for example, setting cookies) */

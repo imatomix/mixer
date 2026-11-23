@@ -104,36 +104,34 @@ const checks = Object.keys(dependencies)
 
 const smoke = `${imports}
 ${checks}
-import { serve } from '@imatomix/mixer/node'
+import { request as httpRequest } from 'node:http'
+import { serve as serveOnNode } from '@imatomix/mixer/node'
+import { serve as serveOnBun } from '@imatomix/mixer/bun'
 
 type FetchApp = {
   fetch: (request: Request) => Promise<Response>
   handle: (request: Request, options: { remoteAddress?: string | undefined }) => Promise<Response>
 }
-type BunServer = { requestIP(request: Request): { address: string } | null }
-type BunRuntime = {
-  serve(options: {
-    port: number
-    hostname: string
-    fetch: (request: Request, server: BunServer) => Promise<Response>
-  }): {
-    port: number
-    stop(closeActiveConnections?: boolean): Promise<void>
-  }
-}
 
-// On Bun, serve the app the way Bun users would (Bun.serve with app.fetch); on Node, through the Node adapter
-async function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
-  const bun = (globalThis as { Bun?: BunRuntime }).Bun
-  if (!bun) return serve(app, { hostname: '127.0.0.1' })
-  // The peer's address through handle; passing app.fetch directly would put Bun's server into ctx.env
-  const server = bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch: (request, bunServer) =>
-      app.handle(request, { remoteAddress: bunServer.requestIP(request)?.address }),
-  })
-  return { port: server.port, close: () => server.stop(true) }
+// Each runtime through its own adapter, the way users would serve the app
+function listen(app: FetchApp): Promise<{ port: number; close(): Promise<void> }> {
+  return 'Bun' in globalThis ? serveOnBun(app) : serveOnNode(app)
+}
+// Exercise the production package on a real server, including Bun's development error path.
+for (const fail of [
+  () => { throw new Error('adapter-test-secret') },
+  () => Promise.reject(new Error('adapter-test-secret')),
+]) {
+  const server = await ('Bun' in globalThis ? serveOnBun : serveOnNode)({ fetch: fail })
+  try {
+    const response = await fetch(\`http://127.0.0.1:\${server.port}/\`)
+    const body = await response.text()
+    if (response.status !== 500 || body !== '') {
+      throw new Error('Adapter failures must return an empty 500')
+    }
+  } finally {
+    await server.close()
+  }
 }
 ${
   dependencies['@imatomix/mix-router']
@@ -144,6 +142,7 @@ import { get } from '@imatomix/mix-router'
 const app = new Mixer().mix(
   get('/hello/:name', (ctx, { name }) => ({
     hello: name,
+    host: ctx.url.hostname,
     envIsEmpty: ctx.env === undefined,
     ip: ctx.ip,
   })),
@@ -151,7 +150,31 @@ const app = new Mixer().mix(
 const server = await listen(app)
 const res = await fetch(\`http://127.0.0.1:\${server.port}/hello/mixer\`)
 const body = await res.json()
+// Fetch may replace Host; use HTTP directly to put the forged header on the wire.
+const sendHostProbe = (path: string, host: string) => new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
+  const request = httpRequest({
+    hostname: '127.0.0.1', port: server.port, path,
+    headers: { host },
+  }, (response) => {
+    let body = ''
+    response.setEncoding('utf8')
+    response.on('data', (chunk) => { body += chunk })
+    response.on('end', () => resolve({ status: response.statusCode, body }))
+    response.on('error', reject)
+  })
+  request.on('error', reject)
+  request.end()
+})
+const forgedStatus = await sendHostProbe('/hello/mixer', 'evil.example')
+const absoluteStatus = await sendHostProbe('http://evil.example/hello/mixer', 'localhost')
 await server.close()
+if (forgedStatus.status !== 400) throw new Error('The adapter accepted a forged Host')
+// Runtimes may normalize absolute-form targets; any forwarded URL must use the checked Host.
+if (absoluteStatus.status !== 400 && (
+  absoluteStatus.status !== 200 || JSON.parse(absoluteStatus.body).host !== 'localhost'
+)) {
+  throw new Error('The adapter forwarded a mismatched absolute-form authority')
+}
 // Bun passes its server as fetch's second argument; it must not end up in ctx.env
 if (body.hello !== 'mixer' || body.envIsEmpty !== true || body.ip !== '127.0.0.1') {
   throw new Error(\`mixer + mix-router smoke test failed: \${JSON.stringify(body)}\`)
@@ -369,7 +392,7 @@ if (
 `
     : ''
 }
-const runtimeName = process.versions.bun ? \`bun \${process.versions.bun} (Bun.serve)\` : \`node \${process.versions.node} (serve from @imatomix/mixer/node)\`
+const runtimeName = process.versions.bun ? \`bun \${process.versions.bun} (serve from @imatomix/mixer/bun)\` : \`node \${process.versions.node} (serve from @imatomix/mixer/node)\`
 console.log(\`ok on \${runtimeName}\`)
 `
 writeFileSync(join(consumer, 'smoke.ts'), smoke)

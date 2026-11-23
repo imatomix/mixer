@@ -74,7 +74,7 @@ export function createApp(options: AppOptions): Mixer<AppState> {
     get('/login', () => htmlResponse(loginPage())),
 
     post('/login', async (ctx) => {
-      const form = await ctx.body()
+      const form = await ctx.form()
       const user = await users.authenticate(
         field(form, 'name'),
         field(form, 'password'),
@@ -103,7 +103,7 @@ export function createApp(options: AppOptions): Mixer<AppState> {
     post('/todos', async (ctx) => {
       const user = signedInUser(ctx)
       if (!user) return redirect('/login', { status: 303 })
-      const title = field(await ctx.body(), 'title').trim()
+      const title = field(await ctx.form(), 'title').trim()
       if (title.length === 0 || title.length > TITLE_LENGTH) {
         const list = listPage(
           user.name,
@@ -151,12 +151,9 @@ function signedInUser(ctx: {
   return id && name ? { id, name } : undefined
 }
 
-/** One string field from a form; anything else is a malformed request */
-function field(form: unknown, name: string): string {
-  const value =
-    typeof form === 'object' && form !== null
-      ? (form as Record<string, unknown>)[name]
-      : undefined
+/** One text field from a form; a missing field or a file is a malformed request */
+function field(form: FormData, name: string): string {
+  const value = form.get(name)
   if (typeof value !== 'string') {
     throw new HttpError(400, `The form field "${name}" is missing`)
   }
