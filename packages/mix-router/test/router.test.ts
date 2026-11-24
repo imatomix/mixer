@@ -5,9 +5,9 @@ import {
   createRouter,
   del,
   get,
+  group,
   head,
   methodNotAllowed,
-  namespace,
   options,
   type Params,
   patch,
@@ -251,45 +251,58 @@ describe('chaining handlers', () => {
   })
 })
 
-describe('namespace', () => {
+describe('group', () => {
   it('adds a prefix to the routes', async () => {
-    const api = namespace('/api/v1')
-    const app = new Mixer().mix(api(get('/users/:id', (_ctx, { id }) => id)))
+    const app = new Mixer().mix(
+      group(
+        '/api/v1',
+        get('/users/:id', (_ctx, { id }) => id),
+      ),
+    )
     expect(await (await call(app, `/api/v1/users/42`)).text()).toBe('42')
     expect((await call(app, `/users/42`)).status).toBe(404)
   })
 
   it('joins paths when nested', async () => {
     const app = new Mixer().mix(
-      namespace('/api')(namespace('/v2')(get('/', () => 'v2 root'))),
+      group(
+        '/api',
+        group(
+          '/v2',
+          get('/', () => 'v2 root'),
+        ),
+      ),
     )
     expect(await (await call(app, `/api/v2`)).text()).toBe('v2 root')
   })
 
   it('moves on to the next component when no route responds', async () => {
     const app = new Mixer().mix(
-      namespace('/api')(get('/a', () => 'a')),
+      group(
+        '/api',
+        get('/a', () => 'a'),
+      ),
       () => 'next',
     )
     expect(await (await call(app, `/api/b`)).text()).toBe('next')
   })
 
-  it('rejects parameters and wildcards in a namespace path', () => {
-    expect(() => namespace('/users/:id')).toThrow()
-    expect(() => namespace('/files/*')).toThrow()
+  it('rejects parameters and wildcards in a group prefix', () => {
+    expect(() => group('/users/:id')).toThrow()
+    expect(() => group('/files/*')).toThrow()
   })
 })
 
-describe('components inside a namespace', () => {
+describe('components inside a group', () => {
   const requireAuth = (ctx: Context) => {
     if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
   }
 
   it('runs plain components for every request under the prefix, before its routes', async () => {
     const seen: string[] = []
-    const admin = namespace('/admin')
     const app = new Mixer().mix(
-      admin(
+      group(
+        '/admin',
         (ctx) => {
           seen.push(ctx.path)
         },
@@ -308,7 +321,7 @@ describe('components inside a namespace', () => {
     ).toBe('users')
     expect(await (await call(app, '/administrator')).text()).toBe('outside')
     expect(await (await call(app, '/other')).text()).toBe('outside')
-    // Components see the full path, not one relative to the namespace
+    // Components see the full path, not one relative to the group
     expect(seen).toEqual([
       '/admin/users',
       '/admin/unknown',
@@ -319,7 +332,8 @@ describe('components inside a namespace', () => {
 
   it('answers with the first value a component returns', async () => {
     const app = new Mixer().mix(
-      namespace('/maintenance')(
+      group(
+        '/maintenance',
         () => 'closed',
         get('/status', () => 'open'),
       ),
@@ -330,11 +344,13 @@ describe('components inside a namespace', () => {
   it('combines prefixes when nested', async () => {
     const calls: string[] = []
     const app = new Mixer().mix(
-      namespace('/api')(
+      group(
+        '/api',
         () => {
           calls.push('api')
         },
-        namespace('/admin')(
+        group(
+          '/admin',
           () => {
             calls.push('admin')
           },
@@ -353,7 +369,7 @@ describe('components inside a namespace', () => {
   it('matches the prefix below basePath, segment by segment, after decoding', async () => {
     let ran = 0
     const app = new Mixer({ basePath: '/v1' }).mix(
-      namespace('/ジュース')(() => {
+      group('/ジュース', () => {
         ran++
       }),
     )
@@ -363,11 +379,8 @@ describe('components inside a namespace', () => {
   })
 
   it('types components with the State and Env of createRouter', () => {
-    const { namespace: typed } = createRouter<
-      { user?: string },
-      { KEY: string }
-    >()
-    typed('/a')((ctx) => {
+    const { group: typed } = createRouter<{ user?: string }, { KEY: string }>()
+    typed('/a', (ctx) => {
       expectTypeOf(ctx.state.user).toEqualTypeOf<string | undefined>()
       expectTypeOf(ctx.env.KEY).toEqualTypeOf<string>()
     })
@@ -427,9 +440,10 @@ describe('methodNotAllowed', () => {
     )
   })
 
-  it('collects methods from namespaced routes and lists each once', async () => {
+  it('collects methods from grouped routes and lists each once', async () => {
     const app = new Mixer().mix(
-      namespace('/api')(
+      group(
+        '/api',
         get('/users', () => 'a'),
         get('/users', () => 'b'),
       ),
@@ -478,7 +492,7 @@ describe('performance and mounting', () => {
       ...routes,
       get('/a/:b', (_ctx, { b }) => b),
     )
-    // The first request compiles each route's pattern for its namespace prefix, so warm up first
+    // The first request compiles each route's pattern for its group prefix, so warm up first
     await call(app, '/a/warm')
     const spy = vi.spyOn(globalThis, 'decodeURIComponent')
     const res = await call(app, '/a/b')
@@ -506,7 +520,7 @@ describe('performance and mounting', () => {
   })
 })
 
-describe('next() inside a namespace', () => {
+describe('next() inside a group', () => {
   const jsonErrors: Component = async (ctx, next) => {
     const res = await next()
     if (ctx.error === undefined) return
@@ -516,10 +530,11 @@ describe('next() inside a namespace', () => {
     })
   }
 
-  it('wraps the routes of its namespace, such as a JSON error page for /api only', async () => {
+  it('wraps the routes of its group, such as a JSON error page for /api only', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const app = new Mixer({ onError: () => 'html page' }).mix(
-      namespace('/api')(
+      group(
+        '/api',
         jsonErrors,
         get('/fail', () => {
           throw new Error('boom')
@@ -533,10 +548,10 @@ describe('next() inside a namespace', () => {
     expect(await (await call(app, '/fail')).text()).toBe('html page')
   })
 
-  it('continues to what follows the namespace when nothing in it answers', async () => {
+  it('continues to what follows the group when nothing in it answers', async () => {
     const seen: number[] = []
     const app = new Mixer().mix(
-      namespace('/api')(async (_ctx, next) => {
+      group('/api', async (_ctx, next) => {
         const res = await next()
         seen.push(res.status)
       }),
@@ -546,7 +561,7 @@ describe('next() inside a namespace', () => {
     expect(seen).toEqual([200])
   })
 
-  it('works in nested namespaces', async () => {
+  it('works in nested groups', async () => {
     const tag =
       (name: string): Component =>
       async (ctx, next) => {
@@ -554,9 +569,11 @@ describe('next() inside a namespace', () => {
         ctx.headers.append('X-Tag', name)
       }
     const app = new Mixer().mix(
-      namespace('/a')(
+      group(
+        '/a',
         tag('a'),
-        namespace('/b')(
+        group(
+          '/b',
           tag('b'),
           get('/c', () => 'ok'),
         ),
@@ -569,7 +586,7 @@ describe('next() inside a namespace', () => {
 
   it('does not run outside its prefix', async () => {
     const app = new Mixer().mix(
-      namespace('/api')(async (ctx, next) => {
+      group('/api', async (ctx, next) => {
         await next()
         ctx.headers.set('X-Api', 'yes')
       }),
