@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-11-24
 
+> `namespace(prefix)(...items)` in this record was renamed to `group(prefix, ...items)` in [ADR 0007](0007-group-routes.md).
+
 ## Context
 
 Until now a component ran in order and either returned a value (the response) or `undefined` (go on). Work around the response was registered as hooks:

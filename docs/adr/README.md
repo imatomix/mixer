@@ -14,6 +14,7 @@ Each record explains one decision that shapes mixer: what problem it answers, wh
 | [0004. Send Server-Sent Events with sse()](0004-server-sent-events.md) | Accepted |
 | [0005. Compress responses with an opt-in mix-compress](0005-mix-compress.md) | Accepted |
 | [0006. Mount whole apps with mount()](0006-mount-apps.md) | Accepted |
+| [0007. Group routes with group(prefix, ...items)](0007-group-routes.md) | Accepted |
 
 ## Template
 
