@@ -203,6 +203,7 @@ await serve(app, {
 - `X-Forwarded-For` is read only for `trustedProxies` ([client IP address](#client-ip-address)); `X-Forwarded-Proto` and `X-Forwarded-Host` are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
+- A client that sends slowly is cut by Node's own limits: 60 seconds for the headers and 300 seconds for the whole request. They cover receiving only, not a slow handler or a streaming response ([slow work](#slow-work))
 - `server.close()` stops accepting connections, closes idle ones, and ends each remaining connection once its requests have been answered. After `timeout` (10 seconds by default; `server.close({ timeout: 30_000 })`) it cuts the rest, which aborts their `ctx.request.signal`. Call it on `SIGTERM` to deploy without dropping requests
 
 ### Bun
@@ -215,7 +216,7 @@ const server = await serve(app, { port: 3000 })
 await server.close()
 ```
 
-Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option. If a handler throws or rejects, the adapter logs the error on the server and returns an empty 500 response, including in development mode.
+Like the Node.js adapter, this listens on `127.0.0.1` by default and rejects unknown Host names with 400. The only options are `hostname`, `port` (default `0`, any free port), and `allowedHosts`, with the same meanings as above. It passes `server.requestIP(request)` to `app.handle()` for `ctx.ip`, without putting Bun's server in `ctx.env`. `server.close()` waits for requests in progress to finish; it has no shutdown timeout option. If a handler throws or rejects, the adapter logs the error on the server and returns an empty 500 response, including in development mode. Bun closes a connection that sends nothing for 10 seconds (its default `idleTimeout`), so a handler that works longer than that before answering, or a stream that pauses that long, is cut.
 
 ### Cloudflare Workers
 
@@ -242,6 +243,7 @@ export default {
 
 - `ctx.env` holds the Worker's bindings, and `ctx.waitUntil()` hands work to the Worker's `ctx.waitUntil`. With mix-router, give the bindings' type to `createRouter<State, Env>()` as well
 - Checked on every pull request on workerd at compatibility date `2026-07-30`, with Node.js compatibility turned off (`no_nodejs_compat`, `no_nodejs_compat_v2`), and type-checked with `@cloudflare/workers-types`. mixer does not need `nodejs_compat`
+- `ctx.request.signal` is aborted when the client goes away only from compatibility date `2026-11-17`, or with the `enable_request_signal` flag before it
 - `bodyLimit` applies when the body is read through `ctx.json()`, `ctx.form()`, `ctx.text()`, or `ctx.bytes()`, not when `ctx.request` is read directly. Work passed to `ctx.waitUntil()` is bound by the Workers time limits
 
 | Package | On Workers |
@@ -365,6 +367,25 @@ The rules:
 Two things the rules do not cover: keep `next()` inside the component that received it (calling it from another request runs the original request's components), and a component that throws loses what it would have added, since its error response is built outside it. Keep functions that modules call, such as mix-cors's `origin` or mix-logger's `requestId`, from throwing.
 
 `compose(...components)` runs a list as one group by the same rules: `next()` inside runs the rest of the group, then what follows it. mix-router's `namespace` is built on it, so a component inside a namespace wraps only that part of the app, such as JSON error pages under `/api`.
+
+### Slow work
+
+mixer has no time limit for a whole route. JavaScript cannot stop work that is running, so answering early would leave it running, and a write could still be saved after the client was told it failed. Put a limit on each call that goes out instead, so that the work itself stops:
+
+```ts
+get('/weather', async (ctx) => {
+  const res = await fetch(WEATHER_API, {
+    // Stops when the client goes away or after 5 seconds
+    signal: AbortSignal.any([ctx.request.signal, AbortSignal.timeout(5_000)]),
+  })
+  return Response.json(await res.json())
+})
+```
+
+- A stopped call throws, and the route answers `500` unless it catches the error
+- Pass the same signal to other clients that take one, such as a database driver
+- Stopping does not undo writes already made. Await work that must finish in the route, rather than handing it to `ctx.waitUntil()`: the client is not told whether that work succeeded, and platforms may cut it
+- Clients that send slowly are handled by the adapters ([Node.js](#nodejs), [Bun](#bun)) or the platform
 
 ### ctx.waitUntil()
 
