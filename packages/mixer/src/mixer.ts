@@ -165,9 +165,11 @@ export class Mixer<S extends State = State, E = unknown> {
           cancelBody(response, ctx)
           return response
         }
-        inner = adopt(ctx, response)
+        inner = response
         return inner
       }
+
+      let response: Response | undefined
       try {
         let result: unknown
         try {
@@ -175,42 +177,78 @@ export class Mixer<S extends State = State, E = unknown> {
         } finally {
           returned = true
         }
-        if (!called) {
-          if (result === undefined) continue
-          // A Response mixer already made (for example, by compose()) is final; anything else is turned into one
-          if (result instanceof Response && ownedBy.get(result) === ctx) {
-            checkUnread(result)
-            return adopt(ctx, result)
-          }
-          return adopt(ctx, this.#respond(ctx, result))
-        }
-        // The rest is still running: the component returned without awaiting next()
-        if (inner === undefined) {
-          throw new Error('mixer: await next() before returning')
-        }
-        if (result === undefined) {
-          checkUnread(inner)
-          // ctx.status changed after next() applies to the response the component kept
-          return ctx.status === inner.status
-            ? inner
-            : adopt(ctx, withStatus(inner, ctx.status, ctx))
-        }
-        // A value would be encoded with the headers of the response it replaces (Content-Type, Content-Length),
-        // so a component that wrapped the rest either keeps that response or returns a whole new Response
-        if (!(result instanceof Response)) {
-          throw new Error(
-            'mixer: after next(), return nothing or a Response, not another value',
-          )
-        }
-        checkUnread(result)
-        if (result.body !== inner.body) cancelBody(inner, ctx)
-        return adopt(ctx, result)
+        response = this.#outcome(ctx, result, called, inner)
+        if (response === undefined) continue
+        response = this.#accept(ctx, response)
       } catch (error) {
-        if (inner) cancelBody(inner, ctx)
-        return adopt(ctx, await this.#respondToError(error, ctx))
+        response = this.#accept(ctx, await this.#respondToError(error, ctx))
       }
+      // The rest produced a response that is not sent (replaced, or an error came after it)
+      if (inner && inner.body !== response.body) cancelBody(inner, ctx)
+      return response
     }
-    return adopt(ctx, await end())
+    return this.#accept(ctx, await end())
+  }
+
+  /**
+   * What a component's result means: undefined goes on (unless it called next()), and anything else becomes the
+   * response at this level. Misuse throws, so that it is answered as an error
+   */
+  #outcome(
+    ctx: Context<S, E>,
+    result: unknown,
+    called: boolean,
+    inner: Response | undefined,
+  ): Response | undefined {
+    if (!called) {
+      if (result === undefined) return undefined
+      // A Response this request already made (for example, by compose()) is final; anything else is turned into one
+      if (result instanceof Response && ownedBy.get(result) === ctx) {
+        return result
+      }
+      return this.#respond(ctx, result)
+    }
+    if (inner === undefined) {
+      // The rest is still running: the component returned without awaiting next()
+      throw new Error('mixer: await next() before returning')
+    }
+    if (result === undefined) {
+      // ctx.status changed after next() applies to the response the component kept
+      return ctx.status === inner.status
+        ? inner
+        : withStatus(inner, ctx.status, ctx)
+    }
+    // A value would be encoded with the headers of the response it replaces (Content-Type, Content-Length),
+    // so a component that wrapped the rest either keeps that response or returns a whole new Response
+    if (!(result instanceof Response)) {
+      throw new Error(
+        'mixer: after next(), return nothing or a Response, not another value',
+      )
+    }
+    return result
+  }
+
+  /**
+   * The one way a response leaves a component: its body must still be unread, it becomes this request's own
+   * (copied when it came from elsewhere or has immutable headers), and ctx.headers and ctx.status follow it
+   */
+  #accept(ctx: Context<S, E>, response: Response): Response {
+    if (response.bodyUsed || response.body?.locked) {
+      throw new Error('mixer: the response body was already read')
+    }
+    let accepted = response
+    if (ownedBy.get(response) !== ctx) {
+      accepted = own(
+        ctx,
+        new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: new Headers(response.headers),
+        }),
+      )
+    }
+    internal.adopt(ctx, accepted)
+    return accepted
   }
 
   #respond(ctx: Context<S, E>, value: unknown): Response {
@@ -274,29 +312,6 @@ const ownedBy = new WeakMap<Response, Context<State, unknown>>()
 function own(ctx: Context<State, unknown>, response: Response): Response {
   ownedBy.set(response, ctx)
   return response
-}
-
-function adopt(ctx: Context<State, unknown>, response: Response): Response {
-  let mutable = response
-  if (ownedBy.get(response) !== ctx) {
-    mutable = own(
-      ctx,
-      new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: new Headers(response.headers),
-      }),
-    )
-  }
-  internal.adopt(ctx, mutable)
-  return mutable
-}
-
-/** A body a component already read (or handed on) cannot be sent */
-function checkUnread(response: Response): void {
-  if (response.bodyUsed || response.body?.locked) {
-    throw new Error('mixer: the response body was already read')
-  }
 }
 
 function withStatus(
