@@ -10,7 +10,7 @@ Server-side sessions for [mixer](https://github.com/imatomix/mixer/tree/main/pac
 ## Install
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-session
+npm install @imatomix/mixer @imatomix/mix-session @imatomix/mix-router
 ```
 
 ## Usage

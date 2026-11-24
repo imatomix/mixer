@@ -10,7 +10,7 @@ CSRF protection for [mixer](https://github.com/imatomix/mixer/tree/main/packages
 ## Install
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-csrf
+npm install @imatomix/mixer @imatomix/mix-csrf @imatomix/mix-router
 ```
 
 ## Usage

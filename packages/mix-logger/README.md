@@ -10,7 +10,7 @@ Request-scoped logs for [mixer](https://github.com/imatomix/mixer/tree/main/pack
 ## Install
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-logger
+npm install @imatomix/mixer @imatomix/mix-logger @imatomix/mix-router
 ```
 
 ## Usage

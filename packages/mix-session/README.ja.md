@@ -10,7 +10,7 @@
 ## インストール
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-session
+npm install @imatomix/mixer @imatomix/mix-session @imatomix/mix-router
 ```
 
 ## 使い方
