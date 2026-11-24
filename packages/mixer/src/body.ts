@@ -2,6 +2,15 @@ import { HttpError } from './errors.js'
 
 export const DEFAULT_BODY_LIMIT = 1024 * 1024 * 3
 
+/** A limit that is not a whole number of bytes would silently disable the check */
+export function checkBodyLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new RangeError(
+      `bodyLimit must be an integer of 0 or more (bytes): ${limit}`,
+    )
+  }
+}
+
 export async function readBytes(
   request: Request,
   limit = DEFAULT_BODY_LIMIT,

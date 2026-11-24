@@ -416,7 +416,22 @@ post('/todos', async (ctx) => {
 })
 ```
 
-The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default), so raise the limit for larger uploads; streaming very large files to storage is not covered.
+The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default); streaming very large files to storage is not covered.
+
+To change the limit for one route, pass `bodyLimit` where the route reads the body. The app's limit stays for every other route, so an upload route does not make the rest accept large bodies:
+
+```ts
+post('/photos', async (ctx) => {
+  const form = await ctx.form({ bodyLimit: 50 * 1024 * 1024 }) // this route only
+  // ...
+})
+post('/api/items', async (ctx) => {
+  const item = await ctx.json({ bodyLimit: 64 * 1024 }) // smaller is fine too
+  // ...
+})
+```
+
+All four readers take it. The body is read once: a later read with a smaller `bodyLimit` checks the body already read against it, and a body refused by one read is not read again with a larger one. A proxy, CDN, or WAF in front can also cap request sizes, but the app's limit applies whether or not one is there.
 
 ### basePath
 
@@ -432,7 +447,7 @@ const app = new Mixer({ basePath: '/api' })
 | Option | Default | Description |
 | --- | --- | --- |
 | `basePath` | none | Path the app is mounted on |
-| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413` |
+| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413`. A read can pass its own `bodyLimit` for one route ([details](#request-body)) |
 | `onError` | none | `(error, ctx) => value` to shape error responses |
 | `trustedProxies` | none | Reverse proxies (IP addresses or CIDR ranges) whose `X-Forwarded-For` is read for `ctx.ip` |
 
