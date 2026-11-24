@@ -76,15 +76,15 @@ get('/embed', (ctx) => {
 })
 ```
 
-あるルートでヘッダーを外すには、mixer の `ctx.onResponseHeaders` で消す。リスナーは追加した順に動くので、`secureHeaders()` のあとに動く。
+ルートは値を変えられるが、ヘッダーを外すことはできない。別のサイトにページを枠で表示させるには、そのルートで CSP の `frame-ancestors` を指定する。これを理解するブラウザは `X-Frame-Options` を無視する。
 
 ```ts
 get('/widget', (ctx) => {
-  ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
+  ctx.headers.set('Content-Security-Policy', "frame-ancestors https://partner.example.com")
   return widget
 })
 ```
 
 ## ヘッダーの付け方
 
-`secureHeaders()` は mixer の [`ctx.onResponseHeaders`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#フック) を使うので、応答の組み立てが失敗したときの `500` を含め、実際に送る応答にヘッダーが付く。付かないのは、どのコンポーネントも動く前に応答する、`basePath` の外へのリクエストへの `404` だけ。
+`secureHeaders()` は、[`await next()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#next-で包む) のあとで、アプリの残りが作った応答にヘッダーを付ける。エラーの応答や、応答の組み立てが失敗したときの `500` も含む。最初に mix すれば、その外側で応答を差し替えるものはない。ヘッダーが付かないのは、どのコンポーネントも動く前に応答する、`basePath` の外へのリクエストへの `404` だけ。

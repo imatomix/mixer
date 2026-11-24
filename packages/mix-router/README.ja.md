@@ -158,6 +158,17 @@ app.mix(
 - プレフィックスはルートのパスと同じく、デコードしたうえで区切りごとに比べる（`/admin` は `/administrator` を含まない）
 - コンポーネントから見える `ctx.path` は、namespace からの相対ではなくパス全体
 - 順番は `mix()` と同じ意味を持つ。応答したルートより後ろに書いたコンポーネントは実行されない
+- namespace の中のコンポーネントは `await next()` で後ろを包める。`next()` は namespace の残りを実行し、そのあとに続くものを実行するので、アプリのその部分だけに効く
+
+```ts
+api(
+  async (ctx, next) => {
+    await next()
+    if (ctx.error !== undefined) return Response.json({ error: 'Failed' }, { status: ctx.status })
+  },
+  get('/users', listUsers),
+)
+```
 
 ## 独自の State と Env を使う
 

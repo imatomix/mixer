@@ -158,6 +158,17 @@ app.mix(
 - The prefix is compared like route paths: after decoding, segment by segment (`/admin` does not cover `/administrator`)
 - Components see the full `ctx.path`, not one relative to the namespace
 - Order matters as in `mix()`: a component written after a route that answers does not run
+- A component inside a namespace can wrap the rest with `await next()`, which runs the rest of the namespace and then what follows it, so it covers only that part of the app:
+
+```ts
+api(
+  async (ctx, next) => {
+    await next()
+    if (ctx.error !== undefined) return Response.json({ error: 'Failed' }, { status: ctx.status })
+  },
+  get('/users', listUsers),
+)
+```
 
 ## Custom State and Env
 
