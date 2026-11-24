@@ -60,7 +60,7 @@ app.mix(
 
 - `HEAD` のリクエスト、`204`・`205`・`206`・`304` の応答、`Content-Range` を持つ応答
 - すでに `Content-Encoding` を持つ応答。mix-static の[圧縮済みファイル](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.ja.md#圧縮済みファイル)など
-- `text/event-stream`（mixer の [`sse()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#server-sent-events)）。イベントごとにクライアントへ届く必要がある
+- `text/event-stream`（mixer の [`sse()`](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.ja.md#server-sent-events)）。イベントごとにクライアントへ届く必要がある
 - `ETag` を持つ応答。圧縮すると、本文とその ETag が合わなくなる
 - 画像・動画・アーカイブなど、圧縮しても縮まない種類
 - 長さが分かっていて `minBytes` より短いもの。`Response.json()` のようにアプリが作った `Response` は長さが分からないので、大きさにかかわらず圧縮する

@@ -80,7 +80,7 @@ logger({
 
 ### 別の場所に送る
 
-`write` に渡す関数は `LogEvent` のオブジェクトを受け取るので、mix-logger を pino や OpenTelemetry、ログのサービスに依存させずにつなげる。Promise を返しても応答はそれを待たず、`ctx.waitUntil` に渡す。応答のあとで止まりうる環境では、書き込みが途中で切れないよう、その環境の応答後の処理を登録する API を `app.fetch` に渡す（[mixer の `ctx.waitUntil()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#ctxwaituntil) を参照）。
+`write` に渡す関数は `LogEvent` のオブジェクトを受け取るので、mix-logger を pino や OpenTelemetry、ログのサービスに依存させずにつなげる。Promise を返しても応答はそれを待たず、`ctx.waitUntil` に渡す。応答のあとで止まりうる環境では、書き込みが途中で切れないよう、その環境の応答後の処理を登録する API を `app.fetch` に渡す（[mixer の `ctx.waitUntil()`](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.ja.md#ctxwaituntil) を参照）。
 
 | プロパティ | イベント | 説明 |
 | --- | --- | --- |

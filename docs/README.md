@@ -20,10 +20,10 @@ Where to find what, by what you want to do. Pages are being split out of the mix
 
 - Routes, groups of routes, and `405`: [mix-router](../packages/mix-router)
 - Mount a whole app, mixer or another framework: [mount](../packages/mix-router/README.md#mount)
-- Sign users in and check them before routes: [Guarding routes](../packages/mixer/README.md#guarding-routes)
-- Read and validate the request body: [Request body](../packages/mixer/README.md#request-body)
-- Send Server-Sent Events: [Server-Sent Events](../packages/mixer/README.md#server-sent-events)
-- Handle slow work and run work after the response: [Slow work](../packages/mixer/README.md#slow-work), [ctx.waitUntil()](../packages/mixer/README.md#ctxwaituntil)
+- Sign users in and check them before routes: [Guarding routes](how-to/auth-and-guards.md)
+- Read and validate the request body: [Request body](how-to/request-body.md)
+- Send Server-Sent Events: [Server-Sent Events](how-to/streaming-and-background-work.md#server-sent-events)
+- Handle slow work and run work after the response: [Slow work](how-to/streaming-and-background-work.md#slow-work), [ctx.waitUntil()](how-to/streaming-and-background-work.md#ctxwaituntil)
 - Sessions: [mix-session](../packages/mix-session) · CSRF protection: [mix-csrf](../packages/mix-csrf) · Security headers: [mix-secure-headers](../packages/mix-secure-headers) · CORS: [mix-cors](../packages/mix-cors)
 - Static files: [mix-static](../packages/mix-static) · Request logs: [mix-logger](../packages/mix-logger) · Compression: [mix-compress](../packages/mix-compress)
 

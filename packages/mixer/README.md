@@ -214,52 +214,15 @@ See [Composing components with next()](https://github.com/imatomix/mixer/blob/ma
 
 ### Server-Sent Events
 
-`sse()` answers with a stream of events. Each field is written safely: every line of `data` becomes its own `data:` line, so text from a client cannot end the event and start a forged one, and `event` or `id` with a line break throws.
-
-```ts
-import { sse } from '@imatomix/mixer'
-
-get('/events', (ctx) =>
-  sse(ctx, async (stream, signal) => {
-    while (!signal.aborted) {
-      const update = await nextUpdate(signal)
-      await stream.send({ event: 'update', id: update.id, data: JSON.stringify(update) })
-    }
-  }),
-)
-```
-
-- `data` is a string; use `JSON.stringify` for other values. `retry` is the client's reconnection delay in milliseconds
-- `signal` is aborted when the client goes away. After that, `send` rejects, so a loop that ignores `signal` still ends
-- `send` resolves when the client is ready for more, so a producer that awaits each `send` keeps at most one event waiting in memory
-- A comment line is sent when nothing was sent for 5 seconds, so Bun (which closes idle connections after 10 seconds) and proxies keep the connection open. `sse(ctx, producer, { heartbeat: 15_000 })` changes the interval, and `heartbeat: false` turns it off
-- The response is `text/event-stream; charset=utf-8` with `Cache-Control: no-store`. Headers and cookies set on `ctx` before it are kept; behind nginx, set `X-Accel-Buffering: no` so it does not buffer the stream
-- The producer starts when the client reads the body, so a `HEAD` request never runs it
-- The response has started when the producer runs, so an error it throws cannot become an error response: it is [reported](#error-reports) with the phase `'stream'`, and the stream ends. The browser's `EventSource` then reconnects, sending the last `id` it received in `Last-Event-ID`
-- On Cloudflare Workers, use compatibility date `2026-11-17` or later, or the `enable_request_signal` flag. Before that, the Worker is not told when the client goes away: the producer stops at its next `send`, but `signal` is not aborted
+`sse(ctx, async (stream, signal) => ...)` sends events safely, with a heartbeat and a stop when the client goes away. See [Server-Sent Events](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md#server-sent-events).
 
 ### Slow work
 
-mixer has no time limit for a whole route. JavaScript cannot stop work that is running, so answering early would leave it running, and a write could still be saved after the client was told it failed. Put a limit on each call that goes out instead, so that the work itself stops:
-
-```ts
-get('/weather', async (ctx) => {
-  const res = await fetch(WEATHER_API, {
-    // Stops when the client goes away or after 5 seconds
-    signal: AbortSignal.any([ctx.request.signal, AbortSignal.timeout(5_000)]),
-  })
-  return Response.json(await res.json())
-})
-```
-
-- A stopped call throws, and the route answers `500` unless it catches the error
-- Pass the same signal to other clients that take one, such as a database driver
-- Stopping does not undo writes already made. Await work that must finish in the route, rather than handing it to `ctx.waitUntil()`: the client is not told whether that work succeeded, and platforms may cut it
-- Clients that send slowly are handled by the adapters ([Node.js](https://github.com/imatomix/mixer/blob/main/docs/how-to/runtimes.md#nodejs), [Bun](https://github.com/imatomix/mixer/blob/main/docs/how-to/runtimes.md#bun)) or the platform
+mixer has no time limit for a whole route; put a limit on each outgoing call so the work itself stops. See [Slow work](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md#slow-work).
 
 ### ctx.waitUntil()
 
-Runs work after the response without making the response wait. On a long-running server (`serve()`, `Bun.serve`) the work finishes as the process keeps running, and a failure is [reported](#error-reports). On platforms that may stop after the response, pass the platform's background-work API as the third argument, as in `app.fetch(request, env, { waitUntil })`; on Cloudflare Workers, `export default app` does this for you.
+Runs work after the response without making it wait. See [ctx.waitUntil()](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md#ctxwaituntil).
 
 ### Cookies
 
@@ -284,112 +247,11 @@ ctx.cookies.delete('theme') // pass the same path / domain used when setting it
 
 ### Request body
 
-Say which kind of body a route expects. Each reader accepts only its own Content-Type and answers `415` otherwise, before reading anything:
-
-| Method | Accepts | Result |
-| --- | --- | --- |
-| `ctx.json()` | `application/json`, `application/*+json` | The parsed value as `unknown` (`400` if invalid or empty) |
-| `ctx.form()` | `application/x-www-form-urlencoded`, `multipart/form-data` | `FormData`: `get(name)` and `getAll(name)` give strings, or `File`s for uploads (`400` if malformed) |
-| `ctx.text()` / `ctx.bytes()` | anything | A string / a `Uint8Array` |
-
-A JSON route therefore never parses a form or `text/plain`, which browsers send from other sites without asking first. That keeps a JSON route from being reached by a plain cross-site form, but it does not replace CSRF protection for routes that rely on cookies: use mix-csrf for those.
-
-The values come from the client, so check them before use; `ctx.json()` returns `unknown` for that reason:
-
-```ts
-post('/todos', async (ctx) => {
-  const form = await ctx.form()
-  const title = form.get('title')
-  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
-    throw new HttpError(422, 'A title is between 1 and 200 characters')
-  }
-  // ...
-})
-```
-
-With a schema library, check the value with `validateInput()`. It takes any [Standard Schema](https://standardschema.dev) (Zod 3.24 or later, Valibot, ArkType, ...) and resolves to the schema's output, typed:
-
-```ts
-import { validateInput } from '@imatomix/mixer'
-import { z } from 'zod'
-
-const NewItem = z.strictObject({ title: z.string().min(1).max(200), count: z.number().int() })
-
-post('/api/items', async (ctx) => {
-  const item = await validateInput(NewItem, await ctx.json()) // { title: string; count: number }
-  // ...
-})
-```
-
-- Data that does not match answers `422` with `{ "error": "Invalid request data" }`, and is not reported as a failure. Malformed JSON is still `400`, a wrong Content-Type `415`, and a body over the limit `413`
-- The issues are kept off the response, because their messages can repeat the client's values. To show them, read `error.issues` in `onError`: `if (error instanceof ValidationError) return Response.json({ issues: error.issues }, { status: 422 })`
-- A schema that throws instead of reporting issues is a bug, so it answers `500` and is reported
-- Use it for values from the client only. Configuration or stored data that fails a check is the server's problem, not a `422`
-- Have the schema reject or strip keys it does not know (`z.strictObject` above), so that keys such as `__proto__` do not travel further into the app
-- It works on other input too: `Object.fromEntries(await ctx.form())` for form fields (one value per name; use `getAll` for repeated ones), `Object.fromEntries(ctx.url.searchParams)` for a query, and route parameters as they are
-
-The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default); streaming very large files to storage is not covered.
-
-To change the limit for one route, pass `bodyLimit` where the route reads the body. The app's limit stays for every other route, so an upload route does not make the rest accept large bodies:
-
-```ts
-post('/photos', async (ctx) => {
-  const form = await ctx.form({ bodyLimit: 50 * 1024 * 1024 }) // this route only
-  // ...
-})
-post('/api/items', async (ctx) => {
-  const item = await ctx.json({ bodyLimit: 64 * 1024 }) // smaller is fine too
-  // ...
-})
-```
-
-All four readers take it. The body is read once: a later read with a smaller `bodyLimit` checks the body already read against it, and a body refused by one read is not read again with a larger one. A proxy, CDN, or WAF in front can also cap request sizes, but the app's limit applies whether or not one is there.
+`ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read the body within `bodyLimit` and accept only their own Content-Type; `validateInput()` checks it with a schema such as Zod. See [Reading and validating the request body](https://github.com/imatomix/mixer/blob/main/docs/how-to/request-body.md#request-body).
 
 ### Guarding routes
 
-When a group of routes needs something checked first (a signed-in user, the organization the user belongs to), check it once in a guard and put the result on `ctx.state`. Write the guard first in a [namespace](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md#components-inside-a-namespace), so it runs for every request under the prefix, including paths that match no route. Routes take the value with a small `requireX(ctx)` helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on.
-
-A response that depends on who is asking must stay out of shared caches. Set `Cache-Control` in the guard after `await next()`, so it reaches every response under the guard, errors included: `private` keeps shared caches from storing it, and `no-store` keeps any cache from storing it. mixer marks a response private by itself only when it sets a cookie, and mix-session does it for responses with a session; a guard that only reads a value does neither. A response the guard returns before `next()`, such as a redirect, needs its own header if it depends on the request.
-
-For example, signing users in. mixer does not check passwords or talk to identity providers: use an authentication library for that. mixer gives the parts around it (sessions, CSRF protection, secure cookies, the cache policy above) and the guard:
-
-```ts
-import { HttpError, redirect } from '@imatomix/mixer'
-import { all, createRouter } from '@imatomix/mix-router'
-
-type User = { id: string; name: string }
-type State = { user?: User }
-const { get, namespace } = createRouter<State>()
-
-function requireUser(ctx: { state: State }): User {
-  if (!ctx.state.user) throw new HttpError(401)
-  return ctx.state.user
-}
-
-app.mix(
-  // A library that takes a Web Request and returns a Response mounts as a route (here, Better Auth)
-  all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
-  namespace('/app')(
-    async (ctx, next) => {
-      const result = await auth.api.getSession({ headers: ctx.request.headers })
-      if (!result) return redirect('/login', { status: 303 })
-      ctx.state.user = result.user
-      await next()
-      // Pages for one user must not be stored by shared caches
-      ctx.headers.set('Cache-Control', 'private, no-store')
-    },
-    get('/', (ctx) => `hello ${requireUser(ctx).name}`),
-  ),
-)
-```
-
-- Do not read the request body before a route that hands `ctx.request` to a library: a body can be read only once
-- A library that keeps its own session cookie does not need mix-session for signing in. With mix-session instead, call `ctx.state.session.regenerate()` when a user signs in
-- Libraries built on Node.js `req`/`res` objects (such as Passport) do not run on the Web `Request`/`Response`
-
-Other values follow the same shape: a second guard after this one can look up the organization the signed-in user belongs to, put it on `ctx.state.org`, and routes call `requireOrg(ctx)`.
-
-See [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) for why routes get these values this way.
+Check something once before a group of routes, such as the signed-in user from an authentication library, put it on `ctx.state`, and take it in routes with a small `requireX(ctx)` helper. See [Signing users in and guarding routes](https://github.com/imatomix/mixer/blob/main/docs/how-to/auth-and-guards.md#guarding-routes).
 
 ### basePath
 
