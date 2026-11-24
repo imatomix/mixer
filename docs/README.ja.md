@@ -18,6 +18,7 @@
 ## アプリを動かす
 
 - [Node.js](how-to/runtimes.ja.md#nodejs)・[Bun](how-to/runtimes.ja.md#bun)・[Cloudflare Workers](how-to/runtimes.ja.md#cloudflare-workers)
+- [React などの SPA と組み合わせる](how-to/spa.ja.md): API とビルドしたフロントを 1 つのアプリから配る
 - Next.js・Nuxt・SvelteKit・React Router などの[フレームワークの中で使う](how-to/runtimes.ja.md#フレームワークの中で使う)
 - [プロキシの後ろで使う](reference/mixer.ja.md#クライアントの-ip-アドレス): クライアントの IP アドレスと `trustedProxies`
 

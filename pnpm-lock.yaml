@@ -47,9 +47,18 @@ importers:
 
   examples/docs:
     dependencies:
+      '@imatomix/mix-csrf':
+        specifier: workspace:*
+        version: link:../../packages/mix-csrf
       '@imatomix/mix-router':
         specifier: workspace:*
         version: link:../../packages/mix-router
+      '@imatomix/mix-secure-headers':
+        specifier: workspace:*
+        version: link:../../packages/mix-secure-headers
+      '@imatomix/mix-static':
+        specifier: workspace:*
+        version: link:../../packages/mix-static
       '@imatomix/mixer':
         specifier: workspace:*
         version: link:../../packages/mixer

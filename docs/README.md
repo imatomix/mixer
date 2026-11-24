@@ -18,6 +18,7 @@ Where to find what, by what you want to do.
 ## Run your app
 
 - [Node.js](how-to/runtimes.md#nodejs), [Bun](how-to/runtimes.md#bun), and [Cloudflare Workers](how-to/runtimes.md#cloudflare-workers)
+- [With a React or other single-page app](how-to/spa.md): the API and the built frontend from one app
 - [Inside another framework](how-to/runtimes.md#inside-frameworks) such as Next.js, Nuxt, SvelteKit, or React Router
 - [Behind a proxy](reference/mixer.md#client-ip-address): the client's IP address and `trustedProxies`
 
