@@ -40,7 +40,7 @@ export async function flow(send) {
   await added.text()
   check('add', added.status === 303)
 
-  const list = await request('/')
+  const list = await request('/todos')
   const page = await list.text()
   check('escaped list', page.includes('&lt;b&gt;milk&lt;/b&gt;'))
   check('no-store', list.headers.get('cache-control') === 'private, no-store')

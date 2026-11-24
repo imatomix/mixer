@@ -21,7 +21,7 @@ export function authRoutes(users: Users) {
       ctx.state.session.set('userId', user.id)
       ctx.state.session.set('userName', user.name)
       ctx.state.log.info('signed in', { userId: user.id })
-      return seeOther('/')
+      return seeOther('/todos')
     }),
 
     post('/logout', (ctx) => {
