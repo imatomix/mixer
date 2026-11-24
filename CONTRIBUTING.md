@@ -133,7 +133,7 @@ Examples in READMEs and in `examples/` are what users read and copy. They are wr
 ### Errors and options
 
 - Check options when the component is created, so a mistake fails at startup instead of on a request. Throw `RangeError` for a number out of range (including `NaN` and `Infinity`) and `TypeError` for a value of the wrong kind.
-- Start messages with the package or function name and say what is expected: `mix-cors: maxAge must be an integer of 0 or more: 1.5`.
+- Write messages by Google's [Writing Helpful Error Messages](https://developers.google.com/tech-writing/error-messages): say what went wrong and how to fix it. In addition, start with the package or function name: `mix-cors: maxAge must be an integer of 0 or more: 1.5`.
 - Show a value only when it helps and cannot be secret: never secrets or tokens, and never a long or client-supplied value in full. Quote strings with `JSON.stringify` and shorten long ones.
 - Decide each default on its own reasons, and record them in the README. Options that loosen a protection are usually off by default and named for what they allow (`allowCredentialed`, `trustedProxies`, `allowedHosts`).
 
