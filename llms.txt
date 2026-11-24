@@ -1,0 +1,55 @@
+# mixer
+
+> mixer (`@imatomix/mixer`) is a small web framework built on the Web standard `Request` and `Response`. An app is a list of components mixed in with `mix()`; it runs on Node.js, Bun, Cloudflare Workers, and inside other frameworks, and is safe by default. Routing, CORS, CSRF protection, security headers, static files, sessions, logging, and compression are separate `@imatomix/mix-*` packages.
+
+Things that differ from other frameworks:
+
+- Components run in order and stop at the first one that returns a value; returning nothing hands over to the next one. `next()` is needed only by a component that acts after the rest has built the response, such as adding a header to every response.
+- Routes come from `@imatomix/mix-router` (`get`, `post`, `namespace`, `mount`). Routes of one resource go in their own file without their prefix, and the app assigns it with `namespace('/prefix')(...routes)`.
+- Throw `HttpError(status)` for error responses. Check client input with `validateInput(schema, value)` and a Standard Schema such as Zod; it answers `422` for bad input.
+- Order matters for safety: mix in `logger()`, `secureHeaders()`, `csrf()`, and `session()` before the routes.
+- Test an app by calling `app.fetch(new Request(url))`; no server is needed.
+
+## Docs
+
+- [Documentation map](https://github.com/imatomix/mixer/blob/main/docs/README.md): every page, by what you want to do
+- [mixer README](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md): install, quick start, components, and writing your own component
+- [Recommended stacks](https://github.com/imatomix/mixer/blob/main/README.md#recommended-stacks): the modules to combine for a browser app and for a JSON API
+
+## How-to
+
+- [Running your app](https://github.com/imatomix/mixer/blob/main/docs/how-to/runtimes.md): Node.js, Bun, Cloudflare Workers, and inside other frameworks
+- [Signing users in and guarding routes](https://github.com/imatomix/mixer/blob/main/docs/how-to/auth-and-guards.md): a guard before a group of routes, and mounting an authentication library
+- [Reading and validating the request body](https://github.com/imatomix/mixer/blob/main/docs/how-to/request-body.md): `ctx.json()`, `ctx.form()`, `validateInput()`, and `bodyLimit`
+- [Streaming and background work](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md): `sse()`, slow work, and `ctx.waitUntil()`
+- [Testing your app](https://github.com/imatomix/mixer/blob/main/docs/how-to/testing.md): `app.fetch`, sessions across requests, the environment, and `waitUntil`
+
+## Reference
+
+- [Mixer](https://github.com/imatomix/mixer/blob/main/docs/reference/mixer.md): options, `basePath`, the client IP address, and types
+- [ctx](https://github.com/imatomix/mixer/blob/main/docs/reference/context.md): what a component receives
+- [Responses, errors, and cookies](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.md): return values, `redirect()`, `HttpError`, error reports, and cookies
+
+## Examples
+
+- [A JSON API](https://github.com/imatomix/mixer/blob/main/docs/examples/json-api.md): create, list, and read with input checked by Zod
+- [Receiving a webhook](https://github.com/imatomix/mixer/blob/main/docs/examples/webhook.md): a signed request checked before anything is trusted
+- [Example app](https://github.com/imatomix/mixer/tree/main/examples/todo): a todo app with sign-in, sessions, CSRF protection, and security headers
+
+## Modules
+
+- [mix-router](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md): type-safe routes, `namespace`, `mount`, and `405`
+- [mix-session](https://github.com/imatomix/mixer/blob/main/packages/mix-session/README.md): server-side sessions
+- [mix-csrf](https://github.com/imatomix/mixer/blob/main/packages/mix-csrf/README.md): CSRF protection with `Sec-Fetch-Site` and `Origin`
+- [mix-secure-headers](https://github.com/imatomix/mixer/blob/main/packages/mix-secure-headers/README.md): `X-Frame-Options`, HSTS, CSP, and more
+- [mix-cors](https://github.com/imatomix/mixer/blob/main/packages/mix-cors/README.md): CORS
+- [mix-static](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.md): static files (Node.js and Bun)
+- [mix-logger](https://github.com/imatomix/mixer/blob/main/packages/mix-logger/README.md): request-scoped logs
+- [mix-compress](https://github.com/imatomix/mixer/blob/main/packages/mix-compress/README.md): response compression (Node.js and Bun)
+
+## Optional
+
+- [Safe by default](https://github.com/imatomix/mixer/blob/main/docs/explanation/safety.md): what mixer gets right without extra code
+- [Composing components with next()](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.md): the rules for `next()`
+- [Architecture decision records](https://github.com/imatomix/mixer/tree/main/docs/adr): why the design is the way it is
+- [CONTRIBUTING.md](https://github.com/imatomix/mixer/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/imatomix/mixer/blob/main/AGENTS.md): working on mixer itself

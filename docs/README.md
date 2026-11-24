@@ -51,3 +51,4 @@ Where to find what, by what you want to do.
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md): setup, commands, tests, design principles, and code conventions
 - [AGENTS.md](../AGENTS.md): instructions for AI coding agents working in this repository
+- [llms.txt](../llms.txt): a summary and the main pages, for AI assistants helping you build with mixer
