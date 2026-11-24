@@ -33,7 +33,7 @@ export function createApp() {
       return [...posts.values()].slice(offset, offset + limit)
     }),
 
-    get('/:id', (ctx, { id }) => {
+    get('/:id', (_ctx, { id }) => {
       const found = posts.get(id)
       if (!found) throw new HttpError(404)
       return found
