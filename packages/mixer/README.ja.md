@@ -14,14 +14,19 @@ Web 標準の `Request` / `Response` で動く、小さな Web フレームワ�
 ## すぐ始める
 
 ```sh
-npm install @imatomix/mixer
+npm install @imatomix/mixer @imatomix/mix-router
 ```
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
+import { get, post } from '@imatomix/mix-router'
 
-const app = new Mixer().mix(() => 'Hello mixer')
+const app = new Mixer().mix(
+  get('/', () => 'Hello mixer'),
+  get('/hello/:name', (ctx, { name }) => ({ hello: name })),
+  post('/echo', (ctx) => ctx.json()),
+)
 
 await serve(app, { port: 3000 })
 ```
@@ -32,22 +37,64 @@ http://localhost:3000 を開く。Bun では代わりに `@imatomix/mixer/bun` �
 
 ### コンポーネント
 
-アプリは**コンポーネント**の並び。コンポーネントは `ctx` を受け取り、応答を返すこともある関数で、`mix()` で足していく。
+アプリは**コンポーネント**の並びで、`mix()` で足していく。[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) のルートもコンポーネントで、ログ・セキュリティヘッダー・CSRF 対策・セッションなどの[モジュール](#モジュール)もコンポーネント。
 
 ```ts
+import { csrf } from '@imatomix/mix-csrf'
+import { logger } from '@imatomix/mix-logger'
+import { get } from '@imatomix/mix-router'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
+
 app.mix(
-  (ctx) => {
-    ctx.state.startedAt = Date.now() // 何も返さない: 次へ進む
-  },
-  (ctx) => {
-    if (ctx.path === '/hello') return { hello: 'mixer' } // 値を返す: これが応答になる
-  },
+  logger(), // 部品は最初に置く。後ろのすべての応答に効く
+  secureHeaders(),
+  csrf(),
+  get('/', () => 'Hello mixer'),
 )
 ```
 
-コンポーネントは `mix()` した順に実行され、**値（`undefined` 以外）を返したところで止まる**。どれも返さなければ `404` になる。ルーティングもコンポーネントの一つ。[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) を参照。
+コンポーネントは `mix()` した順に実行され、**値（`undefined` 以外）を返したところで止まる**。どれも返さなければ `404` になる。`ctx` に入っているものと、コンポーネントが返せる値は[リファレンス](https://github.com/imatomix/mixer/blob/main/docs/reference/context.ja.md)にある。
 
-コンポーネントは、後ろのコンポーネントを包むこともできる。`await next()` で後ろを実行し、できた応答を受け取って、ヘッダーや Cookie を足す。
+### ルートをファイルに分ける
+
+1 つのリソースのルートは、載せる場所のパスを書かずに 1 つのファイルにまとめ、アプリを組み立てるところで前置きのパスを付ける。
+
+```ts
+// routes/users.ts
+import { get, post } from '@imatomix/mix-router'
+
+export const userRoutes = [
+  get('/', () => [{ id: '1', name: 'Alice' }]),
+  get('/:id', (ctx, { id }) => ({ id })),
+  post('/', async (ctx) => ctx.json()),
+]
+```
+
+```ts
+// app.ts
+import { namespace } from '@imatomix/mix-router'
+import { userRoutes } from './routes/users.js'
+
+app.mix(namespace('/users')(...userRoutes))
+```
+
+### 自分でコンポーネントを書く
+
+コンポーネントは `ctx` を受け取る関数。何も返さなければ次へ進み、値を返せばそれが応答になる。`HttpError` を投げてもよい。
+
+```ts
+import { HttpError } from '@imatomix/mixer'
+
+app.mix(
+  (ctx) => {
+    if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
+    // 何も返さない: 次へ進む
+  },
+  get('/admin', () => 'only with a token'),
+)
+```
+
+後ろが応答を作ったあとで何かをしたいとき（すべての応答にヘッダーを足すなど）は、2 つ目の引数の `next` を使う。ルートやモジュールを使うだけなら要らない。mixer のモジュールは中でこれを使っている。
 
 ```ts
 app.mix(
@@ -56,11 +103,11 @@ app.mix(
     await next() // このコンポーネントより後ろをすべて実行する
     ctx.headers.set('X-Response-Time', `${Date.now() - started}ms`)
   },
-  (ctx) => ({ hello: 'mixer' }),
+  get('/', () => 'Hello mixer'),
 )
 ```
 
-規則は [next() によるコンポーネントの組み立て](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.ja.md) を参照。`ctx` に入っているものと、コンポーネントが返せる値は[リファレンス](https://github.com/imatomix/mixer/blob/main/docs/reference/context.ja.md)にある。
+規則は [next() によるコンポーネントの組み立て](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.ja.md) を参照。
 
 ## 何もしなくても安全
 
