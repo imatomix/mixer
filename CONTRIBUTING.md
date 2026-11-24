@@ -75,11 +75,11 @@ The goal is that users can pick only the modules they need and replace any of th
 - `mix-*` packages may use mixer's **public API** (anything exported from `packages/mixer/src/index.ts`, such as `HttpError`) at runtime, but never its internals.
 - `mix-*` packages never depend on each other.
 - Pass values to later components through `ctx.state` and export its type. Do not add properties to `ctx` or `ctx.request`.
-- Respond by returning a value or a `Response`; set `ctx.status` and `ctx.headers` for the draft. Return `undefined` to hand over to the next component.
+- Respond by returning a value or a `Response`; set `ctx.status` and `ctx.headers` for the draft. Return `undefined` to hand over to the next component. To work around the rest (headers or cookies that every response needs, saving state, timing), `await next()` and then change `ctx.headers`, `ctx.cookies`, or `ctx.status`; see [ADR 0001](docs/adr/0001-compose-components-with-next.md).
 - Match paths against `ctx.path`, so that modules work under `basePath`. Use `ctx.url` only when the full URL is needed (for example, a redirect `Location`).
 - Keep modules runtime-neutral: use Web standard APIs (`Request`, `Headers`, `ReadableStream`, Web Crypto) and reach for `node:` modules only when the job needs them (such as `node:fs` in mix-static).
 - Throw `HttpError` for error responses instead of sending them directly, so that users can customize them with `onError`.
-- Use `ctx.onBeforeSend()` for work that must happen right before the response is built, `ctx.onResponse()` for work once it is ready, and `ctx.waitUntil()` for slow work that should not delay the response.
+- Use `ctx.waitUntil()` for slow work that should not delay the response, and `ctx.onErrorReport()` to receive unexpected errors.
 - Do not add runtime dependencies without discussing it in an issue first.
 
 ## Adding a new package

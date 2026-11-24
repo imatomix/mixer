@@ -99,12 +99,11 @@ export function secureHeaders(options: SecureHeadersOptions = {}): Component {
     headerText('permissionsPolicy', options.permissionsPolicy ?? false),
   )
 
-  return (ctx) => {
-    ctx.onResponseHeaders((response) => {
-      for (const [name, value] of headers) {
-        if (!response.has(name)) response.set(name, value)
-      }
-    })
+  return async (ctx, next) => {
+    await next()
+    for (const [name, value] of headers) {
+      if (!ctx.headers.has(name)) ctx.headers.set(name, value)
+    }
   }
 }
 

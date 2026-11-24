@@ -1,7 +1,9 @@
 import {
   type Component,
   type Context,
+  compose,
   HttpError,
+  type Next,
   type State,
 } from '@imatomix/mixer'
 import type { Params } from './params.js'
@@ -27,16 +29,17 @@ const dispatch = Symbol('dispatch')
 type Dispatch<S extends State, E> = (
   ctx: Context<S, E>,
   prefix: string,
+  next: Next,
 ) => Promise<unknown>
 
 /** A route that can be passed to `mix()` as a mixer Component and nested in a namespace */
 export interface Route<S extends State = State, E = unknown> {
-  (ctx: Context<S, E>): Promise<unknown>
+  (ctx: Context<S, E>, next: Next): Promise<unknown>
   readonly [dispatch]: Dispatch<S, E>
 }
 
 function createRoute<S extends State, E>(run: Dispatch<S, E>): Route<S, E> {
-  const component = (ctx: Context<S, E>) => run(ctx, '')
+  const component = (ctx: Context<S, E>, next: Next) => run(ctx, '', next)
   return Object.assign(component, { [dispatch]: run })
 }
 
@@ -196,21 +199,18 @@ export function namespace(prefix: string) {
   return <S extends State = State, E = unknown>(
     ...items: (Route<S, E> | Component<S, E>)[]
   ): Route<S, E> =>
-    createRoute(async (ctx, outerPrefix) => {
+    createRoute(async (ctx, outerPrefix, next) => {
       const prefix = outerPrefix + normalized
-      let inScope: boolean | undefined
-      for (const item of items) {
-        let result: unknown
-        if (isRoute(item)) {
-          result = await item[dispatch](ctx, prefix)
-        } else {
-          inScope ??= isUnder(ctx, prefix)
-          if (!inScope) continue
-          result = await item(ctx)
-        }
-        if (result !== undefined) return result
-      }
-      return undefined
+      // Nothing inside can match a path outside the prefix
+      if (!isUnder(ctx, prefix)) return undefined
+      // The items run as one group, so next() inside wraps the rest of the namespace and what follows it
+      const group = items.map(
+        (item): Component<S, E> =>
+          isRoute(item)
+            ? (inner, innerNext) => item[dispatch](inner, prefix, innerNext)
+            : item,
+      )
+      return compose(...group)(ctx, next)
     })
 
   function isUnder<S extends State, E>(

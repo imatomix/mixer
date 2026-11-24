@@ -1,4 +1,9 @@
-import type { Component, Context, CookieOptions } from '@imatomix/mixer'
+import {
+  type Component,
+  type Context,
+  type CookieOptions,
+  HttpError,
+} from '@imatomix/mixer'
 import { Session, snapshot } from './session.js'
 import { MemoryStore, type SessionData, type SessionStore } from './store.js'
 
@@ -77,7 +82,7 @@ export function session<D extends SessionData = SessionData>(
     return Math.min(ttl, left)
   }
 
-  return async (ctx) => {
+  return async (ctx, next) => {
     const loadedId = readSessionId(ctx, name)
     const record = loadedId ? toRecord(await store.get(loadedId)) : undefined
     // An expired session is treated as missing, and removed when the response is sent
@@ -90,18 +95,29 @@ export function session<D extends SessionData = SessionData>(
     )
     ;(ctx.state as SessionState<D>).session = session
 
-    if (cacheControl !== false) {
-      ctx.onResponseHeaders((headers) => {
-        const setsCookie = headers
-          .getSetCookie()
-          .some((line) => line.startsWith(`${name}=`))
-        if (live || setsCookie) headers.set('Cache-Control', cacheControl)
-      })
+    await next()
+    // Saved after everything else ran, on whatever response it produced, errors included
+    try {
+      await save(ctx, session, live?.createdAt ?? Date.now(), expiredId)
+    } catch (error) {
+      // The error response is built outside this component, so it carries the cache policy itself
+      throw new HttpError(
+        500,
+        `mix-session: saving the session failed: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+          ...(cacheControl === false
+            ? {}
+            : { headers: { 'Cache-Control': cacheControl } }),
+        },
+      )
     }
-    ctx.onBeforeSend(() =>
-      save(ctx, session, live?.createdAt ?? Date.now(), expiredId),
-    )
-    return undefined
+    if (cacheControl !== false) {
+      const setsCookie = ctx.headers
+        .getSetCookie()
+        .some((line) => line.startsWith(`${name}=`))
+      if (live || setsCookie) ctx.headers.set('Cache-Control', cacheControl)
+    }
   }
 
   async function save(

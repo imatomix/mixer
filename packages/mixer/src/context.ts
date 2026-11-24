@@ -10,34 +10,15 @@ export interface ExecutionContextLike {
   waitUntil(promise: Promise<unknown>): void
 }
 
-/** A snapshot of the final response passed to onResponse hooks. Changing it has no effect */
-export interface ResponseInfo {
-  readonly status: number
-  readonly headers: Headers
-}
-
 /** Where an error reported through ctx.onErrorReport() happened */
-export type ErrorPhase =
-  | 'handling'
-  | 'onError'
-  | 'beforeSend'
-  | 'onResponse'
-  | 'waitUntil'
-  | 'streamCancel'
-  | 'headers'
+export type ErrorPhase = 'handling' | 'onError' | 'waitUntil' | 'streamCancel'
 
 export interface ErrorReport {
   readonly error: unknown
   readonly phase: ErrorPhase
 }
 
-type BeforeSendHook = () => void | Promise<void>
-type ResponseHook = (info: ResponseInfo) => void | Promise<void>
 type ErrorListener = (report: ErrorReport) => void | Promise<void>
-type ResponseHeadersListener = (
-  headers: Headers,
-  info: { readonly status: number },
-) => void
 
 export interface ContextInit<E> {
   path: string
@@ -55,11 +36,25 @@ export interface ContextInit<E> {
 export interface ContextInternals {
   draft(ctx: Context): Draft
   resetDraft(ctx: Context, draft: Draft): void
-  runBeforeSend(ctx: Context): Promise<void>
-  runOnResponse(ctx: Context, response: Response): Promise<void>
+  setError(ctx: Context, error: unknown): void
+  /** From now on, ctx.headers and ctx.status are those of this response, which has mutable headers */
+  adopt(ctx: Context, response: Response): void
+  /** The response is final: setting cookies now throws */
+  finish(ctx: Context): void
+  /** Lets compose() run a group by the app's rules (its error handling included) */
+  setRunner(ctx: Context, runner: Runner): void
+  run(
+    ctx: Context,
+    list: readonly ((ctx: Context, next: () => Promise<Response>) => unknown)[],
+    end: () => Promise<Response>,
+  ): Promise<Response>
   reportError(ctx: Context, error: unknown, phase: ErrorPhase): void
-  applyResponseHeaders(ctx: Context, response: Response): Response
 }
+
+type Runner = (
+  list: readonly ((ctx: Context, next: () => Promise<Response>) => unknown)[],
+  end: () => Promise<Response>,
+) => Promise<Response>
 
 export const internal = {} as ContextInternals
 
@@ -82,16 +77,22 @@ export class Context<S extends State = State, E = unknown> {
   readonly ip: string | undefined
   /** The IP address of the direct peer (handle's remoteAddress), such as a reverse proxy */
   readonly remoteAddress: string | undefined
+  /**
+   * The error that a later component threw, once mixer has turned it into the error response. A component that
+   * wraps the rest with next() reads it after next() resolves; undefined when nothing failed
+   */
+  get error(): unknown {
+    return this.#error
+  }
 
+  #error: unknown
+  #runner: Runner | undefined
   #headers = new Headers()
   readonly #bodyLimit: number
   readonly #executionContext: ExecutionContextLike | undefined
   #bytes: Promise<Uint8Array> | undefined
   #cookies: Cookies | undefined
-  #beforeSendHooks: BeforeSendHook[] = []
-  readonly #responseHooks: ResponseHook[] = []
   readonly #errorListeners: ErrorListener[] = []
-  readonly #responseHeadersListeners: ResponseHeadersListener[] = []
   #final = false
 
   constructor(request: Request, init: ContextInit<E>) {
@@ -109,7 +110,10 @@ export class Context<S extends State = State, E = unknown> {
     this.#executionContext = init.executionContext
   }
 
-  /** Headers of the response draft. Changes after the response is final have no effect */
+  /**
+   * Headers of the response being made. After next() resolves, they are the headers of the Response it returned,
+   * so a component that wraps the rest can add headers and cookies to it
+   */
   get headers(): Headers {
     return this.#headers
   }
@@ -170,72 +174,44 @@ export class Context<S extends State = State, E = unknown> {
     return parseForm(await this.bytes(), contentType ?? '')
   }
 
-  /** Registers work to run right before the final Response is built (for example, setting cookies) */
-  onBeforeSend(hook: () => void | Promise<void>): void {
-    this.#beforeSendHooks.push(hook)
-  }
-
-  /**
-   * Registers work to run once the final Response is ready, before fetch() resolves.
-   * Keep hooks short; pass slow asynchronous work to ctx.waitUntil()
-   */
-  onResponse(hook: (info: ResponseInfo) => void | Promise<void>): void {
-    this.#responseHooks.push(hook)
-  }
-
   /**
    * Registers a listener for unexpected errors while handling this request, including those that onError turned
-   * into a response and those after the response (onResponse hooks, waitUntil). HttpErrors below 500 are not
+   * into a response and those after the response (waitUntil). HttpErrors below 500 are not
    * reported. Without a listener, mixer logs them with console.error together with the method and path
    */
   onErrorReport(listener: (report: ErrorReport) => void | Promise<void>): void {
     this.#errorListeners.push(listener)
   }
 
-  /**
-   * Registers a listener that edits the headers of the response actually sent, whatever produced it: a normal
-   * response, an error, onError, a returned Response, or the 500 after a failing hook. For headers every response
-   * needs, such as security headers or a request ID. It runs once and synchronously; it cannot change the status.
-   * A listener that throws is reported with phase 'headers' and its changes are dropped. mixer's own guarantees
-   * (nosniff, private caching of responses with cookies, no body for HEAD) are applied after it
-   */
-  onResponseHeaders(listener: ResponseHeadersListener): void {
-    this.#responseHeadersListeners.push(listener)
-  }
-
   static {
     Object.assign(internal, {
       draft: (ctx: Context) => ctx.#draft(),
       resetDraft: (ctx: Context, draft: Draft) => ctx.#resetDraft(draft),
-      runBeforeSend: (ctx: Context) => ctx.#runBeforeSend(),
-      runOnResponse: (ctx: Context, response: Response) =>
-        ctx.#runOnResponse(response),
+      setError: (ctx: Context, error: unknown) => {
+        ctx.#error = error
+      },
+      adopt: (ctx: Context, response: Response) => {
+        ctx.status = response.status
+        ctx.#headers = response.headers
+      },
+      finish: (ctx: Context) => {
+        ctx.#final = true
+        // Work still running (a next() that was not awaited) must not change the response already returned
+        ctx.#headers = new Headers()
+        ctx.#runner = undefined
+      },
+      setRunner: (ctx: Context, runner: Runner) => {
+        ctx.#runner = runner
+      },
+      run: (ctx, list, end) => {
+        if (!ctx.#runner) {
+          throw new Error('mixer: compose() runs only inside a mixer app')
+        }
+        return ctx.#runner(list, end)
+      },
       reportError: (ctx: Context, error: unknown, phase: ErrorPhase) =>
         ctx.#reportError(error, phase),
-      applyResponseHeaders: (ctx: Context, response: Response) =>
-        ctx.#applyResponseHeaders(response),
     } satisfies ContextInternals)
-  }
-
-  /** Each listener edits a copy that is kept only if it does not throw */
-  #applyResponseHeaders(response: Response): Response {
-    if (this.#responseHeadersListeners.length === 0) return response
-    let headers = new Headers(response.headers)
-    for (const listener of this.#responseHeadersListeners) {
-      const edited = new Headers(headers)
-      try {
-        listener(edited, { status: response.status })
-        headers = edited
-      } catch (error) {
-        this.#reportError(error, 'headers')
-      }
-    }
-    // A Response from fetch() or Response.redirect() has immutable headers, so it is rebuilt without reading the body
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    })
   }
 
   /** A failing listener is logged directly, so reporting never loops or affects the response */
@@ -271,25 +247,5 @@ export class Context<S extends State = State, E = unknown> {
   #resetDraft(draft: Draft): void {
     this.status = draft.status
     this.#headers = draft.headers
-  }
-
-  /** Runs the onBeforeSend hooks once; hooks are taken out first so they never run twice */
-  async #runBeforeSend(): Promise<void> {
-    const hooks = this.#beforeSendHooks.splice(0)
-    for (const hook of hooks) await hook()
-  }
-
-  async #runOnResponse(response: Response): Promise<void> {
-    this.#final = true
-    for (const hook of this.#responseHooks) {
-      try {
-        await hook({
-          status: response.status,
-          headers: new Headers(response.headers),
-        })
-      } catch (error) {
-        this.#reportError(error, 'onResponse')
-      }
-    }
   }
 }

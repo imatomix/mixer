@@ -708,3 +708,60 @@ describe('public surface of Session', () => {
     expect(names).toEqual([])
   })
 })
+
+describe('a failing save', () => {
+  class BrokenStore extends MemoryStore {
+    override async set(): Promise<void> {
+      throw new Error('store down')
+    }
+    override async update(): Promise<boolean> {
+      throw new Error('store down')
+    }
+  }
+
+  it('turns a store failure into an error response and reports the cause', async () => {
+    const reports: unknown[] = []
+    const { Mixer } = await import('@imatomix/mixer')
+    const target = new Mixer({ onError: () => ({ handled: true }) }).mix(
+      (ctx) => {
+        ctx.onErrorReport(({ error }) => {
+          reports.push(error)
+        })
+      },
+      session({ store: new BrokenStore() }),
+      (ctx) => {
+        ;(ctx.state as State).session.set('v', 1)
+        throw new Error('handler failed')
+      },
+    )
+    const res = await call(target)
+    expect(res.headers.getSetCookie()).toEqual([])
+    expect(await res.json()).toEqual({ handled: true })
+    expect((reports[0] as Error).message).toBe('handler failed')
+    expect((reports[1] as Error).message).toMatch(/store down/)
+    expect((reports[1] as Error).cause).toEqual(new Error('store down'))
+  })
+
+  it('keeps the error response for a loaded session out of shared caches', async () => {
+    const { Mixer } = await import('@imatomix/mixer')
+    const store = new BrokenStore()
+    await MemoryStore.prototype.set.call(
+      store,
+      'a'.repeat(43),
+      { createdAt: Date.now(), data: { user: 'alice' } },
+      60,
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const target = new Mixer({
+      onError: (_error, ctx) => {
+        ctx.status = 200
+        return { page: 'error for the signed-in user' }
+      },
+    }).mix(session({ store, rolling: true }), () => 'ok')
+    const res = await call(target, '/', {
+      headers: cookieHeader('a'.repeat(43)),
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+})

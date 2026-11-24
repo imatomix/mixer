@@ -76,15 +76,15 @@ get('/embed', (ctx) => {
 })
 ```
 
-To drop a header on one route, delete it with mixer's `ctx.onResponseHeaders`. Listeners run in the order they were added, so it runs after `secureHeaders()`:
+A route can change a value but not remove a header. To let another site show a page in a frame, set a CSP `frame-ancestors` on that route; browsers that understand it ignore `X-Frame-Options`:
 
 ```ts
 get('/widget', (ctx) => {
-  ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
+  ctx.headers.set('Content-Security-Policy', "frame-ancestors https://partner.example.com")
   return widget
 })
 ```
 
 ## How the headers are added
 
-`secureHeaders()` uses mixer's [`ctx.onResponseHeaders`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#hooks), so the headers reach the response actually sent, including the `500` when building a response fails. The only response without them is the `404` for a request outside `basePath`, which is answered before any component runs.
+`secureHeaders()` adds the headers after [`await next()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#wrapping-with-next), on the response the rest of the app produced, including error responses and the `500` when building a response fails. Mixed in first, nothing can replace the response outside it. The only response without the headers is the `404` for a request outside `basePath`, which is answered before any component runs.

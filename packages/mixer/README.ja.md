@@ -47,6 +47,21 @@ app.mix(
 
 コンポーネントは `mix()` した順に実行され、**値（`undefined` 以外）を返したところで止まる**。どれも返さなければ `404` になる。ルーティングもコンポーネントの一つ。[mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) を参照。
 
+コンポーネントは、後ろのコンポーネントを包むこともできる。`await next()` で後ろを実行し、できた応答を受け取って、ヘッダーや Cookie を足す。
+
+```ts
+app.mix(
+  async (ctx, next) => {
+    const started = Date.now()
+    await next() // このコンポーネントより後ろをすべて実行する
+    ctx.headers.set('X-Response-Time', `${Date.now() - started}ms`)
+  },
+  (ctx) => ({ hello: 'mixer' }),
+)
+```
+
+規則は [next() で包む](#next-で包む) を参照。
+
 ### ctx
 
 | プロパティ | 説明 |
@@ -61,10 +76,8 @@ app.mix(
 | `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](#クライアントの-ip-アドレス)） |
 | `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](#リクエストボディ)） |
 | `await ctx.text()` / `await ctx.bytes()` | 文字列またはバイト列として読んだリクエストボディ |
-| `await ctx.text()` / `await ctx.bytes()` | ボディを文字列 / `Uint8Array` で |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
-| `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | 応答の前後のフック（[詳細](#フック)） |
-| `ctx.onResponseHeaders(fn)` | エラーを含め、実際に送る応答のヘッダーを設定する（[詳細](#フック)） |
+| `ctx.error` | `await next()` のあと、後ろのコンポーネントが投げたエラー（なければ `undefined`）（[詳細](#next-で包む)） |
 | `ctx.onErrorReport(fn)` | このリクエストの想定外のエラーを受け取る（[詳細](#エラーの報告)） |
 | `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](#ctxwaituntil)） |
 
@@ -115,7 +128,7 @@ app.mix((ctx) => {
 })
 ```
 
-エラーの応答に必要なヘッダは、エラー自身に持たせる。エラーの前に `ctx.headers` で設定したヘッダは（`Access-Control-*`・`Vary`・`Set-Cookie` を除き）引き継がれない。通常の応答のためのヘッダがエラーに紛れ込まないようにするため。
+エラーの応答に必要なヘッダは、エラー自身に持たせる。エラーの前に `ctx.headers` と `ctx.cookies` で設定したものは引き継がれない。通常の応答のためのものがエラーに紛れ込まないようにするため。セキュリティヘッダーやセッションの Cookie のように、エラーの応答にも届ける必要があるコンポーネントは、`await next()` のあとで付ける。
 
 ```ts
 throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
@@ -131,7 +144,7 @@ const app = new Mixer({
 
 ### エラーの報告
 
-想定外のエラーは、リクエストのメソッドとパスを添えて `console.error` に出す。コンポーネントが投げたエラー（`onError` が応答に変えた場合も）、`onError` やフックの失敗、`ctx.waitUntil()` に渡した処理の失敗、止められなかったストリームが対象。`500` 未満の `HttpError` は失敗ではなく応答の一部なので、出さない。
+想定外のエラーは、リクエストのメソッドとパスを添えて `console.error` に出す。コンポーネントが投げたエラー（`onError` が応答に変えた場合も）、`onError` の失敗、`ctx.waitUntil()` に渡した処理の失敗、止められなかったストリームが対象。`500` 未満の `HttpError` は失敗ではなく応答の一部なので、出さない。
 
 リクエストの ID を付けて自分のロガーに送るなど、別の場所に送るときは `ctx.onErrorReport(fn)` を登録する。リスナーが 1 つでもあれば、mixer 自身は出さない。例外を投げたリスナーはログに出るだけで、応答には影響しない。ネットワーク越しに送るなど、リスナーは Promise を返してもよい。応答はそれを待たず、`ctx.waitUntil()` に渡した処理と同じように最後まで実行される。
 
@@ -143,7 +156,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` は `'handling'`・`'onError'`・`'beforeSend'`・`'onResponse'`・`'waitUntil'`・`'streamCancel'`・`'headers'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
+`phase` は `'handling'`・`'onError'`・`'waitUntil'`・`'streamCancel'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
 
 ### 型
 
@@ -287,7 +300,7 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 - すべての応答に `X-Content-Type-Options: nosniff` が付く
 - Cookie は `HttpOnly; Secure; SameSite=Lax; Path=/`。値はエンコードされ、ヘッダを注入できる名前・パス・ドメインは拒否される
 - Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になり、共有キャッシュがほかの人に渡すことがない
-- `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直し、引き継ぐのは `Access-Control-*`・`Vary`・`Set-Cookie` だけなので、通常の応答のための `Location` や `Cache-Control` がエラーに紛れ込まない
+- `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直すので、通常の応答のための `Location`・`Cache-Control`・Cookie がエラーに紛れ込まない
 - 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる。`ctx.json()` と `ctx.form()` は自分の Content-Type だけを受け付ける（それ以外は `415`）ので、JSON のルートが別サイトのフォームを解析することはない
 - `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
 - `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
@@ -324,39 +337,34 @@ IP アドレスは、プロキシの設定の誤り・NAT・VPN で正しくな�
 
 返した `Response` は、自身のステータス・本文・ヘッダを保つ。`ctx.headers` で設定したヘッダのうち `Response` にないものは足され、`Set-Cookie` は両方残り（同じ Cookie は `Response` 側が優先）、`Vary` は両方の値を合わせる。`Response.error()` と、本文を読み終えた `Response` は `500` になる。
 
-### フック
+### next() で包む
 
-`ctx.onBeforeSend(fn)` は、応答を組み立てる直前に、`404` やエラーを含むすべての応答で 1 回だけ実行される。後のコンポーネントが変えた状態（セッションの Cookie など）を反映するのに使う。登録順に実行され、`ctx.status`・`ctx.headers`・Cookie を変えられる。例外を投げると応答は `500` になる。
-
-```ts
-const app = new Mixer<{ user?: string }>()
-
-app
-  .mix((ctx) => {
-    ctx.onBeforeSend(() => {
-      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
-    })
-  })
-  .mix((ctx) => {
-    ctx.state.user = 'imatomix'
-    return 'ok'
-  })
-```
-
-`ctx.onResponse(fn)` は、最終的な応答ができたあとに、スナップショット `{ status, headers }` を受け取って実行される（変えても応答には影響しない）。`app.fetch` が返る前に実行されるので、短く保ち、時間のかかる処理は `ctx.waitUntil()` に渡す。失敗は[報告](#エラーの報告)されるだけで、応答には影響しない。
-
-`ctx.onResponseHeaders(fn)` は、セキュリティヘッダーやリクエスト ID のように、すべての応答に必要なヘッダーのためのもの。`onBeforeSend` は応答を組み立てる前に 1 回だけ動くので、そのあと組み立てが失敗して mixer が代わりに `500` を返すと、設定したものは失われる。`onResponseHeaders` は、何が作ったかに関係なく、実際に送る応答に対して動く。通常の応答、`HttpError`、`onError`、返した `Response`（それ自身のヘッダーも見て置き換えられる）、その `500`。1 回だけ同期的に動き、ヘッダーと最終的な `status` を受け取る。ステータスは変えられない。例外を投げたリスナーは phase `'headers'` で[報告](#エラーの報告)され、その変更は捨てられる。mixer 自身が保証するもの（`nosniff`、Cookie 付きの応答を共有キャッシュに置かせないこと、`HEAD` に本文を付けないこと）は、そのあとで適用する。
+コンポーネントは 2 つ目の引数に `next` を受け取る。`await next()` は後ろのコンポーネントを実行し、それが作った `Response` を返す。後ろで起きたエラーはすでにエラーの応答（`onError` か既定のもの）に変わっているので、`next()` は例外を投げない。エラーそのものは `ctx.error` に残る。
 
 ```ts
-app.mix((ctx) => {
-  const id = crypto.randomUUID()
-  ctx.onResponseHeaders((headers) => {
-    headers.set('X-Request-Id', id)
-  })
-})
+app.mix(
+  async (ctx, next) => {
+    await db.begin()
+    await next()
+    // 投げられたエラーは ctx.error に入る。ハンドラーが意図して返した 500 はエラーではない
+    if (ctx.error === undefined) await db.commit()
+    else await db.rollback()
+  },
+  post('/orders', createOrder),
+)
 ```
 
-`onBeforeSend` は、セッションを保存して Cookie を付けるなど、後のコンポーネントがしたことに応じて 1 回だけ行う処理に使う。
+規則:
+
+- `await next()` のあと、`ctx.headers`・`ctx.cookies`・`ctx.status` は返ってきた応答のものになるので、ヘッダーや Cookie はこれまでどおり足せる。`next()` のあとは `ctx.headers` を改めて使う。`next()` の前に手元に持った参照は、古い下書きを指したまま
+- `next()` のあとは、何も返さず応答をそのまま使うか、新しい `Response` を丸ごと返す。それ以外の値を返すと `500` になる。古い応答の `Content-Type` や `Content-Length` のまま送られてしまうため
+- `next()` は 1 回だけ呼び、`await` する。2 回呼ぶ、返したあとに呼ぶ、後ろが動いている途中で返す、のどれも `500` になる
+- **すべての応答にヘッダーや Cookie を届けるコンポーネントは最初に置く**。mix-logger・mix-secure-headers・mix-cors・mix-session など。それより外側に置いたコンポーネントが応答を差し替えると、それらが足したものは消える
+- mixer 自身が保証するもの（`nosniff`、Cookie 付きの応答を共有キャッシュに置かせないこと、`HEAD`・`204`・`304` に本文を付けないこと）は、すべてのコンポーネントのあとで適用するので、どのコンポーネントも取り消せない
+
+規則が扱わないことが 2 つある。`next()` は受け取ったコンポーネントの中だけで使う（別のリクエストから呼ぶと、元のリクエストのコンポーネントが動く）。例外を投げたコンポーネントは、自分が付けるはずだったものを失う。エラーの応答はその外側で作られるため。mix-cors の `origin` や mix-logger の `requestId` のように、モジュールが呼ぶ関数は例外を投げないようにする。
+
+`compose(...components)` は、並びを 1 つのまとまりとして同じ規則で実行する。中の `next()` は、まとまりの残りを実行し、そのあとに続くものを実行する。mix-router の `namespace` はこれで作られているので、namespace の中のコンポーネントはアプリのその部分だけを包む。`/api` の下だけ JSON のエラーページにする、など。
 
 ### ctx.waitUntil()
 

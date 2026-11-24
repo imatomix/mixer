@@ -60,15 +60,17 @@ describe('defaults', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY')
   })
 
-  it('adds them to the 500 when an onBeforeSend hook throws', async () => {
+  it('adds them to the 500 when a component inside them fails after next()', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = await call(
-      app(secureHeaders(), (ctx) => {
-        ctx.onBeforeSend(() => {
-          throw new Error('hook broke')
-        })
-        return 'ok'
-      }),
+      app(
+        secureHeaders(),
+        async (_ctx, next) => {
+          await next()
+          throw new Error('wrapper broke')
+        },
+        () => 'ok',
+      ),
     )
     expect(res.status).toBe(500)
     expect(res.headers.get('x-frame-options')).toBe('DENY')
@@ -102,11 +104,18 @@ describe('overriding', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer')
   })
 
-  it('lets a later onResponseHeaders listener remove a header', async () => {
+  it('lets a route change a value, such as allowing other sites to embed a page through CSP', async () => {
     const headers = await headersFor(undefined, (ctx) => {
-      ctx.onResponseHeaders((headers) => headers.delete('X-Frame-Options'))
+      ctx.headers.set(
+        'Content-Security-Policy',
+        "frame-ancestors 'self' https://partner.example",
+      )
+      ctx.headers.set('X-Frame-Options', 'SAMEORIGIN')
     })
-    expect(headers.get('x-frame-options')).toBeNull()
+    expect(headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'self' https://partner.example",
+    )
+    expect(headers.get('x-frame-options')).toBe('SAMEORIGIN')
   })
 
   it('turns off a default with false', async () => {

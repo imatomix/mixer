@@ -3,7 +3,6 @@ export {
   type ErrorPhase,
   type ErrorReport,
   type ExecutionContextLike,
-  type ResponseInfo,
   type State,
 } from './context.js'
 export {
@@ -14,10 +13,12 @@ export {
 export { HttpError, type HttpErrorOptions } from './errors.js'
 export {
   type Component,
+  compose,
   type ErrorHandler,
   type HandleOptions,
   Mixer,
   type MixerOptions,
+  type Next,
 } from './mixer.js'
 export {
   type RedirectOptions,

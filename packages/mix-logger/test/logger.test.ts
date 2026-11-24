@@ -250,16 +250,14 @@ describe('X-Request-Id', () => {
     expect(res.headers.get('x-request-id')).toBe(log.events[0]?.requestId)
   })
 
-  it('sends the request ID on the 500 when building the response fails', async () => {
+  it('sends the request ID on the 500 when building or wrapping the response fails', async () => {
     const circular: Record<string, unknown> = {}
     circular.self = circular
     for (const component of [
       () => circular,
-      (ctx: { onBeforeSend(hook: () => void): void }) => {
-        ctx.onBeforeSend(() => {
-          throw new Error('hook broke')
-        })
-        return 'ok'
+      async (_ctx: unknown, next: () => Promise<Response>) => {
+        await next()
+        throw new Error('wrapper broke')
       },
     ]) {
       const log = collect()

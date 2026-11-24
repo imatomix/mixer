@@ -1,4 +1,4 @@
-import { type Context, HttpError, Mixer } from '@imatomix/mixer'
+import { type Component, type Context, HttpError, Mixer } from '@imatomix/mixer'
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import {
   all,
@@ -503,5 +503,78 @@ describe('performance and mounting', () => {
       GREETING: 'hi',
     })
     expect(await res.text()).toBe('hi')
+  })
+})
+
+describe('next() inside a namespace', () => {
+  const jsonErrors: Component = async (ctx, next) => {
+    const res = await next()
+    if (ctx.error === undefined) return
+    return new Response(JSON.stringify({ failed: res.status }), {
+      status: res.status,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  it('wraps the routes of its namespace, such as a JSON error page for /api only', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = new Mixer({ onError: () => 'html page' }).mix(
+      namespace('/api')(
+        jsonErrors,
+        get('/fail', () => {
+          throw new Error('boom')
+        }),
+      ),
+      get('/fail', () => {
+        throw new Error('boom')
+      }),
+    )
+    expect(await (await call(app, '/api/fail')).json()).toEqual({ failed: 500 })
+    expect(await (await call(app, '/fail')).text()).toBe('html page')
+  })
+
+  it('continues to what follows the namespace when nothing in it answers', async () => {
+    const seen: number[] = []
+    const app = new Mixer().mix(
+      namespace('/api')(async (_ctx, next) => {
+        const res = await next()
+        seen.push(res.status)
+      }),
+      get('/api/later', () => 'from outside'),
+    )
+    expect(await (await call(app, '/api/later')).text()).toBe('from outside')
+    expect(seen).toEqual([200])
+  })
+
+  it('works in nested namespaces', async () => {
+    const tag =
+      (name: string): Component =>
+      async (ctx, next) => {
+        await next()
+        ctx.headers.append('X-Tag', name)
+      }
+    const app = new Mixer().mix(
+      namespace('/a')(
+        tag('a'),
+        namespace('/b')(
+          tag('b'),
+          get('/c', () => 'ok'),
+        ),
+      ),
+    )
+    const res = await call(app, '/a/b/c')
+    expect(await res.text()).toBe('ok')
+    expect(res.headers.get('x-tag')).toBe('b, a')
+  })
+
+  it('does not run outside its prefix', async () => {
+    const app = new Mixer().mix(
+      namespace('/api')(async (ctx, next) => {
+        await next()
+        ctx.headers.set('X-Api', 'yes')
+      }),
+      get('/page', () => 'page'),
+    )
+    expect((await call(app, '/page')).headers.get('x-api')).toBeNull()
   })
 })

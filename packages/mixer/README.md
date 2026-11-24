@@ -47,6 +47,21 @@ app.mix(
 
 Components run in the order they were mixed in and **stop at the first one that returns a value** (anything other than `undefined`). If none does, the response is `404`. Routing is a component too: see [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router).
 
+A component can also wrap the ones after it. `await next()` runs them and gives back the response they produced; the component then adds to it, such as a header or a cookie:
+
+```ts
+app.mix(
+  async (ctx, next) => {
+    const started = Date.now()
+    await next() // runs everything after this component
+    ctx.headers.set('X-Response-Time', `${Date.now() - started}ms`)
+  },
+  (ctx) => ({ hello: 'mixer' }),
+)
+```
+
+See [Wrapping with next()](#wrapping-with-next) for the rules.
+
 ### ctx
 
 | Property | Description |
@@ -61,10 +76,8 @@ Components run in the order they were mixed in and **stop at the first one that 
 | `ctx.ip` / `ctx.remoteAddress` | The client's IP address, and the direct peer's ([details](#client-ip-address)) |
 | `await ctx.json()` / `await ctx.form()` | The request body as JSON, or as `FormData` from a form or file upload ([details](#request-body)) |
 | `await ctx.text()` / `await ctx.bytes()` | The request body as a string or bytes |
-| `await ctx.text()` / `await ctx.bytes()` | The body as a string / `Uint8Array` |
 | `ctx.cookies` | Read cookies and set them on the response ([details](#cookies)) |
-| `ctx.onBeforeSend(fn)` / `ctx.onResponse(fn)` | Hooks around the response ([details](#hooks)) |
-| `ctx.onResponseHeaders(fn)` | Set headers on whatever response is sent, including errors ([details](#hooks)) |
+| `ctx.error` | After `await next()`, the error a later component threw, if any ([details](#wrapping-with-next)) |
 | `ctx.onErrorReport(fn)` | Receive unexpected errors for this request ([details](#error-reports)) |
 | `ctx.waitUntil(promise)` | Run work after the response without delaying it ([details](#ctxwaituntil)) |
 
@@ -115,7 +128,7 @@ app.mix((ctx) => {
 })
 ```
 
-Headers an error response needs go on the error itself; headers set in `ctx.headers` before the error are not kept (except `Access-Control-*`, `Vary`, and `Set-Cookie`), so that headers meant for a normal response do not leak into the error.
+Headers an error response needs go on the error itself. Headers and cookies set in `ctx.headers` and `ctx.cookies` before the error are not kept, so that what was meant for a normal response does not leak into the error. A component that must reach error responses too, such as one adding security headers or a session cookie, adds them after `await next()`.
 
 ```ts
 throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
@@ -131,7 +144,7 @@ const app = new Mixer({
 
 ### Error reports
 
-Unexpected errors are logged with `console.error`, together with the request's method and path: errors a component throws (also when `onError` turns them into a response), failures of `onError` and of hooks, rejected `ctx.waitUntil()` work, and streams that fail to cancel. An `HttpError` below `500` is part of the response, not a failure, so it is not logged.
+Unexpected errors are logged with `console.error`, together with the request's method and path: errors a component throws (also when `onError` turns them into a response), failures of `onError`, rejected `ctx.waitUntil()` work, and streams that fail to cancel. An `HttpError` below `500` is part of the response, not a failure, so it is not logged.
 
 To send them somewhere else, such as your logger with the request's ID, register `ctx.onErrorReport(fn)`. While at least one listener is registered, mixer stops logging them itself. A listener that throws is logged and does not affect the response. A listener may return a Promise, for example to send the report over the network; the response does not wait for it, and it is kept alive like `ctx.waitUntil()` work.
 
@@ -143,7 +156,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` is one of `'handling'`, `'onError'`, `'beforeSend'`, `'onResponse'`, `'waitUntil'`, `'streamCancel'`, and `'headers'`. Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
+`phase` is one of `'handling'`, `'onError'`, `'waitUntil'`, and `'streamCancel'`. Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
 
 ### Types
 
@@ -287,7 +300,7 @@ Without any configuration:
 - Every response gets `X-Content-Type-Options: nosniff`
 - Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/`. Values are encoded, and names, paths, and domains that could inject headers are rejected
 - A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
-- Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, keeping only `Access-Control-*`, `Vary`, and `Set-Cookie`, so a `Location` or `Cache-Control` meant for the normal response does not leak into the error
+- Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, so a `Location`, `Cache-Control`, or cookie meant for the normal response does not leak into the error
 - Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`. `ctx.json()` and `ctx.form()` accept only their own Content-Type (`415` otherwise), so a JSON route never parses a cross-site form
 - `redirect()` only goes to paths on this site unless you list other origins
 - `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
@@ -324,39 +337,34 @@ An IP address can be wrong behind a misconfigured proxy, NAT, or VPN, and many u
 
 A returned `Response` keeps its own status, body, and headers. Headers you set in `ctx.headers` that it does not have are added, `Set-Cookie` headers from both are kept (the `Response` wins for the same cookie), and the `Vary` lists of both are joined. `Response.error()` and a `Response` whose body was already read become `500`.
 
-### Hooks
+### Wrapping with next()
 
-`ctx.onBeforeSend(fn)` runs right before the response is built, once, for every response including `404` and errors. Use it to apply state that later components changed, such as a session cookie. Hooks run in registration order and can change `ctx.status`, `ctx.headers`, and cookies; if one throws, the response is `500`.
-
-```ts
-const app = new Mixer<{ user?: string }>()
-
-app
-  .mix((ctx) => {
-    ctx.onBeforeSend(() => {
-      ctx.headers.set('X-User', ctx.state.user ?? 'guest')
-    })
-  })
-  .mix((ctx) => {
-    ctx.state.user = 'imatomix'
-    return 'ok'
-  })
-```
-
-`ctx.onResponse(fn)` runs once the final response is ready, with a snapshot `{ status, headers }` (changing it has no effect). It runs before `app.fetch` resolves, so keep it short and pass slow work to `ctx.waitUntil()`. A failing hook is [reported](#error-reports) and does not affect the response.
-
-`ctx.onResponseHeaders(fn)` is for headers that every response needs, such as security headers or a request ID. `onBeforeSend` runs once, before the response is built, so what it sets is lost when building the response then fails and mixer answers `500` instead. `onResponseHeaders` runs on the response actually sent, whatever produced it: a normal response, an `HttpError`, `onError`, a returned `Response` (whose own headers it can see and replace), or that `500`. It runs once and synchronously, receives the headers and the final `status`, and cannot change the status. A listener that throws is [reported](#error-reports) with phase `'headers'` and its changes are dropped. mixer's own guarantees (`nosniff`, private caching of responses with cookies, no body for `HEAD`) are applied after it.
+A component receives `next` as its second argument. `await next()` runs the components after it and resolves to the `Response` they produced; it never throws, because an error below has already been turned into the error response (through `onError` or the default), and the error is kept in `ctx.error`.
 
 ```ts
-app.mix((ctx) => {
-  const id = crypto.randomUUID()
-  ctx.onResponseHeaders((headers) => {
-    headers.set('X-Request-Id', id)
-  })
-})
+app.mix(
+  async (ctx, next) => {
+    await db.begin()
+    await next()
+    // A thrown error is in ctx.error; a 500 a handler returns on purpose is not an error
+    if (ctx.error === undefined) await db.commit()
+    else await db.rollback()
+  },
+  post('/orders', createOrder),
+)
 ```
 
-Keep `onBeforeSend` for work that depends on what later components did and should happen once, such as saving a session and setting its cookie.
+The rules:
+
+- After `await next()`, `ctx.headers`, `ctx.cookies`, and `ctx.status` are those of the response it returned, so headers and cookies are added the same way as before. Use `ctx.headers` again after `next()`: a reference taken before it still points at the old draft
+- After `next()`, return nothing to keep the response, or return a whole new `Response`. Returning any other value answers `500`, because it would go out with the old response's `Content-Type` and `Content-Length`
+- Call `next()` once and await it. Calling it twice or after returning, or returning while the rest is still running, answers `500`
+- **Put components whose headers or cookies must reach every response first**, such as mix-logger, mix-secure-headers, mix-cors, and mix-session. A component placed outside them that replaces the response would drop what they added
+- mixer's own guarantees (`nosniff`, private caching of responses with cookies, no body for `HEAD`, `204`, and `304`) are applied after every component, so no component can undo them
+
+Two things the rules do not cover: keep `next()` inside the component that received it (calling it from another request runs the original request's components), and a component that throws loses what it would have added, since its error response is built outside it. Keep functions that modules call, such as mix-cors's `origin` or mix-logger's `requestId`, from throwing.
+
+`compose(...components)` runs a list as one group by the same rules: `next()` inside runs the rest of the group, then what follows it. mix-router's `namespace` is built on it, so a component inside a namespace wraps only that part of the app, such as JSON error pages under `/api`.
 
 ### ctx.waitUntil()
 
