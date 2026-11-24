@@ -156,7 +156,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` は `'handling'`・`'onError'`・`'waitUntil'`・`'streamCancel'` のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
+`phase` は `'handling'`・`'onError'`・`'waitUntil'`・`'streamCancel'`・`'stream'`（[`sse()`](#server-sent-events) の送り出す処理が投げた例外）のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
 
 ### 型
 
@@ -367,6 +367,32 @@ app.mix(
 規則が扱わないことが 2 つある。`next()` は受け取ったコンポーネントの中だけで使う（別のリクエストから呼ぶと、元のリクエストのコンポーネントが動く）。例外を投げたコンポーネントは、自分が付けるはずだったものを失う。エラーの応答はその外側で作られるため。mix-cors の `origin` や mix-logger の `requestId` のように、モジュールが呼ぶ関数は例外を投げないようにする。
 
 `compose(...components)` は、並びを 1 つのまとまりとして同じ規則で実行する。中の `next()` は、まとまりの残りを実行し、そのあとに続くものを実行する。mix-router の `namespace` はこれで作られているので、namespace の中のコンポーネントはアプリのその部分だけを包む。`/api` の下だけ JSON のエラーページにする、など。
+
+### Server-Sent Events
+
+`sse()` はイベントのストリームで応答する。どの項目も安全に書き出す。`data` の各行はそれぞれ `data:` の行になるので、クライアントの文字列がイベントを終わらせて偽のイベントを始めることはない。改行を含む `event` や `id` は例外になる。
+
+```ts
+import { sse } from '@imatomix/mixer'
+
+get('/events', (ctx) =>
+  sse(ctx, async (stream, signal) => {
+    while (!signal.aborted) {
+      const update = await nextUpdate(signal)
+      await stream.send({ event: 'update', id: update.id, data: JSON.stringify(update) })
+    }
+  }),
+)
+```
+
+- `data` は文字列。ほかの値は `JSON.stringify` を使う。`retry` はクライアントが再接続するまでの待ち時間（ミリ秒）
+- クライアントが去ると `signal` が中断される。そのあとの `send` は失敗するので、`signal` を見ないループも終わる
+- `send` はクライアントが次を受け取れるようになったときに解決する。`send` を 1 つずつ await すれば、メモリで待つイベントは最大 1 件
+- 5 秒間何も送らなかったときはコメント行を送る。そのため、何も送らない接続を 10 秒で閉じる Bun やプロキシでも、接続が保たれる。`sse(ctx, producer, { heartbeat: 15_000 })` で間隔を変え、`heartbeat: false` で止める
+- 応答は `text/event-stream; charset=utf-8` で、`Cache-Control: no-store` を付ける。それより前に `ctx` に付けたヘッダーと Cookie は残る。nginx の後ろでは、ストリームをためこまないよう `X-Accel-Buffering: no` を付ける
+- 送り出す処理は、クライアントが本文を読み始めたときに始まる。そのため `HEAD` のリクエストでは動かない
+- 送り出す処理が動くときには応答はもう始まっているので、そこで投げた例外はエラーの応答にできない。phase `'stream'` で[報告](#エラーの報告)し、ストリームを終える。ブラウザの `EventSource` は、そのあと最後に受け取った `id` を `Last-Event-ID` に入れて再接続する
+- Cloudflare Workers では、互換日付 `2026-11-17` 以降か、`enable_request_signal` フラグを使う。それより前では、クライアントが去ったことが Worker に伝わらない。送り出す処理は次の `send` で止まるが、`signal` は中断されない
 
 ### 時間のかかる処理
 

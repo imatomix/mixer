@@ -18,7 +18,12 @@ export interface ExecutionContextLike {
 }
 
 /** Where an error reported through ctx.onErrorReport() happened */
-export type ErrorPhase = 'handling' | 'onError' | 'waitUntil' | 'streamCancel'
+export type ErrorPhase =
+  | 'handling'
+  | 'onError'
+  | 'waitUntil'
+  | 'streamCancel'
+  | 'stream'
 
 export interface ErrorReport {
   readonly error: unknown
