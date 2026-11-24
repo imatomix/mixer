@@ -31,7 +31,7 @@ Use B: `sse(ctx, async (stream, signal) => { await stream.send({ event, data, id
 
 - `data` is a string; each of its lines becomes a `data:` line, so client text cannot start another event. Objects are not serialized implicitly: `JSON.stringify` keeps the format visible. `event` and `id` with a line break or NUL, and a `retry` that is not a whole number of milliseconds, throw.
 - The producer starts when the body is first read, so `HEAD` and responses whose body is discarded never run it.
-- `send` resolves when the client is ready for more, so at most one event waits in memory and a fast producer does not fill it.
+- `send` resolves when the client is ready for more, so a producer that awaits each `send` keeps at most one event waiting in memory. Sends awaited together all settle.
 - When nothing has been sent for 5 seconds, a comment line is sent. This keeps Bun (10 seconds) and proxies from closing the connection, without a setting in any adapter. `heartbeat: false` turns it off, and a number changes the interval. No comment is added while something sent is still unread, so a client that stopped reading does not make the queue grow.
 - When the client goes away (the body is cancelled, or `ctx.request.signal` is aborted), `signal` is aborted, the heartbeat stops, and later `send` calls reject, so a loop that ignores `signal` still ends.
 - An error the producer throws after the response has started is reported once with the new phase `'stream'`, and the stream is closed; an error after the client went away is not reported.

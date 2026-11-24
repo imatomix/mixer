@@ -387,7 +387,7 @@ get('/events', (ctx) =>
 
 - `data` is a string; use `JSON.stringify` for other values. `retry` is the client's reconnection delay in milliseconds
 - `signal` is aborted when the client goes away. After that, `send` rejects, so a loop that ignores `signal` still ends
-- `send` resolves when the client is ready for more, so at most one event waits in memory
+- `send` resolves when the client is ready for more, so a producer that awaits each `send` keeps at most one event waiting in memory
 - A comment line is sent when nothing was sent for 5 seconds, so Bun (which closes idle connections after 10 seconds) and proxies keep the connection open. `sse(ctx, producer, { heartbeat: 15_000 })` changes the interval, and `heartbeat: false` turns it off
 - The response is `text/event-stream; charset=utf-8` with `Cache-Control: no-store`. Headers and cookies set on `ctx` before it are kept; behind nginx, set `X-Accel-Buffering: no` so it does not buffer the stream
 - The producer starts when the client reads the body, so a `HEAD` request never runs it

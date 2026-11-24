@@ -11,8 +11,8 @@ export interface SseMessage {
 
 export interface SseStream {
   /**
-   * Resolves when the client is ready for more, so at most one event waits in memory. Rejects after the client
-   * has gone away
+   * Resolves when the client is ready for more, so awaiting each send keeps at most one event waiting in memory.
+   * Rejects after the client has gone away
    */
   send(message: SseMessage): Promise<void>
 }
@@ -53,14 +53,19 @@ export function sse<S extends State, E>(
   let started = false
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
-  let resumeSend: (() => void) | undefined
+  // Sends waiting for the client; a producer may await several at once (Promise.all)
+  const waitingSends = new Set<() => void>()
+  const resumeSends = () => {
+    for (const resume of waitingSends) resume()
+    waitingSends.clear()
+  }
 
   const stop = (reason?: unknown) => {
     if (closed) return
     closed = true
     clearTimeout(timer)
     if (!signal.aborted) aborter.abort(reason)
-    resumeSend?.()
+    resumeSends()
   }
 
   // A cancelled body is already closed; otherwise end it, so whoever still reads it is not left waiting
@@ -91,9 +96,8 @@ export function sse<S extends State, E>(
       // A queued chunk means the client has not asked for more yet
       if ((controller.desiredSize ?? 0) < 0) {
         await new Promise<void>((resolve) => {
-          resumeSend = resolve
+          waitingSends.add(resolve)
         })
-        resumeSend = undefined
         if (signal.aborted) throw signal.reason
       }
     },
@@ -123,7 +127,7 @@ export function sse<S extends State, E>(
           void run()
           return
         }
-        resumeSend?.()
+        resumeSends()
       },
       cancel(reason) {
         stop(reason)

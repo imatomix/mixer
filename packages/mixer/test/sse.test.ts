@@ -181,6 +181,40 @@ describe('sse', () => {
     expect(rest.match(/^:\n\n/gm)?.length ?? 0).toBeLessThanOrEqual(1)
   })
 
+  it('settles every send when several are waiting at once', async () => {
+    let settled = false
+    const { app } = sseApp(async (stream) => {
+      await Promise.all(['a', 'b', 'c'].map((data) => stream.send({ data })))
+      settled = true
+    })
+    expect(await readAll(await call(app))).toBe(
+      'data: a\n\ndata: b\n\ndata: c\n\n',
+    )
+    expect(settled).toBe(true)
+  })
+
+  it('rejects every waiting send when the client goes away', async () => {
+    const results: unknown[] = []
+    const { app } = sseApp(async (stream) => {
+      await stream.send({ data: 'first' })
+      await Promise.all(
+        ['a', 'b'].map((data) =>
+          stream.send({ data }).then(
+            () => results.push('sent'),
+            (error: unknown) => results.push(error),
+          ),
+        ),
+      )
+    })
+    const reader = readerOf(await call(app))
+    await reader.read()
+    await wait(10)
+    await reader.cancel()
+    await wait(10)
+    expect(results).toHaveLength(2)
+    expect(results.every((result) => result instanceof Error)).toBe(true)
+  })
+
   it('keeps at most one event waiting for a client that does not read', async () => {
     let sent = 0
     const { app } = sseApp(async (stream) => {
