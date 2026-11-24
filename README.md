@@ -42,7 +42,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mix-session](packages/mix-session) | Server-side sessions | Node.js, Bun, Workers (with an external store) |
 | [@imatomix/mix-logger](packages/mix-logger) | Request-scoped logs: request IDs, access logs, and errors tied together | Node.js, Bun, Workers |
 
-Start with the [mixer README](packages/mixer). Supported runtimes: Node.js 24 or later, Bun 1.4.4 or later, and Cloudflare Workers. Every pull request builds and packs the packages as they would be published, and checks them on all three.
+Start with the [mixer README](packages/mixer), and see the [documentation map](docs/README.md) for where to find what. Supported runtimes: Node.js 24 or later, Bun 1.4.4 or later, and Cloudflare Workers. Every pull request builds and packs the packages as they would be published, and checks them on all three.
 
 > The packages are at 0.x, so the API may change between minor versions.
 
