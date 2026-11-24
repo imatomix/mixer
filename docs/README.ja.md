@@ -10,6 +10,11 @@
 - [おすすめの組み合わせ](../README.ja.md#おすすめの組み合わせ): ブラウザ向けのアプリと JSON API で組み合わせるモジュール
 - [例のアプリ](../examples/todo): サインイン・セッション・CSRF 対策・セキュリティヘッダーを使った ToDo アプリ。Node.js・Bun・Cloudflare Workers で動く
 
+## 例
+
+- [JSON API](examples/json-api.ja.md): Zod で入力を確かめて、作る・一覧する・読む
+- [Webhook を受け取る](examples/webhook.ja.md): 署名されたリクエストを、何かを信用する前に確かめる
+
 ## アプリを動かす
 
 - [Node.js](how-to/runtimes.ja.md#nodejs)・[Bun](how-to/runtimes.ja.md#bun)・[Cloudflare Workers](how-to/runtimes.ja.md#cloudflare-workers)

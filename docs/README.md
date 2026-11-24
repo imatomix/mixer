@@ -10,6 +10,11 @@ Where to find what, by what you want to do.
 - [Recommended stacks](../README.md#recommended-stacks): the modules to combine for a browser app and for a JSON API
 - [Example app](../examples/todo): a todo app with sign-in, sessions, CSRF protection, and security headers, running on Node.js, Bun, and Cloudflare Workers
 
+## Examples
+
+- [A JSON API](examples/json-api.md): create, list, and read with input checked by Zod
+- [Receiving a webhook](examples/webhook.md): a signed request, checked before anything is trusted
+
 ## Run your app
 
 - [Node.js](how-to/runtimes.md#nodejs), [Bun](how-to/runtimes.md#bun), and [Cloudflare Workers](how-to/runtimes.md#cloudflare-workers)
