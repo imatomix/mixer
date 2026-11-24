@@ -617,3 +617,58 @@ describe('third review', () => {
     expect((await call(app)).status).toBe(500)
   })
 })
+
+describe('holistic review', () => {
+  it('keeps a restrictive Cache-Control from an HttpError even when onError returns a Response', async () => {
+    quiet()
+    const app = new Mixer({
+      onError: () =>
+        new Response('error page for the signed-in user', {
+          headers: { 'Cache-Control': 'public, max-age=600' },
+        }),
+    }).mix(() => {
+      throw new HttpError(500, 'saving failed', {
+        headers: { 'Cache-Control': 'private, no-store' },
+      })
+    })
+    expect((await call(app)).headers.get('cache-control')).toBe(
+      'private, no-store',
+    )
+  })
+
+  it('does not let work left running change the headers of the response already returned', async () => {
+    quiet()
+    let wrote: () => void = () => {}
+    const written = new Promise<void>((resolve) => {
+      wrote = resolve
+    })
+    const res = await call(
+      new Mixer().mix(
+        (_ctx, next) => {
+          void next()
+          return undefined
+        },
+        async (ctx) => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          ctx.headers.set('X-Late', 'yes')
+          wrote()
+          return 'ok'
+        },
+      ),
+    )
+    await written
+    expect(res.status).toBe(500)
+    expect(res.headers.get('x-late')).toBeNull()
+  })
+
+  it('refuses to run a group from compose() after the request has finished', async () => {
+    let kept: (() => Promise<unknown>) | undefined
+    await call(
+      new Mixer().mix((ctx, next) => {
+        kept = () => compose(() => 'late')(ctx, next) as Promise<unknown>
+        return 'ok'
+      }),
+    )
+    await expect(kept?.()).rejects.toThrow()
+  })
+})

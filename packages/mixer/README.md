@@ -362,6 +362,8 @@ The rules:
 - **Put components whose headers or cookies must reach every response first**, such as mix-logger, mix-secure-headers, mix-cors, and mix-session. A component placed outside them that replaces the response would drop what they added
 - mixer's own guarantees (`nosniff`, private caching of responses with cookies, no body for `HEAD`, `204`, and `304`) are applied after every component, so no component can undo them
 
+Two things the rules do not cover: keep `next()` inside the component that received it (calling it from another request runs the original request's components), and a component that throws loses what it would have added, since its error response is built outside it. Keep functions that modules call, such as mix-cors's `origin` or mix-logger's `requestId`, from throwing.
+
 `compose(...components)` runs a list as one group by the same rules: `next()` inside runs the rest of the group, then what follows it. mix-router's `namespace` is built on it, so a component inside a namespace wraps only that part of the app, such as JSON error pages under `/api`.
 
 ### ctx.waitUntil()

@@ -273,7 +273,9 @@ export class Mixer<S extends State = State, E = unknown> {
     if (this.#onError) {
       try {
         const value = await this.#onError(error, ctx)
-        if (value !== undefined) return this.#respond(ctx, value)
+        if (value !== undefined) {
+          return keepPrivate(error, this.#respond(ctx, value))
+        }
       } catch (handlerError) {
         internal.reportError(ctx, handlerError, 'onError')
         failed = true
@@ -299,7 +301,7 @@ export class Mixer<S extends State = State, E = unknown> {
 export function compose<S extends State = State, E = unknown>(
   ...components: Component<S, E>[]
 ): Component<S, E> {
-  return (ctx, next) =>
+  return async (ctx, next) =>
     internal.run(ctx as Context, components as Component[], next)
 }
 
@@ -311,6 +313,19 @@ const ownedBy = new WeakMap<Response, Context<State, unknown>>()
 
 function own(ctx: Context<State, unknown>, response: Response): Response {
   ownedBy.set(response, ctx)
+  return response
+}
+
+/**
+ * An error that marks its response private (such as mix-session when saving failed) keeps that mark, even when
+ * onError returns a Response of its own: onError may not know that the page shows one user's data
+ */
+function keepPrivate(error: unknown, response: Response): Response {
+  const policy =
+    error instanceof HttpError ? error.headers.get('Cache-Control') : null
+  if (policy && /(^|,)\s*(private|no-store)\s*(,|$)/i.test(policy)) {
+    response.headers.set('Cache-Control', policy)
+  }
   return response
 }
 

@@ -196,6 +196,9 @@ export class Context<S extends State = State, E = unknown> {
       },
       finish: (ctx: Context) => {
         ctx.#final = true
+        // Work still running (a next() that was not awaited) must not change the response already returned
+        ctx.#headers = new Headers()
+        ctx.#runner = undefined
       },
       setRunner: (ctx: Context, runner: Runner) => {
         ctx.#runner = runner
