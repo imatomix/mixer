@@ -12,8 +12,8 @@
 
 ## アプリを動かす
 
-- [Node.js](../packages/mixer/README.ja.md#nodejs)・[Bun](../packages/mixer/README.ja.md#bun)・[Cloudflare Workers](../packages/mixer/README.ja.md#cloudflare-workers)
-- Next.js・Nuxt・SvelteKit・React Router などの[フレームワークの中で使う](../packages/mixer/README.ja.md#フレームワークの中で使う)
+- [Node.js](how-to/runtimes.ja.md#nodejs)・[Bun](how-to/runtimes.ja.md#bun)・[Cloudflare Workers](how-to/runtimes.ja.md#cloudflare-workers)
+- Next.js・Nuxt・SvelteKit・React Router などの[フレームワークの中で使う](how-to/runtimes.ja.md#フレームワークの中で使う)
 - [プロキシの後ろで使う](../packages/mixer/README.ja.md#クライアントの-ip-アドレス): クライアントの IP アドレスと `trustedProxies`
 
 ## よくある作業
