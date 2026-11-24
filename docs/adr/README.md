@@ -12,6 +12,7 @@ Each record explains one decision that shapes mixer: what problem it answers, wh
 | [0002. Give routes the signed-in user with a guard and requireUser()](0002-signed-in-user-in-routes.md) | Accepted |
 | [0003. Validate client input with validateInput()](0003-validate-input.md) | Accepted |
 | [0004. Send Server-Sent Events with sse()](0004-server-sent-events.md) | Accepted |
+| [0005. Compress responses with an opt-in mix-compress](0005-mix-compress.md) | Accepted |
 
 ## Template
 
