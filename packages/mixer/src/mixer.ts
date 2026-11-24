@@ -172,7 +172,7 @@ export class Mixer<S extends State = State, E = unknown> {
         if (!called) {
           if (result === undefined) continue
           // A Response mixer already made (for example, by compose()) is final; anything else is turned into one
-          if (result instanceof Response && owned.has(result)) {
+          if (result instanceof Response && ownedBy.get(result) === ctx) {
             return adopt(ctx, result)
           }
           return adopt(ctx, this.#respond(ctx, result))
@@ -182,6 +182,7 @@ export class Mixer<S extends State = State, E = unknown> {
           throw new Error('mixer: await next() before returning')
         }
         if (result === undefined) {
+          checkUnread(inner)
           // ctx.status changed after next() applies to the response the component kept
           return ctx.status === inner.status
             ? inner
@@ -194,6 +195,7 @@ export class Mixer<S extends State = State, E = unknown> {
             'mixer: after next(), return nothing or a Response, not another value',
           )
         }
+        checkUnread(result)
         if (result.body !== inner.body) cancelBody(inner, ctx)
         return adopt(ctx, result)
       } catch (error) {
@@ -205,7 +207,7 @@ export class Mixer<S extends State = State, E = unknown> {
   }
 
   #respond(ctx: Context<S, E>, value: unknown): Response {
-    return own(toResponse(value, internal.draft(ctx), ctx.url.pathname))
+    return own(ctx, toResponse(value, internal.draft(ctx), ctx.url.pathname))
   }
 
   async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
@@ -237,7 +239,7 @@ export class Mixer<S extends State = State, E = unknown> {
       !failed && error instanceof HttpError && error.expose
         ? { error: error.message }
         : { error: 'Internal Server Error' }
-    return own(toResponse(body, internal.draft(ctx)))
+    return own(ctx, toResponse(body, internal.draft(ctx)))
   }
 }
 
@@ -252,26 +254,38 @@ export function compose<S extends State = State, E = unknown>(
     internal.run(ctx as Context, components as Component[], next)
 }
 
-/** Responses mixer made itself have mutable headers; others (from fetch() or Response.redirect()) are copied */
-const owned = new WeakSet<Response>()
+/**
+ * The responses this request made itself, which have mutable headers. Any other, including one from another mixer
+ * app or another request, is copied and treated like a Response a component returned
+ */
+const ownedBy = new WeakMap<Response, Context<State, unknown>>()
 
-function own(response: Response): Response {
-  owned.add(response)
+function own(ctx: Context<State, unknown>, response: Response): Response {
+  ownedBy.set(response, ctx)
   return response
 }
 
 function adopt(ctx: Context<State, unknown>, response: Response): Response {
   let mutable = response
-  if (!owned.has(response)) {
-    mutable = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: new Headers(response.headers),
-    })
-    owned.add(mutable)
+  if (ownedBy.get(response) !== ctx) {
+    mutable = own(
+      ctx,
+      new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: new Headers(response.headers),
+      }),
+    )
   }
   internal.adopt(ctx, mutable)
   return mutable
+}
+
+/** A body a component already read (or handed on) cannot be sent */
+function checkUnread(response: Response): void {
+  if (response.bodyUsed || response.body?.locked) {
+    throw new Error('mixer: the response body was already read')
+  }
 }
 
 function withStatus(

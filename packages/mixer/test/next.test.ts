@@ -518,3 +518,45 @@ describe('untested paths from the second review', () => {
     expect(await (await call(app)).text()).toBe('deep')
   })
 })
+
+describe('PR review', () => {
+  it("adds the parent's headers and cookies to a response from another mixer app", async () => {
+    const child = new Mixer().mix(() => 'from child')
+    const parent = new Mixer().mix((ctx) => {
+      ctx.cookies.set('token', '123')
+      ctx.headers.set('X-Parent', 'yes')
+      return child.fetch(ctx.request)
+    })
+    const res = await call(parent)
+    expect(await res.text()).toBe('from child')
+    expect(res.headers.get('x-parent')).toBe('yes')
+    expect(res.headers.getSetCookie()).toEqual([
+      expect.stringMatching(/^token=123;/),
+    ])
+  })
+
+  it.each<[string, Component]>([
+    [
+      'keeps it',
+      async (_ctx, next) => {
+        await (await next()).text()
+      },
+    ],
+    [
+      'returns it',
+      async (_ctx, next) => {
+        const res = await next()
+        await res.text()
+        return res
+      },
+    ],
+  ])(
+    'answers 500 when a wrapper reads the body and %s',
+    async (_label, wrapper) => {
+      quiet()
+      const res = await call(new Mixer().mix(wrapper, () => 'ok'))
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'Internal Server Error' })
+    },
+  )
+})
