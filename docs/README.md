@@ -19,6 +19,7 @@ Where to find what, by what you want to do. Pages are being split out of the mix
 ## Do common tasks
 
 - Routes, groups of routes, and `405`: [mix-router](../packages/mix-router)
+- Test your app without a server: [Testing your app](how-to/testing.md)
 - Mount a whole app, mixer or another framework: [mount](../packages/mix-router/README.md#mount)
 - Sign users in and check them before routes: [Guarding routes](how-to/auth-and-guards.md)
 - Read and validate the request body: [Request body](how-to/request-body.md)

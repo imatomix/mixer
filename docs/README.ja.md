@@ -19,6 +19,7 @@
 ## よくある作業
 
 - ルート、ルートのまとまり、`405`: [mix-router](../packages/mix-router/README.ja.md)
+- サーバーなしでアプリをテストする: [アプリをテストする](how-to/testing.ja.md)
 - アプリを丸ごと載せる（mixer でもほかのフレームワークでも）: [mount](../packages/mix-router/README.ja.md#mount)
 - ユーザーのサインインと、ルートの前での確認: [ルートの前で確認する](how-to/auth-and-guards.ja.md)
 - リクエストの本文を読んで検証する: [リクエストボディ](how-to/request-body.ja.md)
