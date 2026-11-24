@@ -4,9 +4,9 @@ import { TITLE_LENGTH, type Todo, type TodoRepository } from '../data.ts'
 import { htmlResponse } from '../html.ts'
 import { field, seeOther } from '../http.ts'
 import { listPage } from '../pages.ts'
-import { post } from '../router.ts'
+import { get, post } from '../router.ts'
 
-/** Mounted at /todos; each one needs a signed-in user */
+/** The list and its actions, mounted at /todos; each one needs a signed-in user */
 export function todoRoutes(todos: TodoRepository) {
   /** 404 whether the todo does not exist or belongs to someone else, so IDs reveal nothing */
   async function ownTodo(userId: string, id: string): Promise<Todo> {
@@ -16,6 +16,11 @@ export function todoRoutes(todos: TodoRepository) {
   }
 
   return [
+    get('/', async (ctx) => {
+      const user = currentUser(ctx)
+      return htmlResponse(listPage(user.name, await todos.list(user.id)))
+    }),
+
     post('/', async (ctx) => {
       const user = currentUser(ctx)
       const title = field(await ctx.form(), 'title').trim()
@@ -29,18 +34,18 @@ export function todoRoutes(todos: TodoRepository) {
       }
       const todo = await todos.add(user.id, title)
       ctx.state.log.info('todo added', { todoId: todo.id })
-      return seeOther('/')
+      return seeOther('/todos')
     }),
 
     post('/:id/toggle', async (ctx, { id }) => {
       const todo = await ownTodo(currentUser(ctx).id, id)
       await todos.update({ ...todo, done: !todo.done })
-      return seeOther('/')
+      return seeOther('/todos')
     }),
 
     post('/:id/delete', async (ctx, { id }) => {
       await todos.remove(await ownTodo(currentUser(ctx).id, id))
-      return seeOther('/')
+      return seeOther('/todos')
     }),
   ]
 }

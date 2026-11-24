@@ -70,14 +70,14 @@ async function signedIn(app: App, name = 'alice') {
 }
 
 async function todoIds(user: ReturnType<typeof browser>) {
-  const page = await (await user.get('/')).text()
+  const page = await (await user.get('/todos')).text()
   return [...page.matchAll(/action="\/todos\/([^/]+)\/toggle"/g)].map(
     (match) => match[1] ?? '',
   )
 }
 
 describe('signing in', () => {
-  it.each(['/', '/missing'])(
+  it.each(['/', '/todos', '/missing'])(
     'sends signed-out visitors of %s to the login page',
     async (path) => {
       const res = await browser(setup().app).get(path)
@@ -86,11 +86,23 @@ describe('signing in', () => {
     },
   )
 
+  it('sends a signed-in user from / and from signing in to the list at /todos', async () => {
+    const user = browser(setup().app)
+    const login = await user.post('/login', {
+      name: 'alice',
+      password: 'alice-pass',
+    })
+    expect(login.headers.get('location')).toBe('/todos')
+    const home = await user.get('/')
+    expect(home.status).toBe(303)
+    expect(home.headers.get('location')).toBe('/todos')
+  })
+
   it('lets anyone cache the login page, but never a signed-in page', async () => {
     const { app } = setup()
     const login = await browser(app).get('/login')
     expect(login.headers.get('cache-control')).toBeNull()
-    const list = await (await signedIn(app)).get('/')
+    const list = await (await signedIn(app)).get('/todos')
     expect(list.headers.get('cache-control')).toBe('private, no-store')
   })
 
@@ -118,10 +130,10 @@ describe('signing in', () => {
     victim.jar.set('__Host-sid', planted)
     await victim.post('/login', { name: 'alice', password: 'alice-pass' })
     expect(victim.jar.get('__Host-sid')).not.toBe(planted)
-    expect(await (await victim.get('/')).text()).toContain('alice')
+    expect(await (await victim.get('/todos')).text()).toContain('alice')
 
     // The planted ID is gone, so the attacker holds nothing of alice's
-    expect((await attacker.get('/')).status).toBe(303)
+    expect((await attacker.get('/todos')).status).toBe(303)
   })
 
   it('ends the session on logout', async () => {
@@ -131,11 +143,11 @@ describe('signing in', () => {
     const res = await user.post('/logout')
     expect(res.status).toBe(303)
     expect(res.headers.get('location')).toBe('/login')
-    expect((await user.get('/')).status).toBe(303)
+    expect((await user.get('/todos')).status).toBe(303)
 
     const replay = browser(app)
     replay.jar.set('__Host-sid', oldId)
-    expect((await replay.get('/')).status).toBe(303)
+    expect((await replay.get('/todos')).status).toBe(303)
   })
 })
 
@@ -144,21 +156,21 @@ describe('todos', () => {
     const user = await signedIn(setup().app)
     const added = await user.post('/todos', { title: 'Buy milk' })
     expect(added.status).toBe(303)
-    expect(added.headers.get('location')).toBe('/')
-    expect(await (await user.get('/')).text()).toContain('Buy milk')
+    expect(added.headers.get('location')).toBe('/todos')
+    expect(await (await user.get('/todos')).text()).toContain('Buy milk')
 
     const [id = ''] = await todoIds(user)
     expect((await user.post(`/todos/${id}/toggle`)).status).toBe(303)
-    expect(await (await user.get('/')).text()).toContain('class="done"')
+    expect(await (await user.get('/todos')).text()).toContain('class="done"')
 
     expect((await user.post(`/todos/${id}/delete`)).status).toBe(303)
-    expect(await (await user.get('/')).text()).not.toContain('Buy milk')
+    expect(await (await user.get('/todos')).text()).not.toContain('Buy milk')
   })
 
   it('escapes what users write', async () => {
     const user = await signedIn(setup().app)
     await user.post('/todos', { title: '<script>alert(1)</script> "x"' })
-    const page = await (await user.get('/')).text()
+    const page = await (await user.get('/todos')).text()
     expect(page).not.toContain('<script>alert(1)</script>')
     expect(page).toContain(
       '&lt;script&gt;alert(1)&lt;/script&gt; &quot;x&quot;',
@@ -183,10 +195,10 @@ describe('todos', () => {
     const [id = ''] = await todoIds(alice)
 
     const bob = await signedIn(app, 'bob')
-    expect(await (await bob.get('/')).text()).not.toContain('Alice only')
+    expect(await (await bob.get('/todos')).text()).not.toContain('Alice only')
     expect((await bob.post(`/todos/${id}/toggle`)).status).toBe(404)
     expect((await bob.post(`/todos/${id}/delete`)).status).toBe(404)
-    expect(await (await alice.get('/')).text()).toContain('Alice only')
+    expect(await (await alice.get('/todos')).text()).toContain('Alice only')
   })
 
   it('requires a session for changes', async () => {
@@ -211,7 +223,7 @@ describe('protection', () => {
     const { app } = setup()
     const user = await signedIn(app)
     for (const res of [
-      await user.get('/'),
+      await user.get('/todos'),
       await user.get('/missing'),
       await user.post('/todos', { title: '' }),
     ]) {
@@ -268,7 +280,7 @@ describe('errors', () => {
       log: (event) => void events.push(event),
     })
     const user = await signedIn(app)
-    const res = await user.get('/')
+    const res = await user.get('/todos')
     expect(res.status).toBe(500)
     const page = await res.text()
     expect(page).not.toContain('database is down')
