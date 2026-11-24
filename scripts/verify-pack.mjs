@@ -351,6 +351,30 @@ if (
     : ''
 }
 ${
+  dependencies['@imatomix/mix-compress']
+    ? `
+import { Mixer as CompressMixer } from '@imatomix/mixer'
+import { compress } from '@imatomix/mix-compress'
+
+const compressText = 'mixer compresses this text. '.repeat(100)
+const compressApp = new CompressMixer().mix(compress(), () => compressText)
+const compressServer = await listen(compressApp)
+const squeezed = await fetch(\`http://127.0.0.1:\${compressServer.port}/\`, {
+  headers: { 'accept-encoding': 'gzip' },
+})
+const squeezedText = await squeezed.text()
+await compressServer.close()
+if (
+  squeezed.headers.get('content-encoding') !== 'gzip' ||
+  !squeezed.headers.get('vary')?.includes('Accept-Encoding') ||
+  squeezedText !== compressText
+) {
+  throw new Error('mixer + mix-compress smoke test failed')
+}
+`
+    : ''
+}
+${
   dependencies['@imatomix/mix-logger']
     ? `
 import { Mixer as LoggerMixer } from '@imatomix/mixer'

@@ -38,6 +38,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mix-csrf](packages/mix-csrf) | `Sec-Fetch-Site` と `Origin` による CSRF 対策 | Node.js、Bun、Workers |
 | [@imatomix/mix-secure-headers](packages/mix-secure-headers) | `X-Frame-Options`・HSTS・CSP などのセキュリティヘッダー | Node.js、Bun、Workers |
 | [@imatomix/mix-static](packages/mix-static) | 静的ファイル | Node.js、Bun |
+| [@imatomix/mix-compress](packages/mix-compress) | 直接公開するアプリの応答の圧縮（Brotli、gzip） | Node.js、Bun |
 | [@imatomix/mix-session](packages/mix-session) | サーバサイドセッション | Node.js、Bun、Workers（外部のストアを使う） |
 | [@imatomix/mix-logger](packages/mix-logger) | リクエスト単位のログ。リクエスト ID・アクセスログ・エラーを結び付ける | Node.js、Bun、Workers |
 
