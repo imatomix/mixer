@@ -1,6 +1,9 @@
 // In-memory data for the example. Everything here is lost on restart and lives in one process: replace both
 // with real storage and real authentication before using this anywhere but your own machine
 
+/** The longest title a todo can have */
+export const TITLE_LENGTH = 200
+
 export interface User {
   id: string
   name: string
