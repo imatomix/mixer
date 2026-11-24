@@ -190,7 +190,7 @@ app.mix(
 Calling the app yourself from a route would lose these, which `mount` passes on:
 
 - `ctx.env`, such as the Workers bindings
-- `waitUntil`, so the mounted app's background work is not cut off on Workers (its failures are reported by the outer app too)
+- `waitUntil`, so the mounted app's background work is not cut off on Workers. A fetch handler's failed work is reported by the outer app; a mixer app reports its own, like its other errors
 - the client's address. A mixer app gets the direct peer and applies its own `trustedProxies`, as if it were served directly
 
 What to keep in mind:

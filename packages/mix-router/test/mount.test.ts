@@ -98,6 +98,50 @@ describe('mount', () => {
     ).toBe('198.51.100.2')
   })
 
+  it('reports a fetch handler’s failed background work in the outer app, and leaves a mixer app’s to that app', async () => {
+    const outerReports: ErrorReport[] = []
+    const innerReports: ErrorReport[] = []
+    const failing = Promise.reject(new Error('background failed'))
+    failing.catch(() => {})
+    const inner = new Mixer({ basePath: '/admin' }).mix(
+      (ctx) => {
+        ctx.onErrorReport((report) => {
+          innerReports.push(report)
+        })
+      },
+      (ctx) => {
+        ctx.waitUntil(failing)
+        return 'admin'
+      },
+    )
+    const handler = (
+      _request: Request,
+      _env: unknown,
+      executionContext: ExecutionContextLike,
+    ) => {
+      executionContext.waitUntil(failing)
+      return new Response('legacy')
+    }
+    const app = new Mixer().mix(
+      (ctx) => {
+        ctx.onErrorReport((report) => {
+          outerReports.push(report)
+        })
+      },
+      mount('/admin', inner),
+      mount('/legacy', handler),
+    )
+
+    await (await call(app, '/admin')).text()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(innerReports.map((report) => report.phase)).toEqual(['waitUntil'])
+    expect(outerReports).toEqual([])
+
+    await (await call(app, '/legacy')).text()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(outerReports.map((report) => report.phase)).toEqual(['waitUntil'])
+  })
+
   it('calls other fetch handlers with the request, the environment, and waitUntil', async () => {
     const seen: unknown[] = []
     const waited: Promise<unknown>[] = []

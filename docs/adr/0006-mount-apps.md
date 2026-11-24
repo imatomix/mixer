@@ -28,7 +28,7 @@
 Use B: `mount(prefix, app)`, where `app` is a `Mixer`, an object with `fetch`, or a fetch function.
 
 - The prefix and everything below it are matched like a namespace (decoded, segment by segment), for every method, so `methodNotAllowed()` does not answer for them.
-- A `Mixer` is called with `handle(request, { env, executionContext, remoteAddress, clientIp })`; any other app with `(request, env, { waitUntil })`. `waitUntil` goes through `ctx.waitUntil()`, so failures are reported by the outer app too.
+- A `Mixer` is called with `handle(request, { env, executionContext, remoteAddress, clientIp })`; any other app with `(request, env, { waitUntil })`. `waitUntil` goes through `ctx.waitUntil()`, so a fetch handler's failed background work is reported by the outer app. A mounted mixer app observes its own background work before handing it on and reports the failure itself, like its other errors; the two apps' reporting stays separate.
 - A request whose body the outer app has already read fails with an error that says so, instead of a mounted app that cannot read it.
 - The mounted app's `basePath` must be the full path it is mounted at (the outer `basePath` and every enclosing namespace included). A mismatch answers `404`, which shows at once, so it is documented rather than checked.
 
