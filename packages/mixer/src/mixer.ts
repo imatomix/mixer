@@ -296,7 +296,7 @@ export class Mixer<S extends State = State, E = unknown> {
 
 /**
  * Runs components as one group, by the same rules as the app: next() inside runs the rest of the group, then
- * whatever follows the group. Routers build groups such as namespaces with it
+ * whatever follows the group. mix-router's group() is built on it
  */
 export function compose<S extends State = State, E = unknown>(
   ...components: Component<S, E>[]

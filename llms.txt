@@ -5,7 +5,7 @@
 Things that differ from other frameworks:
 
 - Components run in order and stop at the first one that returns a value; returning nothing hands over to the next one. `next()` is needed only by a component that acts after the rest has built the response, such as adding a header to every response.
-- Routes come from `@imatomix/mix-router` (`get`, `post`, `namespace`, `mount`). Routes of one resource go in their own file without their prefix, and the app assigns it with `namespace('/prefix')(...routes)`.
+- Routes come from `@imatomix/mix-router` (`get`, `post`, `group`, `mount`). Routes of one resource go in their own file without their prefix, and the app assigns it with `group('/prefix', routes)`.
 - Throw `HttpError(status)` for error responses. Check client input with `validateInput(schema, value)` and a Standard Schema such as Zod; it answers `422` for bad input.
 - Order matters for safety: mix in `logger()`, `secureHeaders()`, `csrf()`, and `session()` before the routes.
 - Test an app by calling `app.fetch(new Request(url))`; no server is needed.
@@ -38,7 +38,7 @@ Things that differ from other frameworks:
 
 ## Modules
 
-- [mix-router](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md): type-safe routes, `namespace`, `mount`, and `405`
+- [mix-router](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md): type-safe routes, `group`, `mount`, and `405`
 - [mix-session](https://github.com/imatomix/mixer/blob/main/packages/mix-session/README.md): server-side sessions
 - [mix-csrf](https://github.com/imatomix/mixer/blob/main/packages/mix-csrf/README.md): CSRF protection with `Sec-Fetch-Site` and `Origin`
 - [mix-secure-headers](https://github.com/imatomix/mixer/blob/main/packages/mix-secure-headers/README.md): `X-Frame-Options`, HSTS, CSP, and more

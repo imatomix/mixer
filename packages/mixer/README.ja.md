@@ -72,10 +72,10 @@ export const userRoutes = [
 
 ```ts
 // app.ts
-import { namespace } from '@imatomix/mix-router'
+import { group } from '@imatomix/mix-router'
 import { userRoutes } from './routes/users.js'
 
-app.mix(namespace('/users')(...userRoutes))
+app.mix(group('/users', userRoutes))
 ```
 
 ### 自分でコンポーネントを書く

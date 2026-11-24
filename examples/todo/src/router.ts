@@ -6,4 +6,4 @@ export type SessionData = { userId: string; userName: string }
 export type AppState = LoggerState & SessionState<SessionData>
 
 // Routes are created outside mix(), so they take the app's state type here, once
-export const { get, post, namespace } = createRouter<AppState>()
+export const { get, post, group } = createRouter<AppState>()
