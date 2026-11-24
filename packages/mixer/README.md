@@ -433,11 +433,13 @@ post('/api/items', async (ctx) => {
 
 All four readers take it. The body is read once: a later read with a smaller `bodyLimit` checks the body already read against it, and a body refused by one read is not read again with a larger one. A proxy, CDN, or WAF in front can also cap request sizes, but the app's limit applies whether or not one is there.
 
-### Signing users in
+### Guarding routes
 
-mixer does not check passwords or talk to identity providers: use an authentication library for that. mixer gives the parts around it (sessions with mix-session, CSRF protection, secure cookies, keeping signed-in pages out of caches) and a place for the user.
+When a group of routes needs something checked first (a signed-in user, the organization the user belongs to), check it once in a guard and put the result on `ctx.state`. Write the guard first in a [namespace](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md#components-inside-a-namespace), so it runs for every request under the prefix, including paths that match no route. Routes take the value with a small `requireX(ctx)` helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on.
 
-Check the session once, before the routes that need a user, and put the user on `ctx.state`. Routes then take it with a small helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on:
+A response that depends on who is asking must stay out of shared caches. Set `Cache-Control` in the guard after `await next()`, so it reaches every response under the guard, errors included: `private` keeps shared caches from storing it, and `no-store` keeps any cache from storing it. mixer marks a response private by itself only when it sets a cookie, and mix-session does it for responses with a session; a guard that only reads a value does neither. A response the guard returns before `next()`, such as a redirect, needs its own header if it depends on the request.
+
+For example, signing users in. mixer does not check passwords or talk to identity providers: use an authentication library for that. mixer gives the parts around it (sessions, CSRF protection, secure cookies, the cache policy above) and the guard:
 
 ```ts
 import { HttpError, redirect } from '@imatomix/mixer'
@@ -469,13 +471,13 @@ app.mix(
 )
 ```
 
-- Put the guard first in the namespace, so unknown paths under it are answered by the guard too
 - Do not read the request body before a route that hands `ctx.request` to a library: a body can be read only once
-- Set `Cache-Control` after `await next()`, so it reaches every response under the guard, errors included. mix-session does this for you; a library's session read in the guard does not, because mixer marks a response private by itself only when it sets a cookie
 - A library that keeps its own session cookie does not need mix-session for signing in. With mix-session instead, call `ctx.state.session.regenerate()` when a user signs in
 - Libraries built on Node.js `req`/`res` objects (such as Passport) do not run on the Web `Request`/`Response`
 
-See [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) for why routes get the user this way.
+Other values follow the same shape: a second guard after this one can look up the organization the signed-in user belongs to, put it on `ctx.state.org`, and routes call `requireOrg(ctx)`.
+
+See [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) for why routes get these values this way.
 
 ### basePath
 

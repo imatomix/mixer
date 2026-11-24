@@ -22,7 +22,7 @@ mixer's policy on authentication, decided with the maintainer: let apps use exis
 - **B does not type-check.** A route typed for a state that includes `user` cannot be mixed into an app whose state does not, because the route expects a context the app cannot give. Making it pass needs casts, which hide exactly the mistake we wanted to catch.
 - **C was built on a branch** (`provide(key, fn)` and `namespace(prefix, ...steps)`). It worked: routes in a guarded namespace saw `ctx.state.user` as present, a protected route placed outside the guard was a type error, and the example app lost its two user helpers (235 to 230 lines). It cost about 190 lines in mix-router with recursive types, and converting the example exposed a type bug (steps for apps with required state added nothing) that the first tests had missed.
 - **A review of C found it incomplete:** only the final handler and the namespace's routes see the added values; a later step or a middle handler cannot use what an earlier step provided, arrays of steps lose their types, and a step can overwrite state set by another module.
-- **Input validation does not need C.** Calling a validator inside the handler already gives a typed value, so the only real use left was the signed-in user, where A costs one line per route.
+- **Input validation does not need C.** Calling a validator inside the handler already gives a typed value, so the only use we found that needed C was the signed-in user (and values derived from it, such as the user's organization), where A costs one line per route.
 - **An external library fits A.** A library that takes a Web `Request` and returns a `Response` was mounted on a route and its session read in the guard; sign-up, sign-in, the protected page, the redirect without a session, CSRF protection on its endpoints, and sign-out all worked through `app.fetch`.
 
 ## Decision
@@ -31,7 +31,7 @@ Use A.
 
 - `ctx.state.user` stays optional. A guard component checks the session, sets `ctx.state.user`, or answers (for example, a redirect to sign in) before the routes that need a user, usually as the first item of a namespace.
 - A route that needs the user calls a small `requireUser(ctx)` that returns it or throws, so a missing or misplaced guard fails loudly at run time instead of passing as `undefined`.
-- mix-router does not get a typed value step. The README shows the guard, `requireUser`, and how to mount a Web-standard authentication library.
+- mix-router does not get a typed value step. The mixer README shows this as a general pattern for guards (a guard puts a checked value on `ctx.state`, routes take it with a `requireX(ctx)` helper), with signing users in through a Web-standard authentication library as the example.
 
 ## Consequences
 
