@@ -141,7 +141,8 @@ const send = async (args: string[]) => {
 ```ts
 import { checkSessionStore } from '@imatomix/mix-session/testing'
 
-it('セッションのストアの決まりを守る', async () => {
+// セッションのストアの決まりを守ることを確かめる
+it('follows the session store rules', async () => {
   await checkSessionStore(() => myStore()) // 約 2 秒かかる有効期限の確認を飛ばすなら { expiry: false }
 })
 ```
