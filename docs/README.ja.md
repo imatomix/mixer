@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-やりたいことから、どこに何があるかを探すための地図。各ページは mixer の README から分けている途中で、それまではリンクが README の中を指す。
+やりたいことから、どこに何があるかを探すための地図。各ページは mixer の README から分けている途中で、まだページのない項目は README の中を指す。
 
 ## 始める
 
@@ -37,8 +37,8 @@
 
 ## 設計を理解する
 
-- [何もしなくても安全](../packages/mixer/README.ja.md#何もしなくても安全): 追加のコードなしで mixer が正しく扱うもの
-- [next() で包む](../packages/mixer/README.ja.md#next-で包む): コンポーネントの組み立て方
+- [何もしなくても安全](explanation/safety.ja.md): 追加のコードなしで mixer が正しく扱うもの
+- [next() で包む](explanation/composition.ja.md): コンポーネントの組み立て方
 - [設計判断の記録（ADR）](adr): なぜこの設計なのか
 
 ## 開発に参加する
