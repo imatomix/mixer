@@ -297,21 +297,9 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 
 ## 何もしなくても安全
 
-設定しなくても、次のようになる。
+設定しなくても、mixer は `nosniff` を送り、Cookie に安全な属性を付け、Cookie 付きの応答を共有キャッシュに置かせず、エラーは詳細なしで答え、リクエストボディの大きさを制限し、リダイレクトはサイトの中だけにする。`serve()` は `127.0.0.1` で待ち受け、知らないホスト名を拒否する。CSRF 対策とセキュリティヘッダーはアプリによって変わるので、mix-csrf と mix-secure-headers でそれぞれ 1 行で加える。
 
-- すべての応答に `X-Content-Type-Options: nosniff` が付く
-- Cookie は `HttpOnly; Secure; SameSite=Lax; Path=/`。値はエンコードされ、ヘッダを注入できる名前・パス・ドメインは拒否される
-- Cookie を付けた応答は、すでに `private` か `no-store` でなければ `Cache-Control: private` になり、共有キャッシュがほかの人に渡すことがない
-- `HttpError` 以外のエラーは詳細なしの `500` になる。エラーの応答はヘッダを新しく作り直すので、通常の応答のための `Location`・`Cache-Control`・Cookie がエラーに紛れ込まない
-- 3 MB を超えるリクエストボディを読むと `413`、壊れた JSON は `400` になる。`ctx.json()` と `ctx.form()` は自分の Content-Type だけを受け付ける（それ以外は `415`）ので、JSON のルートが別サイトのフォームを解析することはない
-- `redirect()` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない
-- `HEAD` の応答と `204` / `205` / `304` には本文が付かず、送らないストリームは止める
-- `trustedProxies` を並べない限り `X-Forwarded-For` は無視するので、クライアントが `ctx.ip` を偽れない
-- Node.js と Bun の `serve()` は `127.0.0.1` で待ち受け、ローカルのホスト名だけを受け付ける。DNS リバインディング（別のサイトのページが、自分のサーバーを指す名前を使って話しかけてくる攻撃）と、偽の `Host` ヘッダを防ぐ
-
-アプリによって変わるものはモジュールに任せ、それぞれ 1 行で加える。CSRF 対策は [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf)、`X-Frame-Options`・`Referrer-Policy`・HSTS・CSP は [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers)。ブラウザにページを返すアプリは両方を加える。
-
-もう 1 つ、mixer が代わりに決められないことがある。**メールやリダイレクトの絶対 URL を `ctx.url.host` から作らない。** `Host` ヘッダはクライアントが選ぶので、設定にあるオリジンを使う。
+全体の一覧と、mixer が代わりに決められないことは[何もしなくても安全](https://github.com/imatomix/mixer/blob/main/docs/explanation/safety.ja.md)を参照。
 
 ## 詳しい説明
 
@@ -341,32 +329,9 @@ IP アドレスは、プロキシの設定の誤り・NAT・VPN で正しくな�
 
 ### next() で包む
 
-コンポーネントは 2 つ目の引数に `next` を受け取る。`await next()` は後ろのコンポーネントを実行し、それが作った `Response` を返す。後ろで起きたエラーはすでにエラーの応答（`onError` か既定のもの）に変わっているので、`next()` は例外を投げない。エラーそのものは `ctx.error` に残る。
+コンポーネントは 2 つ目の引数に `next` を受け取る。`await next()` は後ろのコンポーネントを実行して、その `Response` を返す。例外は投げず、後ろで起きたエラーは `ctx.error` に残る。そのあとは `ctx.headers`・`ctx.cookies`・`ctx.status` を変えるか、新しい `Response` を丸ごと返す。
 
-```ts
-app.mix(
-  async (ctx, next) => {
-    await db.begin()
-    await next()
-    // 投げられたエラーは ctx.error に入る。ハンドラーが意図して返した 500 はエラーではない
-    if (ctx.error === undefined) await db.commit()
-    else await db.rollback()
-  },
-  post('/orders', createOrder),
-)
-```
-
-規則:
-
-- `await next()` のあと、`ctx.headers`・`ctx.cookies`・`ctx.status` は返ってきた応答のものになるので、ヘッダーや Cookie はこれまでどおり足せる。`next()` のあとは `ctx.headers` を改めて使う。`next()` の前に手元に持った参照は、古い下書きを指したまま
-- `next()` のあとは、何も返さず応答をそのまま使うか、新しい `Response` を丸ごと返す。それ以外の値を返すと `500` になる。古い応答の `Content-Type` や `Content-Length` のまま送られてしまうため
-- `next()` は 1 回だけ呼び、`await` する。2 回呼ぶ、返したあとに呼ぶ、後ろが動いている途中で返す、のどれも `500` になる
-- **すべての応答にヘッダーや Cookie を届けるコンポーネントは最初に置く**。mix-logger・mix-secure-headers・mix-cors・mix-session など。それより外側に置いたコンポーネントが応答を差し替えると、それらが足したものは消える
-- mixer 自身が保証するもの（`nosniff`、Cookie 付きの応答を共有キャッシュに置かせないこと、`HEAD`・`204`・`304` に本文を付けないこと）は、すべてのコンポーネントのあとで適用するので、どのコンポーネントも取り消せない
-
-規則が扱わないことが 2 つある。`next()` は受け取ったコンポーネントの中だけで使う（別のリクエストから呼ぶと、元のリクエストのコンポーネントが動く）。例外を投げたコンポーネントは、自分が付けるはずだったものを失う。エラーの応答はその外側で作られるため。mix-cors の `origin` や mix-logger の `requestId` のように、モジュールが呼ぶ関数は例外を投げないようにする。
-
-`compose(...components)` は、並びを 1 つのまとまりとして同じ規則で実行する。中の `next()` は、まとまりの残りを実行し、そのあとに続くものを実行する。mix-router の `namespace` はこれで作られているので、namespace の中のコンポーネントはアプリのその部分だけを包む。`/api` の下だけ JSON のエラーページにする、など。
+例と規則は[next() によるコンポーネントの組み立て](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.ja.md)を参照。
 
 ### Server-Sent Events
 

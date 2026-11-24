@@ -297,21 +297,9 @@ export const action = ({ request }: Route.ActionArgs) => app.fetch(request)
 
 ## Safe by default
 
-Without any configuration:
+Without any configuration, mixer sends `nosniff`, sets safe cookie attributes, keeps responses with cookies out of shared caches, answers errors without details, limits request bodies, redirects only within the site, and, with `serve()`, listens on `127.0.0.1` and rejects unknown host names. CSRF protection and security headers depend on the app, so they are one line each with mix-csrf and mix-secure-headers.
 
-- Every response gets `X-Content-Type-Options: nosniff`
-- Cookies are `HttpOnly; Secure; SameSite=Lax; Path=/`. Values are encoded, and names, paths, and domains that could inject headers are rejected
-- A response that sets a cookie gets `Cache-Control: private` (unless it already says `private` or `no-store`), so shared caches never hand it to someone else
-- Errors other than `HttpError` answer `500` without details. Error responses start from a fresh set of headers, so a `Location`, `Cache-Control`, or cookie meant for the normal response does not leak into the error
-- Reading a request body over 3 MB answers `413`, and malformed JSON answers `400`. `ctx.json()` and `ctx.form()` accept only their own Content-Type (`415` otherwise), so a JSON route never parses a cross-site form
-- `redirect()` only goes to paths on this site unless you list other origins
-- `HEAD` responses and `204` / `205` / `304` carry no body, and a stream that will not be sent is cancelled
-- `X-Forwarded-For` is ignored unless you list `trustedProxies`, so a client cannot forge `ctx.ip`
-- On Node.js and Bun, `serve()` listens on `127.0.0.1` and accepts only local host names, which stops DNS rebinding (a page on another site reaching your server through a name that resolves to it) and forged `Host` headers
-
-What depends on the app is left to modules, one line each: CSRF protection with [mix-csrf](https://github.com/imatomix/mixer/tree/main/packages/mix-csrf), and `X-Frame-Options`, `Referrer-Policy`, HSTS, or CSP with [mix-secure-headers](https://github.com/imatomix/mixer/tree/main/packages/mix-secure-headers). An app that serves pages to browsers should mix in both.
-
-One more thing mixer cannot decide for you: **do not build absolute URLs from `ctx.url.host`** (for emails or redirects). The client chooses the `Host` header; use an origin from your configuration.
+See [Safe by default](https://github.com/imatomix/mixer/blob/main/docs/explanation/safety.md) for the full list and the one thing mixer cannot decide for you.
 
 ## Reference
 
@@ -341,32 +329,9 @@ A returned `Response` keeps its own status, body, and headers. Headers you set i
 
 ### Wrapping with next()
 
-A component receives `next` as its second argument. `await next()` runs the components after it and resolves to the `Response` they produced; it never throws, because an error below has already been turned into the error response (through `onError` or the default), and the error is kept in `ctx.error`.
+A component receives `next` as its second argument. `await next()` runs the components after it and resolves to their `Response`; it never throws, and an error below is kept in `ctx.error`. After it, change `ctx.headers`, `ctx.cookies`, or `ctx.status`, or return a whole new `Response`.
 
-```ts
-app.mix(
-  async (ctx, next) => {
-    await db.begin()
-    await next()
-    // A thrown error is in ctx.error; a 500 a handler returns on purpose is not an error
-    if (ctx.error === undefined) await db.commit()
-    else await db.rollback()
-  },
-  post('/orders', createOrder),
-)
-```
-
-The rules:
-
-- After `await next()`, `ctx.headers`, `ctx.cookies`, and `ctx.status` are those of the response it returned, so headers and cookies are added the same way as before. Use `ctx.headers` again after `next()`: a reference taken before it still points at the old draft
-- After `next()`, return nothing to keep the response, or return a whole new `Response`. Returning any other value answers `500`, because it would go out with the old response's `Content-Type` and `Content-Length`
-- Call `next()` once and await it. Calling it twice or after returning, or returning while the rest is still running, answers `500`
-- **Put components whose headers or cookies must reach every response first**, such as mix-logger, mix-secure-headers, mix-cors, and mix-session. A component placed outside them that replaces the response would drop what they added
-- mixer's own guarantees (`nosniff`, private caching of responses with cookies, no body for `HEAD`, `204`, and `304`) are applied after every component, so no component can undo them
-
-Two things the rules do not cover: keep `next()` inside the component that received it (calling it from another request runs the original request's components), and a component that throws loses what it would have added, since its error response is built outside it. Keep functions that modules call, such as mix-cors's `origin` or mix-logger's `requestId`, from throwing.
-
-`compose(...components)` runs a list as one group by the same rules: `next()` inside runs the rest of the group, then what follows it. mix-router's `namespace` is built on it, so a component inside a namespace wraps only that part of the app, such as JSON error pages under `/api`.
+See [Composing components with next()](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.md) for an example and the rules.
 
 ### Server-Sent Events
 

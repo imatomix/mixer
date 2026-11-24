@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-Where to find what, by what you want to do. The pages are being split out of the mixer README; until then, the links point into it.
+Where to find what, by what you want to do. Pages are being split out of the mixer README; until a topic has its own page, its link points into the README.
 
 ## Start
 
@@ -37,8 +37,8 @@ Where to find what, by what you want to do. The pages are being split out of the
 
 ## Understand the design
 
-- [Safe by default](../packages/mixer/README.md#safe-by-default): what mixer gets right without extra code
-- [Wrapping with next()](../packages/mixer/README.md#wrapping-with-next): how components compose
+- [Safe by default](explanation/safety.md): what mixer gets right without extra code
+- [Wrapping with next()](explanation/composition.md): how components compose
 - [Architecture decision records](adr): why the design is the way it is
 
 ## Contribute
