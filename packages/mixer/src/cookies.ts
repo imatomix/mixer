@@ -31,8 +31,8 @@ const EPOCH = new Date(0)
 
 export class Cookies {
   readonly #requestHeaders: Headers
-  // A getter, not the Headers object: error responses replace the draft, and a handle captured
-  // earlier (for example, inside an onBeforeSend hook) must keep writing to the current one
+  // A getter, not the Headers object: the draft is replaced by an error response and, after next(), by the
+  // response it returned, and cookies must go on the current one
   readonly #draftHeaders: () => Headers
   readonly #isLocked: () => boolean
   #parsed: Map<string, string[]> | undefined
@@ -82,11 +82,17 @@ export class Cookies {
     if (this.#isLocked()) {
       throw new Error(`Cannot set cookies after the response is final: ${name}`)
     }
+    const draft = this.#draftHeaders()
+    // The draft can be replaced: an error response starts without the cookies set so far, while a response
+    // passed up through next() keeps them. Remember only those still there, so none comes back by accident
+    const present = new Set(draft.getSetCookie())
+    for (const [key, line] of this.#pending) {
+      if (!present.has(line)) this.#pending.delete(key)
+    }
     this.#pending.set(
       `${name}\n${options.path}\n${options.domain ?? ''}`,
       header,
     )
-    const draft = this.#draftHeaders()
     const others = draft
       .getSetCookie()
       .filter((existing) => !this.#written.has(existing))

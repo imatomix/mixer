@@ -1,18 +1,12 @@
 import { DEFAULT_BODY_LIMIT } from './body.js'
 import {
   Context,
-  type ErrorPhase,
   type ExecutionContextLike,
   internal,
   type State,
 } from './context.js'
 import { HttpError } from './errors.js'
-import {
-  errorDraft,
-  finalizeResponse,
-  joinVary,
-  toResponse,
-} from './finalize.js'
+import { finalizeResponse, NULL_BODY_STATUSES, toResponse } from './finalize.js'
 import {
   normalizeIp,
   type ProxyRange,
@@ -20,8 +14,15 @@ import {
   resolveClientIp,
 } from './ip.js'
 
+/**
+ * Runs the components after this one and resolves to the Response they produced. An error they throw is already
+ * turned into the error response (and kept in ctx.error), so next() does not reject
+ */
+export type Next = () => Promise<Response>
+
 export type Component<S extends State = State, E = unknown> = (
   ctx: Context<S, E>,
+  next: Next,
 ) => unknown | Promise<unknown>
 
 /**
@@ -124,147 +125,172 @@ export class Mixer<S extends State = State, E = unknown> {
           : normalizeIp(clientIp),
     })
 
-    let response: Response
-    try {
-      if (path === undefined) throw new HttpError(404)
-      response = await this.#respond(ctx, await this.#run(ctx))
-    } catch (thrown) {
-      response =
-        thrown instanceof BeforeSendFailure
-          ? await this.#respondToError(thrown.error, ctx, 'beforeSend')
-          : await this.#respondToError(thrown, ctx, 'handling')
-    }
-
-    const final = finalizeResponse(
-      internal.applyResponseHeaders(ctx, response),
-      ctx.method,
-    )
-    await internal.runOnResponse(ctx, final)
-    return final
+    const notFound: Next = () => this.#respondToError(new HttpError(404), ctx)
+    internal.setRunner(ctx, (list, end) => this.#dispatch(ctx, list, 0, end))
+    let response =
+      path === undefined
+        ? await notFound()
+        : await this.#dispatch(ctx, this.#components, 0, notFound)
+    response = finalizeResponse(response, ctx.method)
+    internal.finish(ctx)
+    return response
   }
 
-  async #run(ctx: Context<S, E>): Promise<unknown> {
-    for (const component of this.#components) {
-      const result = await component(ctx)
-      if (result !== undefined) return result
-    }
-    throw new HttpError(404)
-  }
-
-  async #respond(ctx: Context<S, E>, value: unknown): Promise<Response> {
-    try {
-      await internal.runBeforeSend(ctx)
-    } catch (error) {
-      // The value will never be sent, so release a stream it holds (for example, an open file)
-      cancelBody(value, ctx)
-      throw new BeforeSendFailure(error)
-    }
-    return toResponse(value, internal.draft(ctx), ctx.url.pathname)
-  }
-
-  async #respondToError(
-    error: unknown,
+  /**
+   * Runs the components from index on and always resolves to a Response: an error is turned into the error
+   * response here, so a component that wrapped this part with next() receives a Response, never a rejection
+   */
+  async #dispatch(
     ctx: Context<S, E>,
-    phase: ErrorPhase,
+    list: readonly Component<S, E>[],
+    index: number,
+    end: Next,
   ): Promise<Response> {
-    const status = error instanceof HttpError ? error.status : 500
-    if (status >= 500) internal.reportError(ctx, error, phase)
-    const draft = errorDraft(ctx.headers, status)
-    if (error instanceof HttpError) {
-      addHeaders(draft.headers, error.headers, { cookies: true })
-    }
-    internal.resetDraft(ctx, draft)
-
-    if (this.#onError) {
-      let value: unknown
+    for (let i = index; i < list.length; i++) {
+      const component = list[i] as Component<S, E>
+      let called = false
+      let returned = false
+      let inner: Response | undefined
+      const next: Next = async () => {
+        if (returned) {
+          throw new Error(
+            'mixer: next() was called after the component returned',
+          )
+        }
+        if (called) throw new Error('mixer: next() was called more than once')
+        called = true
+        inner = adopt(ctx, await this.#dispatch(ctx, list, i + 1, end))
+        return inner
+      }
       try {
-        value = await this.#onError(error, ctx)
+        let result: unknown
+        try {
+          result = await component(ctx, next)
+        } finally {
+          returned = true
+        }
+        if (!called) {
+          if (result === undefined) continue
+          // A Response mixer already made (for example, by compose()) is final; anything else is turned into one
+          if (result instanceof Response && owned.has(result)) {
+            return adopt(ctx, result)
+          }
+          return adopt(ctx, this.#respond(ctx, result))
+        }
+        // The rest is still running: the component returned without awaiting next()
+        if (inner === undefined) {
+          throw new Error('mixer: await next() before returning')
+        }
+        if (result === undefined) {
+          // ctx.status changed after next() applies to the response the component kept
+          return ctx.status === inner.status
+            ? inner
+            : adopt(ctx, withStatus(inner, ctx.status, ctx))
+        }
+        // A value would be encoded with the headers of the response it replaces (Content-Type, Content-Length),
+        // so a component that wrapped the rest either keeps that response or returns a whole new Response
+        if (!(result instanceof Response)) {
+          throw new Error(
+            'mixer: after next(), return nothing or a Response, not another value',
+          )
+        }
+        if (result.body !== inner.body) cancelBody(inner, ctx)
+        return adopt(ctx, result)
+      } catch (error) {
+        if (inner) cancelBody(inner, ctx)
+        return adopt(ctx, await this.#respondToError(error, ctx))
+      }
+    }
+    return adopt(ctx, await end())
+  }
+
+  #respond(ctx: Context<S, E>, value: unknown): Response {
+    return own(toResponse(value, internal.draft(ctx), ctx.url.pathname))
+  }
+
+  async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
+    const status = error instanceof HttpError ? error.status : 500
+    internal.setError(ctx, error)
+    if (status >= 500) internal.reportError(ctx, error, 'handling')
+    // Error responses start from fresh headers: what the failed part meant for its response must not leak.
+    // Headers every response needs are added by the components wrapping this one, after their next()
+    const errorHeaders = () =>
+      new Headers(error instanceof HttpError ? error.headers : undefined)
+    internal.resetDraft(ctx, { status, headers: errorHeaders() })
+
+    let failed = false
+    if (this.#onError) {
+      try {
+        const value = await this.#onError(error, ctx)
+        if (value !== undefined) return this.#respond(ctx, value)
       } catch (handlerError) {
         internal.reportError(ctx, handlerError, 'onError')
+        failed = true
       }
-      // A failure while sending onError's value is a hook failure, not an onError failure, so it is a 500
-      if (value !== undefined) {
-        try {
-          return await this.#respond(ctx, value)
-        } catch (thrown) {
-          return thrown instanceof BeforeSendFailure
-            ? respondToHookFailure(thrown.error, ctx, 'beforeSend')
-            : respondToHookFailure(thrown, ctx, 'onError')
-        }
-      }
-      const fresh = errorDraft(draft.headers, status)
-      if (error instanceof HttpError) {
-        addHeaders(fresh.headers, error.headers, { cookies: false })
-      }
-      internal.resetDraft(ctx, fresh)
+      // When onError itself fails, the answer is a 500, whatever the original error was
+      internal.resetDraft(ctx, {
+        status: failed ? 500 : status,
+        headers: failed ? new Headers() : errorHeaders(),
+      })
     }
-
-    try {
-      await internal.runBeforeSend(ctx)
-    } catch (hookError) {
-      return respondToHookFailure(hookError, ctx, 'beforeSend')
-    }
-    return defaultErrorResponse(error, ctx)
+    const body =
+      !failed && error instanceof HttpError && error.expose
+        ? { error: error.message }
+        : { error: 'Internal Server Error' }
+    return own(toResponse(body, internal.draft(ctx)))
   }
 }
 
 /**
- * Adds an HttpError's headers to an error draft. Vary is joined with what the draft kept (such as Origin from
- * mix-cors). Cookies are added only once: a draft rebuilt from one that already has them keeps them, together
- * with any change onError made to them
+ * Runs components as one group, by the same rules as the app: next() inside runs the rest of the group, then
+ * whatever follows the group. Routers build groups such as namespaces with it
  */
-function addHeaders(
-  target: Headers,
-  source: Headers,
-  { cookies }: { cookies: boolean },
-): void {
-  for (const [name, value] of source) {
-    if (name === 'set-cookie') continue
-    if (name === 'vary') {
-      const vary = joinVary(target.get('Vary'), value)
-      if (vary) target.set('Vary', vary)
-    } else {
-      target.set(name, value)
-    }
+export function compose<S extends State = State, E = unknown>(
+  ...components: Component<S, E>[]
+): Component<S, E> {
+  return (ctx, next) =>
+    internal.run(ctx as Context, components as Component[], next)
+}
+
+/** Responses mixer made itself have mutable headers; others (from fetch() or Response.redirect()) are copied */
+const owned = new WeakSet<Response>()
+
+function own(response: Response): Response {
+  owned.add(response)
+  return response
+}
+
+function adopt(ctx: Context<State, unknown>, response: Response): Response {
+  let mutable = response
+  if (!owned.has(response)) {
+    mutable = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: new Headers(response.headers),
+    })
+    owned.add(mutable)
   }
-  if (!cookies) return
-  for (const cookie of source.getSetCookie())
-    target.append('Set-Cookie', cookie)
+  internal.adopt(ctx, mutable)
+  return mutable
 }
 
-/** Marks an error thrown by an onBeforeSend hook, so it is reported as such */
-class BeforeSendFailure {
-  constructor(readonly error: unknown) {}
-}
-
-function respondToHookFailure(
-  error: unknown,
-  ctx: Context<State, unknown>,
-  phase: ErrorPhase,
-): Response {
-  internal.reportError(ctx, error, phase)
-  internal.resetDraft(ctx, errorDraft(ctx.headers, 500))
-  return toResponse({ error: 'Internal Server Error' }, internal.draft(ctx))
-}
-
-function defaultErrorResponse(
-  error: unknown,
+function withStatus(
+  response: Response,
+  status: number,
   ctx: Context<State, unknown>,
 ): Response {
-  if (error instanceof HttpError && error.expose) {
-    return toResponse({ error: error.message }, internal.draft(ctx))
-  }
-  return toResponse({ error: 'Internal Server Error' }, internal.draft(ctx))
+  const nullBody = NULL_BODY_STATUSES.has(status)
+  if (nullBody) cancelBody(response, ctx)
+  return new Response(nullBody ? null : response.body, {
+    status,
+    headers: response.headers,
+  })
 }
 
-function cancelBody(value: unknown, ctx: Context<State, unknown>): void {
-  const stream =
-    value instanceof ReadableStream
-      ? value
-      : value instanceof Response
-        ? value.body
-        : null
-  stream
+function cancelBody(response: Response, ctx: Context<State, unknown>): void {
+  // A locked body was handed on (for example, piped through a compression stream), so it is not ours to cancel
+  if (response.body?.locked) return
+  response.body
     ?.cancel()
     .catch((error: unknown) => internal.reportError(ctx, error, 'streamCancel'))
 }

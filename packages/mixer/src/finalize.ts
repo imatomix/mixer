@@ -7,7 +7,7 @@ export interface Draft {
 }
 
 // Statuses whose responses cannot have a body
-const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304])
+export const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304])
 
 /** Turns a value returned by a component into a Response, combined with the response draft */
 export function toResponse(
@@ -182,22 +182,6 @@ function defaultCookiePath(requestPath: string): string {
   if (!requestPath.startsWith('/')) return '/'
   const lastSlash = requestPath.lastIndexOf('/')
   return lastSlash <= 0 ? '/' : requestPath.slice(0, lastSlash)
-}
-
-/**
- * A fresh draft for error responses. Only headers the browser needs to read the error
- * (CORS and Vary) and cookies already set are kept; others such as Location or
- * Cache-Control: public must not leak into an error response
- */
-export function errorDraft(from: Headers, status: number): Draft {
-  const headers = new Headers()
-  for (const [name, value] of from) {
-    if (name.startsWith('access-control-') || name === 'vary') {
-      headers.set(name, value)
-    }
-  }
-  for (const cookie of from.getSetCookie()) headers.append('Set-Cookie', cookie)
-  return { status, headers }
 }
 
 /** The last step for every response: safe headers, cookies and caching, and bodies that must be dropped */

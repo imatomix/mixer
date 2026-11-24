@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  type Component,
-  HttpError,
-  Mixer,
-  type ResponseInfo,
-} from '../src/index.js'
-import { call, trackedStream } from './helpers.js'
+import { type Component, HttpError, Mixer } from '../src/index.js'
+import { call } from './helpers.js'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -96,24 +91,24 @@ describe('error handling', () => {
     expect(error).toHaveBeenCalled()
   })
 
-  it('builds error responses from a fresh draft that keeps only CORS, Vary, and Set-Cookie', async () => {
+  it('builds error responses from fresh headers, so nothing meant for the normal response leaks', async () => {
     const app = new Mixer().mix((ctx) => {
       ctx.headers.set('Access-Control-Allow-Origin', '*')
-      ctx.headers.set('Vary', 'Origin')
       ctx.headers.set('Location', '/elsewhere')
       ctx.headers.set('Cache-Control', 'public, max-age=60')
-      ctx.headers.set('Content-Disposition', 'attachment')
       ctx.cookies.set('a', '1')
       throw new HttpError(403)
     })
     const res = await call(app)
     expect(res.status).toBe(403)
-    expect(res.headers.get('access-control-allow-origin')).toBe('*')
-    expect(res.headers.get('vary')).toBe('Origin')
-    expect(res.headers.getSetCookie()).toHaveLength(1)
-    expect(res.headers.get('location')).toBeNull()
-    expect(res.headers.get('content-disposition')).toBeNull()
-    expect(res.headers.get('cache-control')).toBe('private')
+    for (const name of [
+      'access-control-allow-origin',
+      'location',
+      'cache-control',
+    ]) {
+      expect(res.headers.get(name)).toBeNull()
+    }
+    expect(res.headers.getSetCookie()).toEqual([])
   })
 
   it('sends headers given to an HttpError, such as Retry-After', async () => {
@@ -150,7 +145,7 @@ describe('error handling', () => {
     expect(res.headers.get('allow')).toBe('GET, HEAD')
   })
 
-  it('does not repeat or bring back HttpError cookies on the fallback response', async () => {
+  it('sends the HttpError cookies once when onError falls back to the default response, without its own edits', async () => {
     quiet()
     const app = new Mixer({
       onError: (_error, ctx) => {
@@ -162,21 +157,19 @@ describe('error handling', () => {
         headers: { 'Set-Cookie': 'token=active; Path=/' },
       })
     })
-    const cookies = (await call(app)).headers.getSetCookie()
-    expect(cookies.filter((c) => c.startsWith('token=active'))).toHaveLength(1)
-    expect(cookies.at(-1)).toMatch(/^token=; Max-Age=0;/)
+    expect((await call(app)).headers.getSetCookie()).toEqual([
+      'token=active; Path=/',
+    ])
   })
 
-  it('joins Vary from an HttpError with Vary kept from before the error', async () => {
+  it('uses only the Vary of the HttpError, not one set before the error', async () => {
     const app = new Mixer().mix((ctx) => {
       ctx.headers.set('Vary', 'Origin')
       throw new HttpError(406, undefined, {
         headers: { Vary: 'Accept-Language' },
       })
     })
-    expect((await call(app)).headers.get('vary')).toBe(
-      'Origin, Accept-Language',
-    )
+    expect((await call(app)).headers.get('vary')).toBe('Accept-Language')
   })
 
   it('exposes the headers of an HttpError and rejects invalid values', () => {
@@ -245,208 +238,6 @@ describe('error handling', () => {
     },
   )
 })
-
-describe('onBeforeSend', () => {
-  it('runs hooks in registration order and lets them change the draft', async () => {
-    const app = new Mixer().mix((ctx) => {
-      ctx.onBeforeSend(() => {
-        ctx.headers.append('x-order', 'first')
-      })
-      ctx.onBeforeSend(async () => {
-        await Promise.resolve()
-        ctx.headers.append('x-order', 'second')
-        ctx.status = 202
-      })
-      return 'ok'
-    })
-    const res = await call(app)
-    expect(res.status).toBe(202)
-    expect(res.headers.get('x-order')).toBe('first, second')
-  })
-
-  it('sees state changed by later components', async () => {
-    const app = new Mixer<{ visits?: number }>()
-      .mix((ctx) => {
-        ctx.onBeforeSend(() => {
-          ctx.headers.set('x-visits', String(ctx.state.visits))
-        })
-      })
-      .mix((ctx) => {
-        ctx.state.visits = 3
-        return 'ok'
-      })
-    expect((await call(app)).headers.get('x-visits')).toBe('3')
-  })
-
-  it('runs before error responses as well', async () => {
-    const app = new Mixer().mix((ctx) => {
-      ctx.onBeforeSend(() => {
-        ctx.cookies.set('saved', '1')
-      })
-      throw new HttpError(400)
-    })
-    const res = await call(app)
-    expect(res.status).toBe(400)
-    expect(res.headers.getSetCookie()[0]).toMatch(/^saved=1;/)
-  })
-
-  it('returns 500 when a hook fails while sending the value from onError', async () => {
-    quiet()
-    let calls = 0
-    const app = new Mixer({ onError: () => ({ message: 'custom' }) }).mix(
-      (ctx) => {
-        ctx.onBeforeSend(() => {
-          calls++
-          throw new Error('session store down')
-        })
-        throw new HttpError(404)
-      },
-    )
-    const res = await call(app)
-    expect(res.status).toBe(500)
-    expect(await res.json()).toEqual({ error: 'Internal Server Error' })
-    expect(calls).toBe(1)
-  })
-
-  it('keeps a captured ctx.cookies handle writing to the error response', async () => {
-    const app = new Mixer().mix(
-      (ctx) => {
-        const cookies = ctx.cookies
-        ctx.onBeforeSend(() => {
-          cookies.delete('token')
-        })
-      },
-      () => {
-        throw new HttpError(401)
-      },
-    )
-    const res = await call(app)
-    expect(res.status).toBe(401)
-    expect(res.headers.getSetCookie()[0]).toMatch(/^token=; Max-Age=0;/)
-  })
-
-  it('returns 500 when a hook fails, does not run hooks again, cancels the stream, and keeps earlier cookies', async () => {
-    quiet()
-    let calls = 0
-    const { stream, state } = trackedStream(['never'])
-    const app = new Mixer().mix((ctx) => {
-      ctx.onBeforeSend(() => {
-        ctx.cookies.set('first', '1')
-      })
-      ctx.onBeforeSend(() => {
-        calls++
-        throw new Error('store down')
-      })
-      return stream
-    })
-    const res = await call(app)
-    expect(res.status).toBe(500)
-    expect(calls).toBe(1)
-    expect(state.cancelled).toBe(true)
-    expect(res.headers.getSetCookie()[0]).toMatch(/^first=1;/)
-  })
-})
-
-describe('onResponse', () => {
-  it('runs once with a snapshot of the final response', async () => {
-    const seen: ResponseInfo[] = []
-    const app = new Mixer().mix((ctx) => {
-      ctx.onResponse((info) => {
-        seen.push(info)
-      })
-      ctx.status = 201
-      return 'ok'
-    })
-    const res = await call(app)
-    expect(seen).toHaveLength(1)
-    expect(seen[0]?.status).toBe(201)
-    expect(seen[0]?.headers.get('x-content-type-options')).toBe('nosniff')
-    expect(res.status).toBe(201)
-  })
-
-  it.each([
-    [
-      '404',
-      new Mixer().mix((ctx) => {
-        ctx.onResponse(record)
-      }),
-      404,
-    ],
-    [
-      'onError',
-      new Mixer({ onError: () => 'handled' }).mix((ctx) => {
-        ctx.onResponse(record)
-        throw new Error('boom')
-      }),
-      500,
-    ],
-    [
-      'a failing onBeforeSend',
-      new Mixer().mix((ctx) => {
-        ctx.onResponse(record)
-        ctx.onBeforeSend(() => {
-          throw new Error('hook failed')
-        })
-        return 'ok'
-      }),
-      500,
-    ],
-  ])('runs once for %s', async (_label, app, status) => {
-    quiet()
-    recorded.length = 0
-    await call(app)
-    expect(recorded).toEqual([status])
-  })
-
-  it('does not change the response when the snapshot is modified', async () => {
-    const app = new Mixer().mix((ctx) => {
-      ctx.onResponse((info) => {
-        info.headers.set('x-late', 'yes')
-      })
-      return 'ok'
-    })
-    expect((await call(app)).headers.get('x-late')).toBeNull()
-  })
-
-  it('logs a failing hook without breaking the response or other hooks', async () => {
-    const error = quiet()
-    let second = false
-    const app = new Mixer().mix((ctx) => {
-      ctx.onResponse(() => {
-        throw new Error('log failed')
-      })
-      ctx.onResponse(async () => {
-        second = true
-      })
-      return 'ok'
-    })
-    const res = await call(app)
-    expect(res.status).toBe(200)
-    expect(second).toBe(true)
-    expect(error).toHaveBeenCalled()
-  })
-
-  it('throws when a cookie is set after the response is final', async () => {
-    let thrown: unknown
-    const app = new Mixer().mix((ctx) => {
-      ctx.onResponse(() => {
-        try {
-          ctx.cookies.set('late', '1')
-        } catch (e) {
-          thrown = e
-        }
-      })
-      return 'ok'
-    })
-    await call(app)
-    expect(thrown).toBeInstanceOf(Error)
-  })
-})
-
-const recorded: number[] = []
-function record(info: ResponseInfo) {
-  recorded.push(info.status)
-}
 
 describe('basePath', () => {
   const app = new Mixer({ basePath: '/api' }).mix((ctx) => ({ path: ctx.path }))
@@ -660,30 +451,6 @@ describe('error reports', () => {
     ])
   })
 
-  it('reports an onBeforeSend failure', async () => {
-    const broken = new Error('hook broke')
-    const { app, reports } = reporting((ctx) => {
-      ctx.onBeforeSend(() => {
-        throw broken
-      })
-      return 'ok'
-    })
-    expect((await call(app)).status).toBe(500)
-    expect(reports).toEqual([{ error: broken, phase: 'beforeSend' }])
-  })
-
-  it('reports an onResponse failure', async () => {
-    const broken = new Error('response hook broke')
-    const { app, reports } = reporting((ctx) => {
-      ctx.onResponse(() => {
-        throw broken
-      })
-      return 'ok'
-    })
-    expect((await call(app)).status).toBe(200)
-    expect(reports).toEqual([{ error: broken, phase: 'onResponse' }])
-  })
-
   it.each([
     ['without an execution context', undefined],
     ['with an execution context', { waitUntil: vi.fn() }],
@@ -707,16 +474,18 @@ describe('error reports', () => {
 
   it('reports a stream that fails to cancel', async () => {
     const broken = new Error('cancel failed')
-    const { app, reports } = reporting((ctx) => {
-      ctx.onBeforeSend(() => {
-        throw new Error('hook broke')
-      })
-      return new ReadableStream({
-        cancel() {
-          throw broken
-        },
-      })
-    })
+    const { app, reports } = reporting(
+      async (_ctx, next) => {
+        await next()
+        throw new Error('wrapper broke')
+      },
+      () =>
+        new ReadableStream({
+          cancel() {
+            throw broken
+          },
+        }),
+    )
     await call(app)
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(reports).toContainEqual({ error: broken, phase: 'streamCancel' })
@@ -789,155 +558,6 @@ describe('error reports', () => {
     })
     await call(app)
     expect(error).not.toHaveBeenCalled()
-  })
-})
-
-describe('response headers', () => {
-  function decorated(
-    options: ConstructorParameters<typeof Mixer>[0],
-    ...components: Component[]
-  ) {
-    return new Mixer(options).mix(
-      (ctx) => {
-        ctx.onResponseHeaders((headers, { status }) => {
-          headers.set('X-Request-Id', 'abc')
-          headers.set('X-Status', String(status))
-        })
-      },
-      ...components,
-    )
-  }
-
-  it.each<[string, Component[], number]>([
-    ['a normal response', [() => 'ok'], 200],
-    [
-      'an HttpError',
-      [
-        () => {
-          throw new HttpError(403)
-        },
-      ],
-      403,
-    ],
-    ['no matching component', [], 404],
-    ['a returned Response', [() => new Response('raw', { status: 201 })], 201],
-    [
-      'a returned Response with immutable headers',
-      [() => Response.redirect('http://localhost/next', 302)],
-      302,
-    ],
-  ])('adds headers to %s', async (_label, components, status) => {
-    const res = await call(decorated({}, ...components))
-    expect(res.status).toBe(status)
-    expect(res.headers.get('x-request-id')).toBe('abc')
-    expect(res.headers.get('x-status')).toBe(String(status))
-  })
-
-  it('adds headers to the response onError returned', async () => {
-    const res = await call(
-      decorated({ onError: () => ({ handled: true }) }, () => {
-        throw new Error('boom')
-      }),
-    )
-    expect(await res.json()).toEqual({ handled: true })
-    expect(res.headers.get('x-request-id')).toBe('abc')
-  })
-
-  it('adds headers to the 500 when a later onBeforeSend hook throws', async () => {
-    quiet()
-    const res = await call(
-      decorated({}, (ctx) => {
-        ctx.onBeforeSend(() => {
-          throw new Error('hook broke')
-        })
-        return 'ok'
-      }),
-    )
-    expect(res.status).toBe(500)
-    expect(res.headers.get('x-request-id')).toBe('abc')
-  })
-
-  it('adds headers to the 500 when the value cannot be serialized', async () => {
-    quiet()
-    const circular: Record<string, unknown> = {}
-    circular.self = circular
-    const res = await call(decorated({}, () => circular))
-    expect(res.status).toBe(500)
-    expect(res.headers.get('x-request-id')).toBe('abc')
-  })
-
-  it("can see and replace a returned Response's own headers", async () => {
-    const app = new Mixer().mix(
-      (ctx) => {
-        ctx.onResponseHeaders((headers) => {
-          headers.set('X-Seen', headers.get('X-Upstream') ?? 'none')
-          headers.set('X-Upstream', 'replaced')
-        })
-      },
-      () => new Response('raw', { headers: { 'X-Upstream': 'upstream' } }),
-    )
-    const res = await call(app)
-    expect(res.headers.get('x-seen')).toBe('upstream')
-    expect(res.headers.get('x-upstream')).toBe('replaced')
-    expect(await res.text()).toBe('raw')
-  })
-
-  it('runs listeners in order, reports one that throws, and drops its partial changes', async () => {
-    const reports: unknown[] = []
-    const broken = new Error('listener broke')
-    const app = new Mixer().mix(
-      (ctx) => {
-        ctx.onErrorReport(({ error, phase }) => {
-          reports.push([phase, error])
-        })
-        ctx.onResponseHeaders((headers) => {
-          headers.set('X-Order', 'first')
-        })
-        ctx.onResponseHeaders((headers) => {
-          headers.set('X-Partial', 'yes')
-          throw broken
-        })
-        ctx.onResponseHeaders((headers) => {
-          headers.append('X-Order', 'third')
-        })
-      },
-      () => 'ok',
-    )
-    const res = await call(app)
-    expect(res.status).toBe(200)
-    expect(res.headers.get('x-order')).toBe('first, third')
-    expect(res.headers.get('x-partial')).toBeNull()
-    expect(reports).toEqual([['headers', broken]])
-  })
-
-  it('cannot undo what mixer guarantees for every response', async () => {
-    const app = new Mixer().mix(
-      (ctx) => {
-        ctx.onResponseHeaders((headers) => {
-          headers.delete('X-Content-Type-Options')
-          headers.set('Cache-Control', 'public, max-age=60')
-        })
-        ctx.cookies.set('sid', 'x')
-      },
-      () => 'ok',
-    )
-    const res = await call(app, '/', { method: 'HEAD' })
-    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
-    expect(res.headers.get('cache-control')).toBe('private, max-age=60')
-    expect(res.body).toBeNull()
-  })
-
-  it('keeps every Set-Cookie header', async () => {
-    const app = new Mixer().mix(
-      (ctx) => {
-        ctx.onResponseHeaders(() => {})
-        ctx.cookies.set('a', '1')
-        ctx.cookies.set('b', '2')
-      },
-      () => 'ok',
-    )
-    const res = await call(app)
-    expect(res.headers.getSetCookie()).toHaveLength(2)
   })
 })
 

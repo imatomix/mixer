@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Mixer } from '../src/index.js'
 import { call } from './helpers.js'
 
@@ -104,14 +104,21 @@ describe('ctx.cookies.set', () => {
     expect(cookies[1]).toMatch(/^a=3; Path=\/other;/)
   })
 
-  it('keeps Set-Cookie on error responses', async () => {
-    const app = new Mixer().mix((ctx) => {
-      ctx.cookies.set('a', '1')
-      throw new Error('boom')
-    })
+  it('does not send a cookie set before an error; components that must, set it after next()', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = new Mixer().mix(
+      async (ctx, next) => {
+        await next()
+        ctx.cookies.set('kept', '1')
+      },
+      (ctx) => {
+        ctx.cookies.set('lost', '1')
+        throw new Error('boom')
+      },
+    )
     const res = await call(app)
     expect(res.status).toBe(500)
-    expect(setCookies(res)).toHaveLength(1)
+    expect(setCookies(res)).toEqual([expect.stringMatching(/^kept=1;/)])
   })
 })
 
@@ -192,18 +199,12 @@ describe('validation', () => {
   })
 
   it('throws on set after the response is final', async () => {
-    let error: unknown
+    let late: (() => void) | undefined
     const app = new Mixer().mix((ctx) => {
-      ctx.onResponse(() => {
-        try {
-          ctx.cookies.set('a', '1')
-        } catch (e) {
-          error = e
-        }
-      })
+      late = () => ctx.cookies.set('a', '1')
       return 'sent'
     })
     await call(app)
-    expect(error).toBeInstanceOf(Error)
+    expect(late).toThrow()
   })
 })
