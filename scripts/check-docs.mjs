@@ -27,27 +27,48 @@ function prose(text) {
   return text.replace(/^```[\s\S]*?^```/gm, '')
 }
 
+const STRING = /(['"`])(?:(?!\1)[^\\\n]|\\.)*\1/g
+
 /**
- * Code blocks without what a translation changes: comments, test names, and other strings with non-ASCII text.
- * Values like paths and headers are ASCII, so they are still compared
+ * Each code block without comments, split into its shape (strings replaced by a placeholder) and its strings, so
+ * that translated strings can be told apart from changed code
  */
 function codeBlocks(text) {
   return [...text.matchAll(/^```([^\n]*)\n([\s\S]*?)^```/gm)].map(
-    ([, info, code]) =>
-      withoutComments(code, /^(sh|bash|shell)\b/.test(info) ? '#' : '//')
+    ([, info, code]) => {
+      const bare = withoutComments(
+        code,
+        /^(sh|bash|shell)\b/.test(info) ? '#' : '//',
+      )
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim() !== '')
         .join('\n')
-        .replace(
-          /\b(it|test|describe)\((['"`])(?:(?!\2)[^\\\n]|\\.)*\2/g,
-          "$1(''",
-        )
-        .replace(
-          /(['"`])(?:(?!\1)[^\\\n]|\\.)*\P{ASCII}(?:(?!\1)[^\\\n]|\\.)*\1/gu,
-          "''",
-        ),
+      return {
+        shape: bare.replace(STRING, "''"),
+        strings: bare.match(STRING) ?? [],
+      }
+    },
   )
+}
+
+/**
+ * Two versions of the same code match when their shape is the same and each string is the same, or is a
+ * translation (has non-ASCII text on either side). Values like paths and headers are ASCII, so they are compared
+ */
+function sameCode(english, japanese) {
+  if (english.length !== japanese.length) return false
+  return english.every((block, index) => {
+    const other = japanese[index]
+    if (!other || block.shape !== other.shape) return false
+    if (block.strings.length !== other.strings.length) return false
+    return block.strings.every(
+      (value, n) =>
+        value === other.strings[n] ||
+        /\P{ASCII}/u.test(value) ||
+        /\P{ASCII}/u.test(other.strings[n] ?? ''),
+    )
+  })
 }
 
 /**
@@ -169,11 +190,9 @@ for (const file of files) {
   if (headingLevels(text).join() !== headingLevels(japanese).join()) {
     problems.push(`${file} and ${twin}: the headings differ in number or level`)
   }
-  if (
-    codeBlocks(text).join('\n---\n') !== codeBlocks(japanese).join('\n---\n')
-  ) {
+  if (!sameCode(codeBlocks(text), codeBlocks(japanese))) {
     problems.push(
-      `${file} and ${twin}: the code blocks differ apart from comments`,
+      `${file} and ${twin}: the code blocks differ apart from comments and translated strings`,
     )
   }
 }
