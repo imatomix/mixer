@@ -14,14 +14,19 @@ A small web framework built on the Web standard `Request` and `Response`. You wr
 ## Quick start
 
 ```sh
-npm install @imatomix/mixer
+npm install @imatomix/mixer @imatomix/mix-router
 ```
 
 ```ts
 import { Mixer } from '@imatomix/mixer'
 import { serve } from '@imatomix/mixer/node'
+import { get, post } from '@imatomix/mix-router'
 
-const app = new Mixer().mix(() => 'Hello mixer')
+const app = new Mixer().mix(
+  get('/', () => 'Hello mixer'),
+  get('/hello/:name', (ctx, { name }) => ({ hello: name })),
+  post('/echo', (ctx) => ctx.json()),
+)
 
 await serve(app, { port: 3000 })
 ```
@@ -32,22 +37,64 @@ Open http://localhost:3000. On Bun, use `serve` imported from `@imatomix/mixer/b
 
 ### Components
 
-An app is a list of **components**: functions that receive `ctx` and may return a response. Add them with `mix()`.
+An app is a list of **components**, added with `mix()`. Routes from [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router) are components, and so are the [modules](#modules) for logging, security headers, CSRF protection, sessions, and the rest:
 
 ```ts
+import { csrf } from '@imatomix/mix-csrf'
+import { logger } from '@imatomix/mix-logger'
+import { get } from '@imatomix/mix-router'
+import { secureHeaders } from '@imatomix/mix-secure-headers'
+
 app.mix(
-  (ctx) => {
-    ctx.state.startedAt = Date.now() // returns nothing: hand over to the next one
-  },
-  (ctx) => {
-    if (ctx.path === '/hello') return { hello: 'mixer' } // returns a value: this is the response
-  },
+  logger(), // modules go first, so they cover every response after them
+  secureHeaders(),
+  csrf(),
+  get('/', () => 'Hello mixer'),
 )
 ```
 
-Components run in the order they were mixed in and **stop at the first one that returns a value** (anything other than `undefined`). If none does, the response is `404`. Routing is a component too: see [mix-router](https://github.com/imatomix/mixer/tree/main/packages/mix-router).
+Components run in the order they were mixed in and **stop at the first one that returns a value** (anything other than `undefined`). If none does, the response is `404`. What `ctx` holds and what a component can return are in the [reference](https://github.com/imatomix/mixer/blob/main/docs/reference/context.md).
 
-A component can also wrap the ones after it. `await next()` runs them and gives back the response they produced; the component then adds to it, such as a header or a cookie:
+### Routes in their own files
+
+Put the routes of one resource in their own file, without the path they are mounted at, and give them a prefix where the app is put together:
+
+```ts
+// routes/users.ts
+import { get, post } from '@imatomix/mix-router'
+
+export const userRoutes = [
+  get('/', () => [{ id: '1', name: 'Alice' }]),
+  get('/:id', (ctx, { id }) => ({ id })),
+  post('/', async (ctx) => ctx.json()),
+]
+```
+
+```ts
+// app.ts
+import { namespace } from '@imatomix/mix-router'
+import { userRoutes } from './routes/users.js'
+
+app.mix(namespace('/users')(...userRoutes))
+```
+
+### Writing your own component
+
+A component is a function that receives `ctx`. Return nothing to hand over to the next one, return a value to answer, or throw an `HttpError`:
+
+```ts
+import { HttpError } from '@imatomix/mixer'
+
+app.mix(
+  (ctx) => {
+    if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
+    // returns nothing: hand over to the next one
+  },
+  get('/admin', () => 'only with a token'),
+)
+```
+
+To do something after the rest has built the response, such as adding a header to every response, take `next` as the second argument. Routes and modules do not need it; mixer's modules use it inside:
 
 ```ts
 app.mix(
@@ -56,11 +103,11 @@ app.mix(
     await next() // runs everything after this component
     ctx.headers.set('X-Response-Time', `${Date.now() - started}ms`)
   },
-  (ctx) => ({ hello: 'mixer' }),
+  get('/', () => 'Hello mixer'),
 )
 ```
 
-See [Composing components with next()](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.md) for the rules. What `ctx` holds and what a component can return are in the [reference](https://github.com/imatomix/mixer/blob/main/docs/reference/context.md).
+See [Composing components with next()](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.md) for the rules.
 
 ## Safe by default
 

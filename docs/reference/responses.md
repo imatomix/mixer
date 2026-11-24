@@ -41,13 +41,13 @@ return redirect(url, { allowedOrigins: ['https://accounts.example.com'] }) // an
 
 ## Errors
 
-Throw an `HttpError` to answer with its status and `{ "error": message }`. Any other error becomes `500`; its details go to `console.error`, never to the client.
+Throw an `HttpError` to answer with its status and `{ "error": message }`. Without a message, it uses the standard reason phrase of the status (`Unauthorized` for `401`, `Too Many Requests` for `429`). Messages of `5xx` errors are never shown. Any other error becomes `500`; its details go to `console.error`, never to the client.
 
 ```ts
 import { HttpError } from '@imatomix/mixer'
 
 app.mix((ctx) => {
-  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
+  if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
 })
 ```
 

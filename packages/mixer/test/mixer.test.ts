@@ -71,6 +71,34 @@ describe('chaining components', () => {
 })
 
 describe('error handling', () => {
+  it('gives an HttpError without a message the standard reason phrase of its status', async () => {
+    const phrases: [number, string][] = [
+      [400, 'Bad Request'],
+      [401, 'Unauthorized'],
+      [403, 'Forbidden'],
+      [404, 'Not Found'],
+      [405, 'Method Not Allowed'],
+      [409, 'Conflict'],
+      [410, 'Gone'],
+      [413, 'Content Too Large'],
+      [415, 'Unsupported Media Type'],
+      [422, 'Unprocessable Content'],
+      [429, 'Too Many Requests'],
+      [499, 'Client Error'],
+      [503, 'Service Unavailable'],
+      [599, 'Internal Server Error'],
+    ]
+    for (const [status, phrase] of phrases) {
+      expect(new HttpError(status).message, String(status)).toBe(phrase)
+    }
+    const res = await call(
+      new Mixer().mix(() => {
+        throw new HttpError(401)
+      }),
+    )
+    expect(await res.json()).toEqual({ error: 'Unauthorized' })
+  })
+
   it('returns the status and message of an HttpError', async () => {
     const app = new Mixer().mix(() => {
       throw new HttpError(403, 'Forbidden')
