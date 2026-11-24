@@ -50,7 +50,7 @@ describe('redirect', () => {
     '',
     `/${'a'.repeat(9_000)}`,
   ])('rejects %j by default', (location) => {
-    expect(() => redirect(location)).toThrow(/unsafe redirect location/)
+    expect(() => redirect(location)).toThrow(/unsafe location/)
   })
 
   it('uses fallback instead of an unsafe or missing location', async () => {
@@ -65,7 +65,7 @@ describe('redirect', () => {
 
   it('throws for an unsafe fallback', () => {
     expect(() => redirect('/a', { fallback: 'https://evil.example' })).toThrow(
-      /unsafe redirect location/,
+      /unsafe location/,
     )
   })
 
@@ -83,7 +83,7 @@ describe('redirect', () => {
       'https://evil.example',
     ]) {
       expect(() => redirect(location, { allowedOrigins })).toThrow(
-        /unsafe redirect location/,
+        /unsafe location/,
       )
     }
     expect(
@@ -131,9 +131,7 @@ describe('redirect', () => {
   })
 
   it('does not put the rejected location into the error message unescaped', () => {
-    expect(() => redirect('/a\r\nX-Injected: 1')).toThrow(
-      /unsafe redirect location/,
-    )
+    expect(() => redirect('/a\r\nX-Injected: 1')).toThrow(/unsafe location/)
     let message = ''
     try {
       redirect('/a\r\nX-Injected: 1')

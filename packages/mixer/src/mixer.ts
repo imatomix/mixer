@@ -256,7 +256,11 @@ export class Mixer<S extends State = State, E = unknown> {
     // ctx.error === undefined means success, so a thrown undefined must still show as a failure
     internal.setError(
       ctx,
-      error === undefined ? new Error('A component threw undefined') : error,
+      error === undefined
+        ? new Error(
+            'mixer: a component threw undefined; throw an Error instead',
+          )
+        : error,
     )
     if (status >= 500) internal.reportError(ctx, error, 'handling')
     // Error responses start from fresh headers: what the failed part meant for its response must not leak.

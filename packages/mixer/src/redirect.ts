@@ -28,7 +28,7 @@ export function redirect(
   const status = options.status ?? 302
   if (!STATUSES.has(status)) {
     throw new RangeError(
-      `redirect status must be 301, 302, 303, 307, or 308: ${status}`,
+      `mixer: redirect() status must be 301, 302, 303, 307, or 308: ${status}`,
     )
   }
   const origins = new Set((options.allowedOrigins ?? []).map(toOrigin))
@@ -124,7 +124,7 @@ function toOrigin(entry: string): string {
     entry.replace(/\/$/, '') === url.origin
   if (!plain || url === undefined) {
     throw new TypeError(
-      `redirect allowedOrigins takes origins such as https://example.com: ${JSON.stringify(entry)}`,
+      `mixer: redirect() allowedOrigins takes origins such as https://example.com: ${JSON.stringify(entry)}`,
     )
   }
   return url.origin
@@ -134,6 +134,6 @@ function unsafe(location: string | null | undefined): TypeError {
   // JSON.stringify escapes line breaks, so a rejected value cannot add lines to a log
   const shown = JSON.stringify(String(location).slice(0, 100))
   return new TypeError(
-    `unsafe redirect location: ${shown}. Pass a path on this site such as '/login', list external origins in allowedOrigins, or give a fallback`,
+    `mixer: redirect() got an unsafe location: ${shown}. Pass a path on this site such as '/login', list external origins in allowedOrigins, or give a fallback`,
   )
 }

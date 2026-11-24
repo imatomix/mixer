@@ -127,7 +127,7 @@ function hsts(value: boolean | HstsOptions): string | undefined {
     preload = false,
   } = value === true ? { maxAge: ONE_YEAR } : value
   if (!Number.isInteger(maxAge) || maxAge < 0) {
-    throw new TypeError(
+    throw new RangeError(
       `mix-secure-headers: hsts.maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }

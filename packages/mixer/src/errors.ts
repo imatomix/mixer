@@ -14,7 +14,7 @@ export class HttpError extends Error {
   constructor(status: number, message?: string, options?: HttpErrorOptions) {
     if (!Number.isInteger(status) || status < 400 || status > 599) {
       throw new RangeError(
-        `HttpError status must be an integer between 400 and 599: ${status}`,
+        `mixer: HttpError status must be an integer from 400 to 599: ${status}`,
       )
     }
     super(message ?? defaultMessage(status), options)

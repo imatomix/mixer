@@ -110,7 +110,7 @@ export async function serve(
           if (!Number.isFinite(timeout) || timeout < 0) {
             return Promise.reject(
               new RangeError(
-                `close timeout must be a finite number of milliseconds, 0 or more: ${timeout}`,
+                `mixer: close() timeout must be a finite number of 0 or more (milliseconds): ${timeout}`,
               ),
             )
           }

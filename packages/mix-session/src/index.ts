@@ -64,13 +64,15 @@ export function session<D extends SessionData = SessionData>(
     options.cacheControl ?? 'private, no-store',
   )
   if (!Number.isInteger(ttl) || ttl < 1) {
-    throw new Error(`mix-session: ttl must be an integer of 1 or more: ${ttl}`)
+    throw new RangeError(
+      `mix-session: ttl must be an integer of 1 or more: ${ttl}`,
+    )
   }
   if (
     absoluteTtl !== false &&
     (!Number.isInteger(absoluteTtl) || absoluteTtl < 1)
   ) {
-    throw new Error(
+    throw new RangeError(
       `mix-session: absoluteTtl must be an integer of 1 or more, or false: ${absoluteTtl}`,
     )
   }
@@ -225,12 +227,12 @@ function checkCookiePrefix(
   const secure = cookie.secure !== false
   const hostOnly = cookie.domain === undefined && (cookie.path ?? '/') === '/'
   if (name.startsWith('__Host-') && (!secure || !hostOnly)) {
-    throw new Error(
+    throw new TypeError(
       `mix-session: a ${name} cookie needs Secure, no domain, and path '/'; change those options or choose another name`,
     )
   }
   if (name.startsWith('__Secure-') && !secure) {
-    throw new Error(
+    throw new TypeError(
       `mix-session: a ${name} cookie needs Secure; remove cookie.secure: false or choose another name`,
     )
   }

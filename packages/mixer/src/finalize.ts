@@ -93,11 +93,13 @@ function mergeResponse(
   requestPath: string,
 ): Response {
   if (response.type === 'error' || response.status === 0) {
-    throw new Error('Cannot respond with Response.error()')
+    throw new Error(
+      'mixer: cannot respond with Response.error(); throw an HttpError or return a Response with an error status',
+    )
   }
   if (response.bodyUsed || response.body?.locked) {
     throw new Error(
-      'Cannot respond with a Response whose body was already read',
+      'mixer: cannot respond with a Response whose body was already read; create a new Response',
     )
   }
 

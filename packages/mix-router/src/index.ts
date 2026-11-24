@@ -237,7 +237,7 @@ export function mount<S extends State = State, E = unknown>(
     methodRecord(ctx).taken = true
     if (ctx.request.bodyUsed) {
       throw new Error(
-        `mount: the request body was already read before ${ctx.method} ${ctx.url.pathname} reached the mounted app; read it only inside the mounted app`,
+        'mix-router: mount() got a request whose body was already read; read the body only inside the mounted app',
       )
     }
     const executionContext: ExecutionContextLike = {
@@ -266,7 +266,9 @@ export function mount<S extends State = State, E = unknown>(
 function prefixScope(kind: 'namespace' | 'mount', prefix: string) {
   // Prefix parameters would not appear in the handlers' params type, so they are forbidden to keep types and runtime values in sync
   if (hasDynamicSegment(prefix)) {
-    throw new Error(`:param and * cannot be used in a ${kind} path: ${prefix}`)
+    throw new TypeError(
+      `mix-router: :param and * cannot be used in a ${kind}() prefix: ${JSON.stringify(prefix)}`,
+    )
   }
   const normalized = splitPath(prefix)
     .map((segment) => `/${segment}`)

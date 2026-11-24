@@ -41,7 +41,9 @@ export function serveStatic(
   const precompressed = options.precompressed ?? false
   const cache = cacheControl(maxAge, options.immutable ?? false)
   if (index !== false && !isValidIndexName(index)) {
-    throw new Error(`mix-static: index must be a file name only: ${index}`)
+    throw new TypeError(
+      `mix-static: index must be a file name only: ${JSON.stringify(index)}`,
+    )
   }
 
   return async (ctx) => {
@@ -148,8 +150,8 @@ function decodePrefixSegment(segment: string): string {
   try {
     return decodeURIComponent(segment)
   } catch {
-    throw new Error(
-      `mix-static: invalid percent-encoding in prefix: ${segment}`,
+    throw new TypeError(
+      `mix-static: invalid percent-encoding in prefix: ${JSON.stringify(segment)}`,
     )
   }
 }
@@ -206,14 +208,14 @@ function errorCode(error: unknown): string | undefined {
 
 function cacheControl(maxAge: number, immutable: boolean): string {
   if (!Number.isInteger(maxAge) || maxAge < 0) {
-    throw new Error(
+    throw new RangeError(
       `mix-static: maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }
   if (!immutable) return `public, max-age=${maxAge}`
   // immutable means "do not revalidate before max-age runs out", which says nothing with a max-age of 0
   if (maxAge === 0) {
-    throw new Error('mix-static: immutable requires a maxAge of 1 or more')
+    throw new TypeError('mix-static: immutable needs a maxAge of 1 or more')
   }
   return `public, max-age=${maxAge}, immutable`
 }

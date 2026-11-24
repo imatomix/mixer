@@ -77,13 +77,15 @@ export async function validateInput<Schema extends StandardSchemaV1>(
 ): Promise<StandardSchemaV1.InferOutput<Schema>> {
   const standard = schema?.['~standard']
   if (typeof standard?.validate !== 'function') {
-    throw new TypeError('validateInput needs a Standard Schema')
+    throw new TypeError(
+      'mixer: validateInput() needs a Standard Schema, such as a Zod 3.24+ or Valibot schema',
+    )
   }
   const result = await standard.validate(value)
   if (result.issues) throw new ValidationError(result.issues)
   if (!('value' in result)) {
     throw new TypeError(
-      `The ${standard.vendor} schema returned neither a value nor issues`,
+      `mixer: the ${standard.vendor} schema returned neither a value nor issues`,
     )
   }
   return result.value

@@ -20,17 +20,23 @@ export function compilePattern(path: string): Pattern {
   return parts.map((part, index): Segment => {
     if (part === '*') {
       if (index !== parts.length - 1) {
-        throw new Error(`"*" can only be the last segment of a path: ${path}`)
+        throw new TypeError(
+          `mix-router: "*" can only be the last segment of a path: ${JSON.stringify(path)}`,
+        )
       }
       return { kind: 'wildcard' }
     }
     if (part.startsWith(':')) {
       const name = part.slice(1)
       if (!PARAM_NAME.test(name)) {
-        throw new Error(`Invalid parameter name: "${part}" in ${path}`)
+        throw new TypeError(
+          `mix-router: invalid parameter name ${JSON.stringify(part)} in ${JSON.stringify(path)}`,
+        )
       }
       if (names.has(name)) {
-        throw new Error(`Duplicate parameter name: "${part}" in ${path}`)
+        throw new TypeError(
+          `mix-router: duplicate parameter name ${JSON.stringify(part)} in ${JSON.stringify(path)}; give each parameter its own name`,
+        )
       }
       names.add(name)
       return { kind: 'param', name }
@@ -38,7 +44,9 @@ export function compilePattern(path: string): Pattern {
     // Requests are compared after decoding, so decode the literal segments of the pattern the same way
     const value = decodeSegment(part)
     if (typeof value !== 'string') {
-      throw new Error(`Invalid percent-encoding in path: "${part}" in ${path}`)
+      throw new TypeError(
+        `mix-router: invalid percent-encoding ${JSON.stringify(part)} in ${JSON.stringify(path)}`,
+      )
     }
     return { kind: 'literal', value }
   })

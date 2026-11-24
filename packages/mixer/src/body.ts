@@ -6,7 +6,7 @@ export const DEFAULT_BODY_LIMIT = 1024 * 1024 * 3
 export function checkBodyLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit < 0) {
     throw new RangeError(
-      `bodyLimit must be an integer of 0 or more (bytes): ${limit}`,
+      `mixer: bodyLimit must be an integer of 0 or more (bytes): ${limit}`,
     )
   }
 }

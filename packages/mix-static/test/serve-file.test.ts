@@ -92,6 +92,6 @@ describe('serveFile', () => {
   })
 
   it.each([-1, 1.5])('rejects an invalid maxAge (%s)', (maxAge) => {
-    expect(() => serveFile(favicon, { maxAge })).toThrow()
+    expect(() => serveFile(favicon, { maxAge })).toThrow(RangeError)
   })
 })

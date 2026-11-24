@@ -85,7 +85,7 @@ export async function sessionKey(
 function seconds(ttl: number): string {
   if (!Number.isInteger(ttl) || ttl < 1) {
     throw new RangeError(
-      `mix-session redis: ttl must be a whole number of seconds of 1 or more: ${ttl}`,
+      `mix-session redis: ttl must be an integer of 1 or more (seconds): ${ttl}`,
     )
   }
   return String(ttl)

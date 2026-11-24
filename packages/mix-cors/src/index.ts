@@ -27,7 +27,7 @@ const DEFAULT_MAX_AGE = 600
 
 export function cors(options: CorsOptions): Component {
   if (options?.origin === undefined) {
-    throw new Error(
+    throw new TypeError(
       "mix-cors: origin is required. Pass the allowed origins, or origin: '*' to allow any site",
     )
   }
@@ -42,12 +42,12 @@ export function cors(options: CorsOptions): Component {
   // Browsers reject '*' together with credentials. Working around it by echoing the Origin back would let
   // any site read responses with credentials, so treat it as a configuration error
   if (allowsAnyOrigin && credentials) {
-    throw new Error(
+    throw new TypeError(
       "mix-cors: origin: '*' cannot be combined with credentials: true. Specify the allowed origins instead",
     )
   }
   if (!Number.isInteger(maxAge) || maxAge < 0) {
-    throw new Error(
+    throw new RangeError(
       `mix-cors: maxAge must be an integer of 0 or more: ${maxAge}`,
     )
   }
