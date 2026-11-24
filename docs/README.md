@@ -12,8 +12,8 @@ Where to find what, by what you want to do. Pages are being split out of the mix
 
 ## Run your app
 
-- [Node.js](../packages/mixer/README.md#nodejs), [Bun](../packages/mixer/README.md#bun), and [Cloudflare Workers](../packages/mixer/README.md#cloudflare-workers)
-- [Inside another framework](../packages/mixer/README.md#inside-frameworks) such as Next.js, Nuxt, SvelteKit, or React Router
+- [Node.js](how-to/runtimes.md#nodejs), [Bun](how-to/runtimes.md#bun), and [Cloudflare Workers](how-to/runtimes.md#cloudflare-workers)
+- [Inside another framework](how-to/runtimes.md#inside-frameworks) such as Next.js, Nuxt, SvelteKit, or React Router
 - [Behind a proxy](../packages/mixer/README.md#client-ip-address): the client's IP address and `trustedProxies`
 
 ## Do common tasks
