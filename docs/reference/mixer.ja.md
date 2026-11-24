@@ -47,6 +47,6 @@ const app = new Mixer({ basePath: '/api' })
 | オプション | 既定 | 説明 |
 | --- | --- | --- |
 | `basePath` | なし | アプリを置くパス |
-| `bodyLimit` | 3 MB | `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413`。読むときに `bodyLimit` を渡せば、そのルートだけ変えられる（[詳細](../../packages/mixer/README.ja.md#リクエストボディ)） |
+| `bodyLimit` | 3 MB | `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413`。読むときに `bodyLimit` を渡せば、そのルートだけ変えられる（[詳細](../how-to/request-body.ja.md#リクエストボディ)） |
 | `onError` | なし | エラーの応答を組み立てる `(error, ctx) => value` |
 | `trustedProxies` | なし | `ctx.ip` のために `X-Forwarded-For` を読む、リバースプロキシ（IP アドレスか CIDR の範囲） |
