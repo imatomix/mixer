@@ -124,7 +124,7 @@ scripts/         # repository tooling (verify-pack, PR title check)
 
 ### Code that users read
 
-Examples in READMEs and in `examples/` are what users copy, so they use the patterns users already know from other frameworks, or the simplest ones, and read well.
+Examples in READMEs and in `examples/` are what users read and copy. They are written to be easy to read from the user's point of view first, then to follow the patterns widely used in other frameworks; where there is no common pattern, the simplest one.
 
 - Routes go in one file per resource or feature (`routes/todos.ts`), which exports its routes without knowing where they are mounted. The app assigns the prefix: `namespace('/todos')(...todoRoutes)`.
 - Routes created outside `mix()` cannot infer the app's state type, so fix it once in a shared file (`export const { get, post } = createRouter<AppState>()`), or with one `createRouter<AppState>()` line in each routes file.
