@@ -560,3 +560,34 @@ describe('PR review', () => {
     },
   )
 })
+
+describe('a next() left running', () => {
+  it('cancels the response the rest produces after the component has returned', async () => {
+    quiet()
+    let cancelled = false
+    let finished: () => void = () => {}
+    const done = new Promise<void>((resolve) => {
+      finished = resolve
+    })
+    const res = await call(
+      new Mixer().mix(
+        (_ctx, next) => {
+          void next()
+          return undefined
+        },
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          return new ReadableStream({
+            cancel() {
+              cancelled = true
+              finished()
+            },
+          })
+        },
+      ),
+    )
+    expect(res.status).toBe(500)
+    await done
+    expect(cancelled).toBe(true)
+  })
+})

@@ -159,7 +159,13 @@ export class Mixer<S extends State = State, E = unknown> {
         }
         if (called) throw new Error('mixer: next() was called more than once')
         called = true
-        inner = adopt(ctx, await this.#dispatch(ctx, list, i + 1, end))
+        const response = await this.#dispatch(ctx, list, i + 1, end)
+        // The component already returned (it did not await next()), so this response is never sent
+        if (returned) {
+          cancelBody(response, ctx)
+          return response
+        }
+        inner = adopt(ctx, response)
         return inner
       }
       try {
