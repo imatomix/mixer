@@ -11,6 +11,10 @@ A pnpm workspaces monorepo for `@imatomix/mixer`, a small web framework built on
 - Shared configuration lives at the root: `tsconfig.base.json`, `biome.json`, `pnpm-workspace.yaml` (dependency versions are managed with `catalog:`), `vitest.shared.ts`.
 - Inside the monorepo, packages resolve each other from `src` through the `@imatomix/source` export condition, so tests do not need a build. `pnpm verify:pack` checks the published `dist` output.
 
+## Where things are
+
+[docs/README.md](docs/README.md) maps the documentation by what a reader wants to do: running an app, common tasks, reference, design, and contributing. Design decisions are in [docs/adr](docs/adr).
+
 ## Language
 
 - Everything committed to the repository is in English: code comments, test names, error messages, documentation (except `README.ja.md`), commit messages, pull request titles and descriptions, and review replies.
