@@ -52,19 +52,21 @@ export function cors(options: CorsOptions): Component {
     )
   }
 
-  return async (ctx) => {
+  return async (ctx, next) => {
+    const requestOrigin = ctx.request.headers.get('origin')
+    const isPreflight =
+      requestOrigin !== null &&
+      ctx.method === 'OPTIONS' &&
+      ctx.request.headers.has('access-control-request-method')
+
+    // Everything else runs first; the headers then go on whatever response it produced, errors included
+    if (!isPreflight) await next()
     const { headers } = ctx
     // When the response depends on the Origin, keep caches from reusing it for another Origin.
     // This also prevents a response without an Origin (and without CORS headers) from being cached and served to an allowed Origin,
     // so add it whether or not the request has an Origin header
     if (!allowsAnyOrigin) appendVary(headers, 'Origin')
-
-    const requestOrigin = ctx.request.headers.get('origin')
     if (requestOrigin === null) return undefined
-
-    const isPreflight =
-      ctx.method === 'OPTIONS' &&
-      ctx.request.headers.has('access-control-request-method')
 
     const allowed =
       allowsAnyOrigin || (await matchOrigin(origin, requestOrigin, ctx))
