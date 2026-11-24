@@ -10,6 +10,7 @@ Each record explains one decision that shapes mixer: what problem it answers, wh
 | --- | --- |
 | [0001. Compose components with next()](0001-compose-components-with-next.md) | Accepted |
 | [0002. Give routes the signed-in user with a guard and requireUser()](0002-signed-in-user-in-routes.md) | Accepted |
+| [0003. Validate client input with validateInput()](0003-validate-input.md) | Accepted |
 
 ## Template
 
