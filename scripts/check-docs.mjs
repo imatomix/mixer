@@ -1,6 +1,7 @@
 // Checks the Markdown documentation: relative links and their anchors resolve, links to this repository on
 // GitHub (blob/tree/main) resolve to files and anchors in the working tree, and every page that has a Japanese
-// twin (`x.md` and `x.ja.md`) keeps the same headings and the same code: only comments may be translated.
+// twin (`x.md` and `x.ja.md`) keeps the same headings and the same code: only comments may be translated. A code block
+// that starts with `// examples/...ts` must match that file, which is type-checked and tested.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 
@@ -148,6 +149,16 @@ for (const file of files) {
   }
 
   if (file.endsWith('.ja.md')) continue
+  // A code block that starts with `// path` shows that file, which is type-checked and tested, so it must match
+  for (const [, code] of text.matchAll(/^```[^\n]*\n([\s\S]*?)^```/gm)) {
+    const path = code.match(/^\/\/ (examples\/\S+\.ts)\n/)?.[1]
+    if (!path) continue
+    if (!existsSync(join(root, path))) {
+      problems.push(`${file}: shows ${path}, which does not exist`)
+    } else if (readFileSync(join(root, path), 'utf8') !== code) {
+      problems.push(`${file}: the code differs from ${path}`)
+    }
+  }
   const twin = file.replace(/\.md$/, '.ja.md')
   if (!existsSync(join(root, twin))) {
     if (NEEDS_JAPANESE.test(file))
