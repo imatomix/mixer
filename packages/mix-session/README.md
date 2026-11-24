@@ -45,7 +45,7 @@ app.mix(
 - The cookie holds **only a 32-byte random ID**, and the data lives in a server-side store. The data never reaches the browser, so it is not encrypted
 - **No session is created until something is written.** Visiting alone creates nothing in the store or in cookies
 - Only when something changed, the session is saved to the store and the cookie is issued, after the rest of the app has run (`await next()`). A change made inside a value, such as `session.get('cart').push(item)`, counts too. Mix `session()` in before the components that use it, and after the ones that must stay cacheable
-- Every response to a request with a session (one was loaded, or the response sets or clears its cookie) gets `Cache-Control: private, no-store`, replacing any other value, including on error responses and returned `Response`s. Such pages show one user's data, so no cache may keep them, and an accidental `public` cannot hand them to others. Mix in what should stay cacheable, such as static files, **before** `session()`
+- Every response to a request with a session (one was loaded, or the response sets or clears its cookie) gets `Cache-Control: private, no-store`, replacing any other value, including on error responses and returned `Response`s. Such pages show one user's data, so no cache may keep them, and an accidental `public` cannot hand them to others. Mix in what should stay cacheable, such as static files, **before** `session()`. When saving fails, the 500 carries the same policy; a policy that `onError` sets itself wins
 - Sessions are saved for every response, including a `Response` returned by a component, `404`, and error responses
 - Session IDs come from Web Crypto (`crypto.getRandomValues`)
 

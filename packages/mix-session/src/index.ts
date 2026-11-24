@@ -1,4 +1,9 @@
-import type { Component, Context, CookieOptions } from '@imatomix/mixer'
+import {
+  type Component,
+  type Context,
+  type CookieOptions,
+  HttpError,
+} from '@imatomix/mixer'
 import { Session, snapshot } from './session.js'
 import { MemoryStore, type SessionData, type SessionStore } from './store.js'
 
@@ -92,7 +97,21 @@ export function session<D extends SessionData = SessionData>(
 
     await next()
     // Saved after everything else ran, on whatever response it produced, errors included
-    await save(ctx, session, live?.createdAt ?? Date.now(), expiredId)
+    try {
+      await save(ctx, session, live?.createdAt ?? Date.now(), expiredId)
+    } catch (error) {
+      // The error response is built outside this component, so it carries the cache policy itself
+      throw new HttpError(
+        500,
+        `mix-session: saving the session failed: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          cause: error,
+          ...(cacheControl === false
+            ? {}
+            : { headers: { 'Cache-Control': cacheControl } }),
+        },
+      )
+    }
     if (cacheControl !== false) {
       const setsCookie = ctx.headers
         .getSetCookie()
