@@ -1,4 +1,4 @@
-import { DEFAULT_BODY_LIMIT } from './body.js'
+import { checkBodyLimit, DEFAULT_BODY_LIMIT } from './body.js'
 import {
   Context,
   type ExecutionContextLike,
@@ -74,11 +74,7 @@ export class Mixer<S extends State = State, E = unknown> {
     this.#basePath = normalizeBasePath(options.basePath)
     const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT
     // NaN or Infinity would make every size check pass and silently remove the limit
-    if (!Number.isSafeInteger(bodyLimit) || bodyLimit < 0) {
-      throw new RangeError(
-        `bodyLimit must be an integer of 0 or more (bytes): ${bodyLimit}`,
-      )
-    }
+    checkBodyLimit(bodyLimit)
     this.#bodyLimit = bodyLimit
     this.#trustedProxies = parseProxies(options.trustedProxies ?? [])
     this.#onError = options.onError

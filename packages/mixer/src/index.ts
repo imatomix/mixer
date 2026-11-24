@@ -1,4 +1,5 @@
 export {
+  type BodyOptions,
   Context,
   type ErrorPhase,
   type ErrorReport,

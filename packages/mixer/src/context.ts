@@ -1,4 +1,11 @@
-import { isForm, isJson, parseForm, parseJson, readBytes } from './body.js'
+import {
+  checkBodyLimit,
+  isForm,
+  isJson,
+  parseForm,
+  parseJson,
+  readBytes,
+} from './body.js'
 import { Cookies } from './cookies.js'
 import { HttpError } from './errors.js'
 import type { Draft } from './finalize.js'
@@ -19,6 +26,11 @@ export interface ErrorReport {
 }
 
 type ErrorListener = (report: ErrorReport) => void | Promise<void>
+
+export interface BodyOptions {
+  /** Largest body in bytes for this read, instead of the app's bodyLimit. Larger bodies answer 413 */
+  bodyLimit?: number
+}
 
 export interface ContextInit<E> {
   path: string
@@ -140,14 +152,22 @@ export class Context<S extends State = State, E = unknown> {
     this.#executionContext?.waitUntil(observed)
   }
 
-  /** A stream can be read only once, so the result is cached to allow calling this any number of times */
-  bytes(): Promise<Uint8Array> {
-    this.#bytes ??= readBytes(this.request, this.#bodyLimit)
-    return this.#bytes
+  /**
+   * The body as bytes. A stream can be read only once, so the result is cached and every reader returns the same
+   * content. bodyLimit replaces the app's limit for this read, such as a larger one on an upload route; a body
+   * already read is checked again against it
+   */
+  async bytes(options: BodyOptions = {}): Promise<Uint8Array> {
+    const limit = options.bodyLimit ?? this.#bodyLimit
+    checkBodyLimit(limit)
+    this.#bytes ??= readBytes(this.request, limit)
+    const bytes = await this.#bytes
+    if (bytes.byteLength > limit) throw new HttpError(413)
+    return bytes
   }
 
-  async text(): Promise<string> {
-    return new TextDecoder().decode(await this.bytes())
+  async text(options: BodyOptions = {}): Promise<string> {
+    return new TextDecoder().decode(await this.bytes(options))
   }
 
   /**
@@ -155,23 +175,23 @@ export class Context<S extends State = State, E = unknown> {
    * body is read, so a JSON route cannot be reached by a form or text/plain that browsers send cross-site without
    * a preflight. The value is unknown: check it before use
    */
-  async json(): Promise<unknown> {
+  async json(options: BodyOptions = {}): Promise<unknown> {
     if (!isJson(this.request.headers.get('content-type'))) {
       throw new HttpError(415, 'Expected a JSON body')
     }
-    return parseJson(await this.bytes())
+    return parseJson(await this.bytes(options))
   }
 
   /**
    * The body as FormData. Only for application/x-www-form-urlencoded and multipart/form-data: anything else is
    * 415 before the body is read. Values are strings, or Files for uploads; check them before use
    */
-  async form(): Promise<FormData> {
+  async form(options: BodyOptions = {}): Promise<FormData> {
     const contentType = this.request.headers.get('content-type')
     if (!isForm(contentType)) {
       throw new HttpError(415, 'Expected a form body')
     }
-    return parseForm(await this.bytes(), contentType ?? '')
+    return parseForm(await this.bytes(options), contentType ?? '')
   }
 
   /**
