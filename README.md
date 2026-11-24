@@ -38,6 +38,7 @@ await serve(app, { port: 3000 })
 | [@imatomix/mix-csrf](packages/mix-csrf) | CSRF protection with `Sec-Fetch-Site` and `Origin` | Node.js, Bun, Workers |
 | [@imatomix/mix-secure-headers](packages/mix-secure-headers) | Security headers such as `X-Frame-Options`, HSTS, and CSP | Node.js, Bun, Workers |
 | [@imatomix/mix-static](packages/mix-static) | Static files | Node.js, Bun |
+| [@imatomix/mix-compress](packages/mix-compress) | Response compression (Brotli, gzip) for apps served directly | Node.js, Bun |
 | [@imatomix/mix-session](packages/mix-session) | Server-side sessions | Node.js, Bun, Workers (with an external store) |
 | [@imatomix/mix-logger](packages/mix-logger) | Request-scoped logs: request IDs, access logs, and errors tied together | Node.js, Bun, Workers |
 
