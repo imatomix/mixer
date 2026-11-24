@@ -77,7 +77,7 @@ export function logger(options: LoggerOptions = {}): Component {
     )
   }
 
-  return (ctx) => {
+  return async (ctx, next) => {
     const time = new Date()
     const startedAt = performance.now()
     const chosen = options.requestId?.(ctx)
@@ -120,25 +120,21 @@ export function logger(options: LoggerOptions = {}): Component {
         error: serializeError(error),
       })
     })
-    if (header !== false) {
-      // On every response actually sent, so that whatever a user sees can be found in the logs
-      ctx.onResponseHeaders((headers) => {
-        headers.set(header, requestId)
-      })
-    }
-    ctx.onResponse(({ status, headers }) => {
-      const contentLength = Number(headers.get('Content-Length') ?? Number.NaN)
-      emit({
-        time,
-        level: 'info',
-        kind: 'access',
-        ...base,
-        status,
-        durationMs: performance.now() - startedAt,
-        ...(Number.isFinite(contentLength) ? { contentLength } : {}),
-      })
+    await next()
+    // On the response that leaves this component, so that whatever a user sees can be found in the logs
+    if (header !== false) ctx.headers.set(header, requestId)
+    const contentLength = Number(
+      ctx.headers.get('Content-Length') ?? Number.NaN,
+    )
+    emit({
+      time,
+      level: 'info',
+      kind: 'access',
+      ...base,
+      status: ctx.status,
+      durationMs: performance.now() - startedAt,
+      ...(Number.isFinite(contentLength) ? { contentLength } : {}),
     })
-    return undefined
   }
 }
 
