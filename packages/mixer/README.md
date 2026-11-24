@@ -437,6 +437,27 @@ post('/todos', async (ctx) => {
 })
 ```
 
+With a schema library, check the value with `validateInput()`. It takes any [Standard Schema](https://standardschema.dev) (Zod 3.24 or later, Valibot, ArkType, ...) and resolves to the schema's output, typed:
+
+```ts
+import { validateInput } from '@imatomix/mixer'
+import { z } from 'zod'
+
+const NewItem = z.strictObject({ title: z.string().min(1).max(200), count: z.number().int() })
+
+post('/api/items', async (ctx) => {
+  const item = await validateInput(NewItem, await ctx.json()) // { title: string; count: number }
+  // ...
+})
+```
+
+- Data that does not match answers `422` with `{ "error": "Invalid request data" }`, and is not reported as a failure. Malformed JSON is still `400`, a wrong Content-Type `415`, and a body over the limit `413`
+- The issues are kept off the response, because their messages can repeat the client's values. To show them, read `error.issues` in `onError`: `if (error instanceof ValidationError) return Response.json({ issues: error.issues }, { status: 422 })`
+- A schema that throws instead of reporting issues is a bug, so it answers `500` and is reported
+- Use it for values from the client only. Configuration or stored data that fails a check is the server's problem, not a `422`
+- Have the schema reject or strip keys it does not know (`z.strictObject` above), so that keys such as `__proto__` do not travel further into the app
+- It works on other input too: `Object.fromEntries(await ctx.form())` for form fields (one value per name; use `getAll` for repeated ones), `Object.fromEntries(ctx.url.searchParams)` for a query, and route parameters as they are
+
 The body is read only when asked, and every reader returns the same content however many times it is called. The whole body is read into memory within `bodyLimit` (3 MB by default); streaming very large files to storage is not covered.
 
 To change the limit for one route, pass `bodyLimit` where the route reads the body. The app's limit stays for every other route, so an upload route does not make the rest accept large bodies:

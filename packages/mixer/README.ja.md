@@ -437,6 +437,27 @@ post('/todos', async (ctx) => {
 })
 ```
 
+スキーマのライブラリを使うときは、`validateInput()` で確かめる。[Standard Schema](https://standardschema.dev) に対応したスキーマ（Zod 3.24 以降、Valibot、ArkType など）を受け取り、スキーマの出力を型付きで返す。
+
+```ts
+import { validateInput } from '@imatomix/mixer'
+import { z } from 'zod'
+
+const NewItem = z.strictObject({ title: z.string().min(1).max(200), count: z.number().int() })
+
+post('/api/items', async (ctx) => {
+  const item = await validateInput(NewItem, await ctx.json()) // { title: string; count: number }
+  // ...
+})
+```
+
+- 合わないデータには `422` と `{ "error": "Invalid request data" }` を返し、障害としては報告しない。JSON の書き方が壊れていれば今までどおり `400`、Content-Type が違えば `415`、上限を超えれば `413`
+- 何が違ったか（issues）は応答に載せない。そのメッセージにクライアントの値が入ることがあるため。見せたいときは `onError` で `error.issues` を読む：`if (error instanceof ValidationError) return Response.json({ issues: error.issues }, { status: 422 })`
+- issues を返す代わりに例外を投げるスキーマは不具合なので、`500` になり報告される
+- クライアントから来た値にだけ使う。設定や保存済みのデータが確認に通らないのはサーバー側の問題で、`422` ではない
+- 知らないキーはスキーマで拒むか取り除く（上の `z.strictObject`）。`__proto__` のようなキーがアプリの奥まで届かないようにするため
+- ほかの入力にも使える。フォームは `Object.fromEntries(await ctx.form())`（名前ごとに値は 1 つ。繰り返す項目は `getAll` を使う）、クエリは `Object.fromEntries(ctx.url.searchParams)`、ルートのパラメータはそのまま渡す
+
 ボディは求められたときだけ読み、どの読み方も何度呼んでも同じ内容を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込む。とても大きなファイルを流しながら保存する使い方には向かない。
 
 あるルートだけ上限を変えるには、そのルートが本文を読むところで `bodyLimit` を渡す。ほかのルートにはアプリの上限が効いたままなので、アップロードのルートのために他のルートまで大きな本文を受け付けることはない。
