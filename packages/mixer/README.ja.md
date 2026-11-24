@@ -433,6 +433,46 @@ post('/api/items', async (ctx) => {
 
 4 つの読み方すべてが受け取る。本文は 1 回しか読まないので、あとから小さい `bodyLimit` で読むと読んだ本文をそれで確かめ直し、ある読み方で断られた本文を、あとから大きい上限で読み直すことはできない。前段のプロキシ・CDN・WAF でもリクエストの大きさを制限できるが、アプリの上限は前段の有無に関係なく効く。
 
+### ユーザーのサインイン
+
+mixer はパスワードの確認や ID プロバイダーとのやり取りをしない。それには認証ライブラリを使う。mixer は、そのまわりの部品（mix-session のセッション、CSRF 対策、安全な Cookie、サインイン中のページをキャッシュに残さないこと）と、ユーザーを置く場所を用意する。
+
+ユーザーが必要なルートより前でセッションを 1 回確かめ、ユーザーを `ctx.state` に入れる。ルートでは、いなければ例外を投げる小さな補助関数で取り出す。確認を置き忘れたりルートより後ろに置いたりしても、`undefined` のまま進まずに大きく失敗する。
+
+```ts
+import { HttpError, redirect } from '@imatomix/mixer'
+import { all, createRouter } from '@imatomix/mix-router'
+
+type User = { id: string; name: string }
+type State = { user?: User }
+const { get, namespace } = createRouter<State>()
+
+function requireUser(ctx: { state: State }): User {
+  if (!ctx.state.user) throw new HttpError(401)
+  return ctx.state.user
+}
+
+app.mix(
+  // Web の Request を受けて Response を返すライブラリは、ルートとしてつなげる（ここでは Better Auth）
+  all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
+  namespace('/app')(
+    async (ctx) => {
+      const result = await auth.api.getSession({ headers: ctx.request.headers })
+      if (!result) return redirect('/login', { status: 303 })
+      ctx.state.user = result.user
+    },
+    get('/', (ctx) => `hello ${requireUser(ctx).name}`),
+  ),
+)
+```
+
+- 確認は namespace の最初に置く。その下の存在しないパスにも、確認が答える
+- `ctx.request` をライブラリに渡すルートより前で、リクエストの本文を読まない。本文は 1 回しか読めない
+- 自分のセッションの Cookie を持つライブラリなら、サインインのために mix-session はいらない。代わりに mix-session を使うなら、サインインしたときに `ctx.state.session.regenerate()` を呼ぶ
+- Node.js の `req`/`res` を前提に作られたライブラリ（Passport など）は、Web の `Request`/`Response` では動かない
+
+ルートがこの形でユーザーを受け取る理由は [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) を参照。
+
 ### basePath
 
 ```ts

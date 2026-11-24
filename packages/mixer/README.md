@@ -433,6 +433,46 @@ post('/api/items', async (ctx) => {
 
 All four readers take it. The body is read once: a later read with a smaller `bodyLimit` checks the body already read against it, and a body refused by one read is not read again with a larger one. A proxy, CDN, or WAF in front can also cap request sizes, but the app's limit applies whether or not one is there.
 
+### Signing users in
+
+mixer does not check passwords or talk to identity providers: use an authentication library for that. mixer gives the parts around it (sessions with mix-session, CSRF protection, secure cookies, keeping signed-in pages out of caches) and a place for the user.
+
+Check the session once, before the routes that need a user, and put the user on `ctx.state`. Routes then take it with a small helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on:
+
+```ts
+import { HttpError, redirect } from '@imatomix/mixer'
+import { all, createRouter } from '@imatomix/mix-router'
+
+type User = { id: string; name: string }
+type State = { user?: User }
+const { get, namespace } = createRouter<State>()
+
+function requireUser(ctx: { state: State }): User {
+  if (!ctx.state.user) throw new HttpError(401)
+  return ctx.state.user
+}
+
+app.mix(
+  // A library that takes a Web Request and returns a Response mounts as a route (here, Better Auth)
+  all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
+  namespace('/app')(
+    async (ctx) => {
+      const result = await auth.api.getSession({ headers: ctx.request.headers })
+      if (!result) return redirect('/login', { status: 303 })
+      ctx.state.user = result.user
+    },
+    get('/', (ctx) => `hello ${requireUser(ctx).name}`),
+  ),
+)
+```
+
+- Put the guard first in the namespace, so unknown paths under it are answered by the guard too
+- Do not read the request body before a route that hands `ctx.request` to a library: a body can be read only once
+- A library that keeps its own session cookie does not need mix-session for signing in. With mix-session instead, call `ctx.state.session.regenerate()` when a user signs in
+- Libraries built on Node.js `req`/`res` objects (such as Passport) do not run on the Web `Request`/`Response`
+
+See [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) for why routes get the user this way.
+
 ### basePath
 
 ```ts

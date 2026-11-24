@@ -9,6 +9,7 @@ Each record explains one decision that shapes mixer: what problem it answers, wh
 | Record | Status |
 | --- | --- |
 | [0001. Compose components with next()](0001-compose-components-with-next.md) | Accepted |
+| [0002. Give routes the signed-in user with a guard and requireUser()](0002-signed-in-user-in-routes.md) | Accepted |
 
 ## Template
 
