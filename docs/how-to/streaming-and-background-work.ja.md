@@ -27,7 +27,7 @@ get('/events', (ctx) =>
 - 5 秒間何も送らなかったときはコメント行を送る。そのため、何も送らない接続を 10 秒で閉じる Bun やプロキシでも、接続が保たれる。`sse(ctx, producer, { heartbeat: 15_000 })` で間隔を変え、`heartbeat: false` で止める
 - 応答は `text/event-stream; charset=utf-8` で、`Cache-Control: no-store` を付ける。それより前に `ctx` に付けたヘッダーと Cookie は残る。nginx の後ろでは、ストリームをためこまないよう `X-Accel-Buffering: no` を付ける
 - 送り出す処理は、クライアントが本文を読み始めたときに始まる。そのため `HEAD` のリクエストでは動かない
-- 送り出す処理が動くときには応答はもう始まっているので、そこで投げた例外はエラーの応答にできない。phase `'stream'` で[報告](../../packages/mixer/README.ja.md#エラーの報告)し、ストリームを終える。ブラウザの `EventSource` は、そのあと最後に受け取った `id` を `Last-Event-ID` に入れて再接続する
+- 送り出す処理が動くときには応答はもう始まっているので、そこで投げた例外はエラーの応答にできない。phase `'stream'` で[報告](../reference/responses.ja.md#エラーの報告)し、ストリームを終える。ブラウザの `EventSource` は、そのあと最後に受け取った `id` を `Last-Event-ID` に入れて再接続する
 - Cloudflare Workers では、互換日付 `2026-11-17` 以降か、`enable_request_signal` フラグを使う。それより前では、クライアントが去ったことが Worker に伝わらない。送り出す処理は次の `send` で止まるが、`signal` は中断されない
 
 ## 時間のかかる処理
@@ -51,4 +51,4 @@ get('/weather', async (ctx) => {
 
 ## ctx.waitUntil()
 
-応答を待たせずに、応答のあとで処理を実行する。動き続けるサーバー（`serve()`、`Bun.serve`）では、プロセスが動き続けるので処理は最後まで実行され、失敗は[報告](../../packages/mixer/README.ja.md#エラーの報告)される。応答のあとで止まりうる環境では、その環境の応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。Cloudflare Workers では `export default app` がこれを代わりに行う。
+応答を待たせずに、応答のあとで処理を実行する。動き続けるサーバー（`serve()`、`Bun.serve`）では、プロセスが動き続けるので処理は最後まで実行され、失敗は[報告](../reference/responses.ja.md#エラーの報告)される。応答のあとで止まりうる環境では、その環境の応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。Cloudflare Workers では `export default app` がこれを代わりに行う。

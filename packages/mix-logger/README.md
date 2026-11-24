@@ -49,7 +49,7 @@ When a handler throws, the error event has the same `requestId`, so you can find
 {"level":"error","kind":"error","requestId":"9a2e…","method":"POST","path":"/todos","phase":"handling","error":{"name":"TypeError","message":"…","stack":"…"},"time":"…"}
 ```
 
-Mix it in **first**: the duration is measured from when it runs, and errors from later components reach it. Errors that `onError` turned into a response, failing hooks, and rejected `ctx.waitUntil()` work are recorded too (through mixer's [`ctx.onErrorReport`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#error-reports)). An `HttpError` below `500` is not an error event; the access event shows its status.
+Mix it in **first**: the duration is measured from when it runs, and errors from later components reach it. Errors that `onError` turned into a response, failing hooks, and rejected `ctx.waitUntil()` work are recorded too (through mixer's [`ctx.onErrorReport`](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.md#error-reports)). An `HttpError` below `500` is not an error event; the access event shows its status.
 
 ## In handlers
 

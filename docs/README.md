@@ -14,7 +14,7 @@ Where to find what, by what you want to do. Pages are being split out of the mix
 
 - [Node.js](how-to/runtimes.md#nodejs), [Bun](how-to/runtimes.md#bun), and [Cloudflare Workers](how-to/runtimes.md#cloudflare-workers)
 - [Inside another framework](how-to/runtimes.md#inside-frameworks) such as Next.js, Nuxt, SvelteKit, or React Router
-- [Behind a proxy](../packages/mixer/README.md#client-ip-address): the client's IP address and `trustedProxies`
+- [Behind a proxy](reference/mixer.md#client-ip-address): the client's IP address and `trustedProxies`
 
 ## Do common tasks
 
@@ -30,11 +30,11 @@ Where to find what, by what you want to do. Pages are being split out of the mix
 
 ## Look things up
 
-- [Components](../packages/mixer/README.md#components) and [ctx](../packages/mixer/README.md#ctx)
-- [What a component can return](../packages/mixer/README.md#what-a-component-can-return) and [Returning a Response](../packages/mixer/README.md#returning-a-response)
-- [Errors](../packages/mixer/README.md#errors) and [Error reports](../packages/mixer/README.md#error-reports)
-- [Cookies](../packages/mixer/README.md#cookies), [Redirects](../packages/mixer/README.md#redirects), [Types](../packages/mixer/README.md#types)
-- [Mixer options](../packages/mixer/README.md#options) and [basePath](../packages/mixer/README.md#basepath)
+- [Components](../packages/mixer/README.md#components) and [ctx](reference/context.md#ctx)
+- [What a component can return](reference/responses.md#what-a-component-can-return) and [Returning a Response](reference/responses.md#returning-a-response)
+- [Errors](reference/responses.md#errors) and [Error reports](reference/responses.md#error-reports)
+- [Cookies](reference/responses.md#cookies), [Redirects](reference/responses.md#redirects), [Types](reference/mixer.md#types)
+- [Mixer options](reference/mixer.md#options) and [basePath](reference/mixer.md#basepath)
 
 ## Understand the design
 

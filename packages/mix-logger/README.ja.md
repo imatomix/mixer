@@ -49,7 +49,7 @@ await serve(app, { port: 3000 })
 {"level":"error","kind":"error","requestId":"9a2e…","method":"POST","path":"/todos","phase":"handling","error":{"name":"TypeError","message":"…","stack":"…"},"time":"…"}
 ```
 
-**最初に** mix する。所要時間はこれが動いた時点から測り、後ろのコンポーネントのエラーもここに届く。`onError` が応答に変えたエラー、フックの失敗、`ctx.waitUntil()` に渡した処理の失敗も記録する（mixer の [`ctx.onErrorReport`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#エラーの報告) を使う）。`500` 未満の `HttpError` はエラーのイベントにならず、アクセスのイベントのステータスに出る。
+**最初に** mix する。所要時間はこれが動いた時点から測り、後ろのコンポーネントのエラーもここに届く。`onError` が応答に変えたエラー、フックの失敗、`ctx.waitUntil()` に渡した処理の失敗も記録する（mixer の [`ctx.onErrorReport`](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#エラーの報告) を使う）。`500` 未満の `HttpError` はエラーのイベントにならず、アクセスのイベントのステータスに出る。
 
 ## ハンドラーの中で
 
