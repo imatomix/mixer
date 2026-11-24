@@ -26,7 +26,8 @@ pnpm install
 ## Commands
 
 ```sh
-pnpm check                           # lint + type check + tests for all packages
+pnpm check                           # lint + type check + tests for all packages + the docs check
+pnpm check:docs                      # links, anchors, and English/Japanese pairs in the Markdown docs
 pnpm verify:pack                     # pack each package, install it into a scratch project, and check types and runtime imports
 pnpm verify:pack:bun                 # the same, with the final smoke test running on Bun (requires Bun)
 pnpm verify:pack:workers             # the same, with a Worker running on workerd without Node.js compatibility
@@ -35,7 +36,7 @@ pnpm --filter @imatomix/<name> test  # run the tests of a single package
 pnpm check:pr-title                  # check PR_TITLE against the PR title rules
 ```
 
-`pnpm check` must pass before a pull request can be merged. Run `pnpm verify:pack` as well when you change `package.json` (`exports`, `files`, dependencies) or the build setup.
+`pnpm check` must pass before a pull request can be merged. The docs check needs every page under `docs/` (except ADRs) and every README to have a Japanese twin (`x.ja.md`) with the same headings and the same code apart from comments and translated strings. Run `pnpm verify:pack` as well when you change `package.json` (`exports`, `files`, dependencies) or the build setup.
 
 ## Branches, commits, and pull requests
 
