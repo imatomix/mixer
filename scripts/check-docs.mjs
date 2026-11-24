@@ -32,22 +32,61 @@ function prose(text) {
  * Values like paths and headers are ASCII, so they are still compared
  */
 function codeBlocks(text) {
-  return [...text.matchAll(/^```[^\n]*\n([\s\S]*?)^```/gm)].map(([, code]) =>
-    code
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n')
-      .map((line) => line.replace(/\s*\/\/.*$/, '').replace(/\s*#\s.*$/, ''))
-      .filter((line) => line.trim() !== '')
-      .join('\n')
-      .replace(
-        /\b(it|test|describe)\((['"`])(?:(?!\2)[^\\\n]|\\.)*\2/g,
-        "$1(''",
-      )
-      .replace(
-        /(['"`])(?:(?!\1)[^\\\n]|\\.)*\P{ASCII}(?:(?!\1)[^\\\n]|\\.)*\1/gu,
-        "''",
-      ),
+  return [...text.matchAll(/^```([^\n]*)\n([\s\S]*?)^```/gm)].map(
+    ([, info, code]) =>
+      withoutComments(code, /^(sh|bash|shell)\b/.test(info) ? '#' : '//')
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => line.trim() !== '')
+        .join('\n')
+        .replace(
+          /\b(it|test|describe)\((['"`])(?:(?!\2)[^\\\n]|\\.)*\2/g,
+          "$1(''",
+        )
+        .replace(
+          /(['"`])(?:(?!\1)[^\\\n]|\\.)*\P{ASCII}(?:(?!\1)[^\\\n]|\\.)*\1/gu,
+          "''",
+        ),
   )
+}
+
+/**
+ * Removes comments outside string literals, so that a URL such as 'https://example.com' and the code after it are
+ * still compared. `style` is '//' for JavaScript (with block comments) or '#' for shell
+ */
+function withoutComments(code, style) {
+  let out = ''
+  let quote = ''
+  for (let i = 0; i < code.length; i++) {
+    const char = code[i]
+    if (quote) {
+      out += char
+      if (char === '\\') out += code[++i] ?? ''
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    const lineComment =
+      style === '//'
+        ? code.startsWith('//', i)
+        : char === '#' && (i === 0 || /\s/.test(code[i - 1] ?? ''))
+    if (lineComment) {
+      while (i < code.length && code[i] !== '\n') i++
+      out += '\n'
+      continue
+    }
+    if (style === '//' && code.startsWith('/*', i)) {
+      const end = code.indexOf('*/', i + 2)
+      i = end === -1 ? code.length : end + 1
+      continue
+    }
+    out += char
+  }
+  return out
 }
 
 /** Heading anchors as GitHub makes them, including the -1, -2 suffixes for repeated headings */
