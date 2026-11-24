@@ -41,13 +41,13 @@ return redirect(url, { allowedOrigins: ['https://accounts.example.com'] }) // �
 
 ## エラー
 
-`HttpError` を投げると、そのステータスと `{ "error": message }` で応答する。それ以外のエラーは `500` になり、詳細は `console.error` に出してクライアントには見せない。
+`HttpError` を投げると、そのステータスと `{ "error": message }` で応答する。メッセージを省くと、そのステータスの標準の文言（`401` なら `Unauthorized`、`429` なら `Too Many Requests`）を使う。`5xx` のメッセージは見せない。それ以外のエラーは `500` になり、詳細は `console.error` に出してクライアントには見せない。
 
 ```ts
 import { HttpError } from '@imatomix/mixer'
 
 app.mix((ctx) => {
-  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
+  if (!ctx.request.headers.has('authorization')) throw new HttpError(401)
 })
 ```
 
