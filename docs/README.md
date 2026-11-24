@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-Where to find what, by what you want to do. Pages are being split out of the mixer README; until a topic has its own page, its link points into the README.
+Where to find what, by what you want to do.
 
 ## Start
 

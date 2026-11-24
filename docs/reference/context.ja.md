@@ -16,9 +16,9 @@
 | `ctx.state` | 後のコンポーネントに渡す値 |
 | `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
 | `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](mixer.ja.md#クライアントの-ip-アドレス)） |
-| `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](../../packages/mixer/README.ja.md#リクエストボディ)） |
+| `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](../how-to/request-body.ja.md#リクエストボディ)） |
 | `await ctx.text()` / `await ctx.bytes()` | 文字列またはバイト列として読んだリクエストボディ |
 | `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](responses.ja.md#cookie)） |
-| `ctx.error` | `await next()` のあと、後ろのコンポーネントが投げたエラー（なければ `undefined`）（[詳細](../../packages/mixer/README.ja.md#next-で包む)） |
+| `ctx.error` | `await next()` のあと、後ろのコンポーネントが投げたエラー（なければ `undefined`）（[詳細](../explanation/composition.ja.md)） |
 | `ctx.onErrorReport(fn)` | このリクエストの想定外のエラーを受け取る（[詳細](responses.ja.md#エラーの報告)） |
-| `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](../../packages/mixer/README.ja.md#ctxwaituntil)） |
+| `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](../how-to/streaming-and-background-work.ja.md#ctxwaituntil)） |

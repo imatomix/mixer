@@ -87,4 +87,4 @@ get('/widget', (ctx) => {
 
 ## How the headers are added
 
-`secureHeaders()` adds the headers after [`await next()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#wrapping-with-next), on the response the rest of the app produced, including error responses and the `500` when building a response fails. Mixed in first, nothing can replace the response outside it. The only response without the headers is the `404` for a request outside `basePath`, which is answered before any component runs.
+`secureHeaders()` adds the headers after [`await next()`](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.md), on the response the rest of the app produced, including error responses and the `500` when building a response fails. Mixed in first, nothing can replace the response outside it. The only response without the headers is the `404` for a request outside `basePath`, which is answered before any component runs.

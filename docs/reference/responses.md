@@ -79,7 +79,7 @@ app.mix((ctx) => {
 })
 ```
 
-`phase` is one of `'handling'`, `'onError'`, `'waitUntil'`, `'streamCancel'`, and `'stream'` (an error thrown by an [`sse()`](../../packages/mixer/README.md#server-sent-events) producer). Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
+`phase` is one of `'handling'`, `'onError'`, `'waitUntil'`, `'streamCancel'`, and `'stream'` (an error thrown by an [`sse()`](../how-to/streaming-and-background-work.md#server-sent-events) producer). Mix the listener in first, so errors from every later component reach it. Failures of the Node.js adapter itself, outside any request's handling, are logged by the adapter.
 
 ## Returning a Response
 

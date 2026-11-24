@@ -87,4 +87,4 @@ get('/widget', (ctx) => {
 
 ## ヘッダーの付け方
 
-`secureHeaders()` は、[`await next()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.ja.md#next-で包む) のあとで、アプリの残りが作った応答にヘッダーを付ける。エラーの応答や、応答の組み立てが失敗したときの `500` も含む。最初に mix すれば、その外側で応答を差し替えるものはない。ヘッダーが付かないのは、どのコンポーネントも動く前に応答する、`basePath` の外へのリクエストへの `404` だけ。
+`secureHeaders()` は、[`await next()`](https://github.com/imatomix/mixer/blob/main/docs/explanation/composition.ja.md) のあとで、アプリの残りが作った応答にヘッダーを付ける。エラーの応答や、応答の組み立てが失敗したときの `500` も含む。最初に mix すれば、その外側で応答を差し替えるものはない。ヘッダーが付かないのは、どのコンポーネントも動く前に応答する、`basePath` の外へのリクエストへの `404` だけ。

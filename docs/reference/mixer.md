@@ -47,6 +47,6 @@ const app = new Mixer({ basePath: '/api' })
 | Option | Default | Description |
 | --- | --- | --- |
 | `basePath` | none | Path the app is mounted on |
-| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413`. A read can pass its own `bodyLimit` for one route ([details](../../packages/mixer/README.md#request-body)) |
+| `bodyLimit` | 3 MB | Largest request body that `ctx.json()`, `ctx.form()`, `ctx.text()`, and `ctx.bytes()` read; larger ones answer `413`. A read can pass its own `bodyLimit` for one route ([details](../how-to/request-body.md#request-body)) |
 | `onError` | none | `(error, ctx) => value` to shape error responses |
 | `trustedProxies` | none | Reverse proxies (IP addresses or CIDR ranges) whose `X-Forwarded-For` is read for `ctx.ip` |
