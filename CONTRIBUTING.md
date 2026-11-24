@@ -94,7 +94,9 @@ Open an issue first. A new package should not be something that fits better as a
 3. **Documentation.** Write `README.md` (English) and `README.ja.md` (Japanese), and add the package to the table in the root READMEs.
 4. **Checks.** Run `pnpm format`, `pnpm check`, `pnpm --filter @imatomix/<name> build`, and `pnpm verify:pack`. The new package is picked up by `verify:pack` automatically; add a combination check to `scripts/verify-pack.mjs` if it interacts with mixer in a way worth checking end to end. Make sure `dist/index.js` imports nothing from mixer except its public API.
 
-## Directory layout and naming
+## Code conventions
+
+### Directory layout and naming
 
 ```
 packages/<name>/
@@ -112,3 +114,29 @@ scripts/         # repository tooling (verify-pack, PR title check)
 - TypeScript in strict mode, ESM only. Use the `.js` extension in relative imports and the `node:` prefix for Node.js built-ins.
 - Formatting and linting are handled by biome (2 spaces, single quotes, no semicolons).
 - Code comments explain *why*, not *what*.
+- Write acronyms as words in names (`HttpError`, `SseStream`). Generic parameters for an app's types are `S extends State = State, E = unknown`. Use `any` only with a `biome-ignore` comment that says why.
+
+### Files
+
+- One role per file, one you can state in a sentence. A small package can keep its implementation in `src/index.ts`; when a package grows several roles, give each its own file and keep `index.ts` as the entry that exports them.
+- Length is a prompt, not a rule: a file well over 200 lines is worth a look in review to see whether it holds more than one role. Code whose parts share private state, such as the request lifecycle in `mixer.ts`, stays together.
+- Split tests the same way, by the role they check.
+
+### Code that users read
+
+Examples in READMEs and in `examples/` are what users read and copy. They are written to be easy to read from the user's point of view first, then to follow the patterns widely used in other frameworks; where there is no common pattern, the simplest one.
+
+- Routes go in one file per resource or feature (`routes/todos.ts`), which exports its routes without knowing where they are mounted. The app assigns the prefix: `namespace('/todos')(...todoRoutes)`.
+- Routes created outside `mix()` cannot infer the app's state type, so fix it once in a shared file (`export const { get, post } = createRouter<AppState>()`), or with one `createRouter<AppState>()` line in each routes file.
+- `app.ts` wires the parts together; pages, data access, and helpers live in their own files.
+
+### Errors and options
+
+- Check options when the component is created, so a mistake fails at startup instead of on a request. Throw `RangeError` for a number out of range (including `NaN` and `Infinity`) and `TypeError` for a value of the wrong kind.
+- Write messages by Google's [Writing Helpful Error Messages](https://developers.google.com/tech-writing/error-messages): say what went wrong and how to fix it. In addition, start with the package or function name: `mix-cors: maxAge must be an integer of 0 or more: 1.5`.
+- Show a value only when it helps and cannot be secret: never secrets or tokens, and never a long or client-supplied value in full. Quote strings with `JSON.stringify` and shorten long ones.
+- Decide each default on its own reasons, and record them in the README. Options that loosen a protection are usually off by default and named for what they allow (`allowCredentialed`, `trustedProxies`, `allowedHosts`).
+
+### Tests for refactoring
+
+A change that only moves or restructures code does not need a new failing test: the existing tests and `pnpm verify:pack` show that behavior did not change. Add a test when the refactoring reveals behavior that nothing checks.
