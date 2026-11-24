@@ -29,7 +29,8 @@ pnpm verify:pack  # required when package.json (exports, files, dependencies) or
 
 ## How to work
 
-- **Tests first.** Write the test, run it, and watch it fail for the expected reason before changing the code. Bug fixes start with a test that reproduces the bug.
+- **Tests first.** Write the test, run it, and watch it fail for the expected reason before changing the code. Bug fixes start with a test that reproduces the bug. A change that only restructures code relies on the existing tests instead ([Tests for refactoring](CONTRIBUTING.md#tests-for-refactoring)).
+- **Code conventions.** Follow [Code conventions](CONTRIBUTING.md#code-conventions): one role per file, routes in one file per resource, examples in patterns users already know, and error messages that never show secrets or client input in full.
 - **Verify before claiming.** Report work as done only after `pnpm check` (and `pnpm verify:pack` when relevant) has passed in this session, and state the result.
 - **Commits.** One logical change per commit, Conventional Commits in English (see [CONTRIBUTING.md](CONTRIBUTING.md#branches-commits-and-pull-requests)). Do not mix unrelated changes.
 - **Branches and pull requests.** Never commit to `main`; it is protected and only accepts pull requests that pass CI. Work on a branch named after the change (`feat/`, `fix/`, `docs/`, ...). Pull requests are squash-merged, so the title becomes the commit message.
