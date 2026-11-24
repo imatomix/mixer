@@ -14,7 +14,7 @@
 
 - [Node.js](how-to/runtimes.ja.md#nodejs)・[Bun](how-to/runtimes.ja.md#bun)・[Cloudflare Workers](how-to/runtimes.ja.md#cloudflare-workers)
 - Next.js・Nuxt・SvelteKit・React Router などの[フレームワークの中で使う](how-to/runtimes.ja.md#フレームワークの中で使う)
-- [プロキシの後ろで使う](../packages/mixer/README.ja.md#クライアントの-ip-アドレス): クライアントの IP アドレスと `trustedProxies`
+- [プロキシの後ろで使う](reference/mixer.ja.md#クライアントの-ip-アドレス): クライアントの IP アドレスと `trustedProxies`
 
 ## よくある作業
 
@@ -30,11 +30,11 @@
 
 ## 調べる
 
-- [コンポーネント](../packages/mixer/README.ja.md#コンポーネント)と [ctx](../packages/mixer/README.ja.md#ctx)
-- [返せる値](../packages/mixer/README.ja.md#返せる値)と [Response を返す](../packages/mixer/README.ja.md#response-を返す)
-- [エラー](../packages/mixer/README.ja.md#エラー)と[エラーの報告](../packages/mixer/README.ja.md#エラーの報告)
-- [Cookie](../packages/mixer/README.ja.md#cookie)・[リダイレクト](../packages/mixer/README.ja.md#リダイレクト)・[型](../packages/mixer/README.ja.md#型)
-- [Mixer のオプション](../packages/mixer/README.ja.md#オプション)と [basePath](../packages/mixer/README.ja.md#basepath)
+- [コンポーネント](../packages/mixer/README.ja.md#コンポーネント)と [ctx](reference/context.ja.md#ctx)
+- [返せる値](reference/responses.ja.md#返せる値)と [Response を返す](reference/responses.ja.md#response-を返す)
+- [エラー](reference/responses.ja.md#エラー)と[エラーの報告](reference/responses.ja.md#エラーの報告)
+- [Cookie](reference/responses.ja.md#cookie)・[リダイレクト](reference/responses.ja.md#リダイレクト)・[型](reference/mixer.ja.md#型)
+- [Mixer のオプション](reference/mixer.ja.md#オプション)と [basePath](reference/mixer.ja.md#basepath)
 
 ## 設計を理解する
 

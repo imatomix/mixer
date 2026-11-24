@@ -64,109 +64,27 @@ app.mix(
 
 ### ctx
 
-| プロパティ | 説明 |
-| --- | --- |
-| `ctx.request` | Web 標準の `Request` |
-| `ctx.url` | リクエストの URL（`URL`。クエリは `ctx.url.searchParams`） |
-| `ctx.path` | `basePath` を除いたパス。ルーティングにはこれを使う |
-| `ctx.method` | HTTP メソッド |
-| `ctx.status` / `ctx.headers` | 組み立て中の応答のステータス（既定 `200`）とヘッダ |
-| `ctx.state` | 後のコンポーネントに渡す値 |
-| `ctx.env` | `app.fetch` の第 2 引数で渡すバインディングや設定 |
-| `ctx.ip` / `ctx.remoteAddress` | クライアントの IP アドレスと、直接の接続元の IP アドレス（[詳細](#クライアントの-ip-アドレス)） |
-| `await ctx.json()` / `await ctx.form()` | JSON として、またはフォームやファイルのアップロードの `FormData` として読んだリクエストボディ（[詳細](#リクエストボディ)） |
-| `await ctx.text()` / `await ctx.bytes()` | 文字列またはバイト列として読んだリクエストボディ |
-| `ctx.cookies` | Cookie を読み、応答に付ける（[詳細](#cookie)） |
-| `ctx.error` | `await next()` のあと、後ろのコンポーネントが投げたエラー（なければ `undefined`）（[詳細](#next-で包む)） |
-| `ctx.onErrorReport(fn)` | このリクエストの想定外のエラーを受け取る（[詳細](#エラーの報告)） |
-| `ctx.waitUntil(promise)` | 応答を待たせずに、応答のあとで処理する（[詳細](#ctxwaituntil)） |
+リクエスト、作っている途中の応答、コンポーネントの間で渡す値、それに本文を読む・Cookie を付ける・応答のあとに処理を動かすための補助。[ctx](https://github.com/imatomix/mixer/blob/main/docs/reference/context.ja.md#ctx)を参照。
 
 ### 返せる値
 
-| 値 | 応答 |
-| --- | --- |
-| `string` | `text/plain; charset=utf-8` |
-| オブジェクト・配列・数値・真偽値 | JSON（`application/json; charset=utf-8`） |
-| `Uint8Array` / `ArrayBuffer` | `application/octet-stream` |
-| `Blob` | Blob 自身の type、なければ `application/octet-stream` |
-| `ReadableStream` | ストリーミング（`application/octet-stream`） |
-| `null` | 本文なし: `204`、または設定した `ctx.status`（`304` など） |
-| `Response` | そのまま使い、設定したヘッダを足す（[詳細](#response-を返す)） |
-
-`ctx.headers` で設定した `Content-Type` は、これらの既定より優先される。
-
-```ts
-app.mix((ctx) => {
-  ctx.status = 201
-  ctx.headers.set('Location', '/items/1')
-  return { created: true }
-})
-```
+文字列・オブジェクト・バイト列・ストリーム・`null`・`Response`。[返せる値](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#返せる値)を参照。
 
 ### リダイレクト
 
-```ts
-import { redirect } from '@imatomix/mixer'
-
-return redirect('/login') // 302
-return redirect('/orders/1', { status: 303 }) // フォームを POST した後
-return redirect(ctx.url.searchParams.get('next'), { fallback: '/' }) // クライアントから受け取った値
-return redirect(url, { allowedOrigins: ['https://accounts.example.com'] }) // ほかのサイト
-```
-
-`redirect()` は、うっかり利用者をほかのサイトへ送ってしまうこと（オープンリダイレクト）を防ぐ。既定では、`/` 1 つで始まるこのサイトのパスだけを受け付け、`//evil.example`、`\`、空白・制御文字、符号化された `/` や `\`、`.` と `..` の区切り、絶対 URL は `TypeError` で拒否する。クライアントから受け取った値には、代わりに使う `fallback` を渡す。ほかのサイトへは、`allowedOrigins` にオリジンを完全一致で並べたものだけ。ステータスは既定で `302`（`301`・`303`・`307`・`308` も可）で、パスに `basePath` は付け足さない。リダイレクトの前に設定した Cookie は残る。
+`redirect(path)` は、ほかのオリジンを並べない限り、このサイトのパスにしか送らない。[リダイレクト](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#リダイレクト)を参照。
 
 ### エラー
 
-`HttpError` を投げると、そのステータスと `{ "error": message }` で応答する。それ以外のエラーは `500` になり、詳細は `console.error` に出してクライアントには見せない。
-
-```ts
-import { HttpError } from '@imatomix/mixer'
-
-app.mix((ctx) => {
-  if (!ctx.request.headers.has('authorization')) throw new HttpError(401, 'Unauthorized')
-})
-```
-
-エラーの応答に必要なヘッダは、エラー自身に持たせる。エラーの前に `ctx.headers` と `ctx.cookies` で設定したものは引き継がれない。通常の応答のためのものがエラーに紛れ込まないようにするため。セキュリティヘッダーやセッションの Cookie のように、エラーの応答にも届ける必要があるコンポーネントは、`await next()` のあとで付ける。
-
-```ts
-throw new HttpError(429, 'Too Many Requests', { headers: { 'Retry-After': '60' } })
-```
-
-エラーの応答を自分で組み立てるときは `onError` を渡す。`ctx.status` にエラーのステータスが入った状態で呼ばれ、戻り値が応答になる。`undefined` を返すか例外を投げると、既定の応答になる。ここでは `ctx.state` がそろっていないことがある。状態を入れるコンポーネントより前にエラーが起きたり、どのコンポーネントも見ていない `basePath` の外へのリクエストだったりするため。そこで `onError` の中では `ctx.state` のプロパティは省略可能な型になる（`ctx.state.log?.requestId` のように書く）。
-
-```ts
-const app = new Mixer({
-  onError: (error, ctx) => ({ message: 'Sorry', status: ctx.status }),
-})
-```
+`HttpError` を投げるとそのステータスで答える。それ以外は詳細なしの `500`。[エラー](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#エラー)を参照。
 
 ### エラーの報告
 
-想定外のエラーは、リクエストのメソッドとパスを添えて `console.error` に出す。コンポーネントが投げたエラー（`onError` が応答に変えた場合も）、`onError` の失敗、`ctx.waitUntil()` に渡した処理の失敗、止められなかったストリームが対象。`500` 未満の `HttpError` は失敗ではなく応答の一部なので、出さない。
-
-リクエストの ID を付けて自分のロガーに送るなど、別の場所に送るときは `ctx.onErrorReport(fn)` を登録する。リスナーが 1 つでもあれば、mixer 自身は出さない。例外を投げたリスナーはログに出るだけで、応答には影響しない。ネットワーク越しに送るなど、リスナーは Promise を返してもよい。応答はそれを待たず、`ctx.waitUntil()` に渡した処理と同じように最後まで実行される。
-
-```ts
-app.mix((ctx) => {
-  ctx.onErrorReport(({ error, phase }) => {
-    myLogger.error({ method: ctx.method, path: ctx.url.pathname, phase, error })
-  })
-})
-```
-
-`phase` は `'handling'`・`'onError'`・`'waitUntil'`・`'streamCancel'`・`'stream'`（[`sse()`](#server-sent-events) の送り出す処理が投げた例外）のどれか。後ろのすべてのコンポーネントのエラーが届くよう、リスナーは最初に mix する。リクエストの処理の外で起きる Node.js のアダプター自身の失敗は、アダプターがログに出す。
+`ctx.onErrorReport()` は、応答のあとのものも含めて想定外のエラーを受け取る。[エラーの報告](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#エラーの報告)を参照。
 
 ### 型
 
-```ts
-type State = { user?: string }
-type Env = { DATABASE_URL: string }
-
-const app = new Mixer<State, Env>()
-// ctx.state.user: string | undefined、ctx.env.DATABASE_URL: string
-```
+`new Mixer<State, Env>()` で `ctx.state` と `ctx.env` に型を付ける。[型](https://github.com/imatomix/mixer/blob/main/docs/reference/mixer.ja.md#型)を参照。
 
 ## アプリを動かす
 
@@ -184,27 +102,11 @@ const app = new Mixer<State, Env>()
 
 ### クライアントの IP アドレス
 
-`ctx.ip` はクライアントの IP アドレス、`ctx.remoteAddress` は直接の接続元（リバースプロキシなど）の IP アドレス。どちらも正規化され（IPv6 の形の IPv4 は IPv4 になる）、何も渡されなければ `undefined`。`app.fetch` だけでは接続の情報がない。
-
-アダプタは `app.handle(request, options)` でアドレスを渡す。それ以外は `app.fetch` と同じ。
-
-| オプション | どこから来るか | `ctx.ip` |
-| --- | --- | --- |
-| `remoteAddress` | ソケット。Node.js と Bun のアダプタが `app.handle()` に渡す | 接続元。`trustedProxies` の後ろでは `X-Forwarded-For` から求めたクライアント |
-| `clientIp` | 実行環境やフレームワークが確定させたアドレス（Cloudflare の `CF-Connecting-IP`、SvelteKit の `getClientAddress()`） | そのアドレス。`X-Forwarded-For` は読まない |
-
-リバースプロキシの後ろで動かすときは、それを `trustedProxies` に並べる。`X-Forwarded-For` を読むのは、接続元がその一覧に入るときだけ。右から見ていき、信用するプロキシを飛ばして、最初のほかのアドレスをクライアントとするので、クライアントが前に付け足した値は無視される。読む必要のある段が不正なとき、ヘッダが 8 KiB か 32 段を超えるときは、接続元に戻す。
-
-```ts
-const app = new Mixer({ trustedProxies: ['10.0.0.0/8', '::1'] })
-```
-
-IP アドレスは、プロキシの設定の誤り・NAT・VPN で正しくないことがあり、大勢で 1 つを共有することもある。ログやレート制限に使い、それだけで相手が誰かを決めない。
-
+`ctx.ip` はクライアントのアドレス。`X-Forwarded-For` は `trustedProxies` のときだけ使う。[クライアントの IP アドレス](https://github.com/imatomix/mixer/blob/main/docs/reference/mixer.ja.md#クライアントの-ip-アドレス)を参照。
 
 ### Response を返す
 
-返した `Response` は、自身のステータス・本文・ヘッダを保つ。`ctx.headers` で設定したヘッダのうち `Response` にないものは足され、`Set-Cookie` は両方残り（同じ Cookie は `Response` 側が優先）、`Vary` は両方の値を合わせる。`Response.error()` と、本文を読み終えた `Response` は `500` になる。
+返した `Response` は、自分のステータス・本文・ヘッダーを保つ。[Response を返す](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#response-を返す)を参照。
 
 ### next() で包む
 
@@ -226,24 +128,7 @@ mixer にはルート全体の時間の上限はない。外へ出す呼び出�
 
 ### Cookie
 
-```ts
-ctx.cookies.get('theme') // 同名が複数あれば最初の値
-ctx.cookies.getAll('theme')
-ctx.cookies.set('theme', 'dark', { maxAge: 60 * 60 * 24 })
-ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
-```
-
-| オプション | 既定 | 説明 |
-| --- | --- | --- |
-| `httpOnly` | `true` | JavaScript から読めなくする |
-| `secure` | `true` | HTTPS のときだけ送る。http://localhost で開発するときは `false` に |
-| `sameSite` | `'Lax'` | `'Strict'` / `'Lax'` / `'None'` |
-| `path` | `'/'` | |
-| `maxAge` / `expires` / `domain` / `partitioned` / `priority` | なし | |
-
-- 1 つの応答で同じ name・path・domain を設定し直すと、前の値を置き換える
-- ブラウザが拒否する組み合わせ（`Secure` なしの `SameSite=None`、`Domain` 付きの `__Host-` など）は `TypeError` を投げる
-- 応答が確定したあとに Cookie を設定すると例外を投げる
+`ctx.cookies` で Cookie を読み書きする。既定で安全な属性が付く。[Cookie](https://github.com/imatomix/mixer/blob/main/docs/reference/responses.ja.md#cookie)を参照。
 
 ### リクエストボディ
 
@@ -255,21 +140,11 @@ ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 
 ### basePath
 
-```ts
-const app = new Mixer({ basePath: '/api' })
-// GET /api/users → ctx.path === '/users'。/api の外へのリクエストは 404
-```
-
-`ctx.url` は URL 全体のまま。モジュールは `ctx.path` で照合するので、`basePath` の下でもそのまま動く。
+アプリをパスの下に載せる。`ctx.path` にはそのパスを含めない。[basePath](https://github.com/imatomix/mixer/blob/main/docs/reference/mixer.ja.md#basepath)を参照。
 
 ### オプション
 
-| オプション | 既定 | 説明 |
-| --- | --- | --- |
-| `basePath` | なし | アプリを置くパス |
-| `bodyLimit` | 3 MB | `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` が読むボディの上限。超えると `413`。読むときに `bodyLimit` を渡せば、そのルートだけ変えられる（[詳細](#リクエストボディ)） |
-| `onError` | なし | エラーの応答を組み立てる `(error, ctx) => value` |
-| `trustedProxies` | なし | `ctx.ip` のために `X-Forwarded-For` を読む、リバースプロキシ（IP アドレスか CIDR の範囲） |
+`basePath`・`bodyLimit`・`trustedProxies`・`onError`。[オプション](https://github.com/imatomix/mixer/blob/main/docs/reference/mixer.ja.md#オプション)を参照。
 
 ## モジュール
 

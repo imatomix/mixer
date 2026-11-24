@@ -32,7 +32,7 @@ await serve(app, {
 
 - ほかのホスト名へのリクエストは本文なしの `400` になってアプリに届かない。最初の 1 回だけ `console.warn` に出る
 - `Host` がない、複数ある、単純なホスト名とポート以外のものは `400` になる
-- `X-Forwarded-For` は `trustedProxies` のときだけ読む（[クライアントの IP アドレス](../../packages/mixer/README.ja.md#クライアントの-ip-アドレス)）。`X-Forwarded-Proto` と `X-Forwarded-Host` は使わない
+- `X-Forwarded-For` は `trustedProxies` のときだけ読む（[クライアントの IP アドレス](../reference/mixer.ja.md#クライアントの-ip-アドレス)）。`X-Forwarded-Proto` と `X-Forwarded-Host` は使わない
 - コンポーネントがリクエストボディを読まなかったとき（`413` のあとなど）は、残りを読まずに接続を閉じる
 - クライアントが切断すると `ctx.request.signal` が中断され、ストリーミング中の本文も止まる
 - 送るのが遅いクライアントは、Node 自身の上限で切られる。ヘッダーは 60 秒、リクエスト全体は 300 秒。効くのは受信の間だけで、遅いハンドラーやストリームで返す応答には効かない（[時間のかかる処理](streaming-and-background-work.ja.md#時間のかかる処理)）

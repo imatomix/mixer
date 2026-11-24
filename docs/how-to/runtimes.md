@@ -32,7 +32,7 @@ await serve(app, {
 
 - Other host names get an empty `400` and never reach the app; the first one is logged with `console.warn`
 - A request with no `Host`, more than one, or anything other than a plain host and port gets `400`
-- `X-Forwarded-For` is read only for `trustedProxies` ([client IP address](../../packages/mixer/README.md#client-ip-address)); `X-Forwarded-Proto` and `X-Forwarded-Host` are not used
+- `X-Forwarded-For` is read only for `trustedProxies` ([client IP address](../reference/mixer.md#client-ip-address)); `X-Forwarded-Proto` and `X-Forwarded-Host` are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
 - A client that sends slowly is cut by Node's own limits: 60 seconds for the headers and 300 seconds for the whole request. They cover receiving only, not a slow handler or a streaming response ([slow work](streaming-and-background-work.md#slow-work))
