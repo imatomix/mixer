@@ -111,6 +111,7 @@ function headingLevels(text) {
 const problems = []
 const files = [
   ...markdownFiles('.').filter((file) => !file.includes('/')),
+  'llms.txt',
   ...markdownFiles('docs'),
   ...markdownFiles('packages'),
   ...markdownFiles('examples'),

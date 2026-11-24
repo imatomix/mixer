@@ -51,3 +51,4 @@
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md): 準備、コマンド、テスト、設計の原則、コード規約
 - [AGENTS.md](../AGENTS.md): このリポジトリで作業する AI エージェントへの指示
+- [llms.txt](../llms.txt): mixer でアプリを作るときに手伝う AI 向けの、要約と主なページ
