@@ -456,10 +456,13 @@ app.mix(
   // Web の Request を受けて Response を返すライブラリは、ルートとしてつなげる（ここでは Better Auth）
   all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
   namespace('/app')(
-    async (ctx) => {
+    async (ctx, next) => {
       const result = await auth.api.getSession({ headers: ctx.request.headers })
       if (!result) return redirect('/login', { status: 303 })
       ctx.state.user = result.user
+      await next()
+      // 1 人のユーザー向けのページを共有キャッシュに置かせない
+      ctx.headers.set('Cache-Control', 'private, no-store')
     },
     get('/', (ctx) => `hello ${requireUser(ctx).name}`),
   ),
@@ -468,6 +471,7 @@ app.mix(
 
 - 確認は namespace の最初に置く。その下の存在しないパスにも、確認が答える
 - `ctx.request` をライブラリに渡すルートより前で、リクエストの本文を読まない。本文は 1 回しか読めない
+- `Cache-Control` は `await next()` のあとで付ける。そうすると、エラーも含めてガードの下のすべての応答に届く。mix-session はこれを自動で行うが、ガードでライブラリのセッションを読むだけでは付かない。mixer が自分で応答を private にするのは、Cookie を付けるときだけだから
 - 自分のセッションの Cookie を持つライブラリなら、サインインのために mix-session はいらない。代わりに mix-session を使うなら、サインインしたときに `ctx.state.session.regenerate()` を呼ぶ
 - Node.js の `req`/`res` を前提に作られたライブラリ（Passport など）は、Web の `Request`/`Response` では動かない
 

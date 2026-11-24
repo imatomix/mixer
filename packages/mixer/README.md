@@ -456,10 +456,13 @@ app.mix(
   // A library that takes a Web Request and returns a Response mounts as a route (here, Better Auth)
   all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
   namespace('/app')(
-    async (ctx) => {
+    async (ctx, next) => {
       const result = await auth.api.getSession({ headers: ctx.request.headers })
       if (!result) return redirect('/login', { status: 303 })
       ctx.state.user = result.user
+      await next()
+      // Pages for one user must not be stored by shared caches
+      ctx.headers.set('Cache-Control', 'private, no-store')
     },
     get('/', (ctx) => `hello ${requireUser(ctx).name}`),
   ),
@@ -468,6 +471,7 @@ app.mix(
 
 - Put the guard first in the namespace, so unknown paths under it are answered by the guard too
 - Do not read the request body before a route that hands `ctx.request` to a library: a body can be read only once
+- Set `Cache-Control` after `await next()`, so it reaches every response under the guard, errors included. mix-session does this for you; a library's session read in the guard does not, because mixer marks a response private by itself only when it sets a cookie
 - A library that keeps its own session cookie does not need mix-session for signing in. With mix-session instead, call `ctx.state.session.regenerate()` when a user signs in
 - Libraries built on Node.js `req`/`res` objects (such as Passport) do not run on the Web `Request`/`Response`
 
