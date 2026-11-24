@@ -15,7 +15,7 @@ const stamp: Component = async (ctx, next) => {
   ctx.headers.set('X-Stamp', 'yes')
 }
 
-describe('headers added after next() (was onResponseHeaders)', () => {
+describe('headers added after next()', () => {
   it.each<[string, Component]>([
     ['a normal response', () => 'ok'],
     [
@@ -83,7 +83,7 @@ describe('headers added after next() (was onResponseHeaders)', () => {
   })
 })
 
-describe('cookies set after next() (was onBeforeSend)', () => {
+describe('cookies set after next()', () => {
   const remember: Component = async (ctx, next) => {
     await next()
     ctx.cookies.set('sid', 'abc')
@@ -129,7 +129,7 @@ describe('cookies set after next() (was onBeforeSend)', () => {
   })
 })
 
-describe('observing the final response (was onResponse)', () => {
+describe('observing the final response', () => {
   it('sees the status and headers of the response, including errors and 404', async () => {
     const seen: number[] = []
     const observe: Component = async (_ctx, next) => {

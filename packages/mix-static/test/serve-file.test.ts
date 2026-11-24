@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Context } from '@imatomix/mixer'
+import type { Component } from '@imatomix/mixer'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { serveFile } from '../src/index.js'
 import { app, call } from './helpers.js'
@@ -19,8 +19,9 @@ beforeAll(() => {
 
 /** Stands in for a router: runs the component only when the path matches */
 const at =
-  (path: string, component: (ctx: Context) => unknown) => (ctx: Context) =>
-    ctx.path === path ? component(ctx) : undefined
+  (path: string, component: Component): Component =>
+  (ctx, next) =>
+    ctx.path === path ? component(ctx, next) : undefined
 
 describe('serveFile', () => {
   it('returns the given file with the right headers', async () => {
