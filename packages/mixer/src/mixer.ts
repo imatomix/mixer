@@ -179,6 +179,7 @@ export class Mixer<S extends State = State, E = unknown> {
           if (result === undefined) continue
           // A Response mixer already made (for example, by compose()) is final; anything else is turned into one
           if (result instanceof Response && ownedBy.get(result) === ctx) {
+            checkUnread(result)
             return adopt(ctx, result)
           }
           return adopt(ctx, this.#respond(ctx, result))
@@ -218,7 +219,11 @@ export class Mixer<S extends State = State, E = unknown> {
 
   async #respondToError(error: unknown, ctx: Context<S, E>): Promise<Response> {
     const status = error instanceof HttpError ? error.status : 500
-    internal.setError(ctx, error)
+    // ctx.error === undefined means success, so a thrown undefined must still show as a failure
+    internal.setError(
+      ctx,
+      error === undefined ? new Error('A component threw undefined') : error,
+    )
     if (status >= 500) internal.reportError(ctx, error, 'handling')
     // Error responses start from fresh headers: what the failed part meant for its response must not leak.
     // Headers every response needs are added by the components wrapping this one, after their next()

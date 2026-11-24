@@ -1,6 +1,6 @@
 // The guarantees around the response, written with next(): which hold by design and which depend on order
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type Component, HttpError, Mixer } from '../src/index.js'
+import { type Component, compose, HttpError, Mixer } from '../src/index.js'
 import { call } from './helpers.js'
 
 afterEach(() => {
@@ -589,5 +589,31 @@ describe('a next() left running', () => {
     expect(res.status).toBe(500)
     await done
     expect(cancelled).toBe(true)
+  })
+})
+
+describe('third review', () => {
+  it('keeps a failure visible in ctx.error even when undefined was thrown', async () => {
+    quiet()
+    let failed = false
+    const app = new Mixer().mix(
+      async (ctx, next) => {
+        await next()
+        failed = ctx.error !== undefined
+      },
+      () => Promise.reject(undefined),
+    )
+    expect((await call(app)).status).toBe(500)
+    expect(failed).toBe(true)
+  })
+
+  it('answers 500 when the body of a response from compose() was read', async () => {
+    quiet()
+    const app = new Mixer().mix(async (ctx, next) => {
+      const res = await compose(() => 'ok')(ctx, next)
+      await (res as Response).text()
+      return res
+    })
+    expect((await call(app)).status).toBe(500)
   })
 })
