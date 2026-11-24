@@ -39,6 +39,8 @@ pnpm verify:pack  # required when package.json (exports, files, dependencies) or
 
 ## Design principles
 
+Decisions that shape the design are recorded in [docs/adr](docs/adr). Read them before changing how components, modules, or the public API fit together, and add a record when you make such a decision.
+
 mixer aims to be **safe by default and simple to write**, and treats both as equally important.
 
 - Prefer designs that achieve both. A safe default should not require extra code, and a simple API should not leave a foot-gun.
