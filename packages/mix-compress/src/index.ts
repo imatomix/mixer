@@ -33,8 +33,8 @@ const COMPRESSIBLE =
 
 /**
  * Compresses responses with Brotli or gzip, for apps that Node.js or Bun serve directly. Mix it in early, so it
- * wraps the responses of everything after it. Each chunk of a stream is flushed, so streamed pages arrive as they
- * are produced
+ * wraps the responses of everything after it. Streamed pages are flushed whenever the source waits, so they arrive
+ * as they are produced
  */
 export function compress<S extends State = State, E = unknown>(
   options: CompressOptions = {},
@@ -199,24 +199,35 @@ function compressBody(
       compressor.end()
     })
 
-  // A read the source can answer at once resolves within microtasks, before this timer
-  const sourceWaits = () =>
-    new Promise<typeof WAITING>((resolve) => setTimeout(resolve, 0, WAITING))
+  // A read the source can answer at once resolves within microtasks, before a 0 ms timer. This is a heuristic for
+  // "the source has to wait", not an exact signal
+  const readOrWait = async (read: ReturnType<typeof reader.read>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const waiting = new Promise<typeof WAITING>((resolve) => {
+      timer = setTimeout(resolve, 0, WAITING)
+    })
+    try {
+      return await Promise.race([read, waiting])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   let pendingRead: ReturnType<typeof reader.read> | undefined
+  // Once the client has gone, the compressor is destroyed and must not be written, flushed, or ended: ending a
+  // destroyed one never emits 'end'
+  let cancelled = false
 
   return new ReadableStream<Uint8Array>({
-    // Chunks the source has ready are compressed together; output is flushed when the source has to wait (or
-    // after BATCH_BYTES), so a stream arrives as it is produced without flushing every small chunk
+    // Chunks the source has ready are compressed together; output is flushed when the source has to wait or after
+    // BATCH_BYTES of input, so a stream arrives as it is produced without flushing every small chunk
     async pull(controller) {
       try {
         let written = 0
         for (;;) {
           const read = pendingRead ?? reader.read()
           pendingRead = undefined
-          const result =
-            written === 0
-              ? await read
-              : await Promise.race([read, sourceWaits()])
+          const result = written === 0 ? await read : await readOrWait(read)
+          if (cancelled) return
           if (result === WAITING) {
             pendingRead = read
             break
@@ -232,14 +243,17 @@ function compressBody(
           if (written >= BATCH_BYTES) break
         }
         await flush()
+        if (cancelled) return
         for (const chunk of take()) controller.enqueue(chunk)
       } catch (error) {
+        if (cancelled) return
         compressor.destroy()
         void reader.cancel(error).catch(() => {})
         controller.error(error)
       }
     },
     async cancel(reason) {
+      cancelled = true
       compressor.destroy()
       await reader.cancel(reason)
     },
