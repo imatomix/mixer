@@ -80,7 +80,9 @@ export class Cookies {
 
   #queue(name: string, options: ResolvedOptions, header: string): void {
     if (this.#isLocked()) {
-      throw new Error(`Cannot set cookies after the response is final: ${name}`)
+      throw new Error(
+        `mixer: cannot set cookie ${JSON.stringify(name)} after the response is final; set it before returning, or after await next()`,
+      )
     }
     const draft = this.#draftHeaders()
     // The draft can be replaced: an error response starts without the cookies set so far, while a response
@@ -124,7 +126,9 @@ function withDefaults(options: CookieOptions): ResolvedOptions {
 
 function validate(name: string, options: ResolvedOptions): void {
   const fail = (reason: string) => {
-    throw new TypeError(`Invalid options for cookie "${name}": ${reason}`)
+    throw new TypeError(
+      `mixer: invalid options for cookie ${JSON.stringify(name)}: ${reason}`,
+    )
   }
   if (!COOKIE_NAME.test(name))
     fail('the name contains characters that are not allowed')

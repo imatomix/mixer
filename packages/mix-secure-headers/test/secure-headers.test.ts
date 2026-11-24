@@ -159,6 +159,10 @@ describe('hsts', () => {
     { maxAge: 86400, includeSubDomains: true, preload: true },
   ])('rejects %j', (hsts) => {
     expect(() => secureHeaders({ hsts })).toThrow(/hsts/)
+    // A maxAge out of range is a RangeError; preload without its requirements is a TypeError
+    expect(() => secureHeaders({ hsts })).toThrow(
+      hsts.preload ? TypeError : RangeError,
+    )
   })
 })
 

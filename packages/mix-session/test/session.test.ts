@@ -511,6 +511,9 @@ describe('absolute lifetime', () => {
       expect(() => session({ absoluteTtl: absoluteTtl as number })).toThrow(
         /absoluteTtl/,
       )
+      if (typeof absoluteTtl === 'number') {
+        expect(() => session({ absoluteTtl })).toThrow(RangeError)
+      }
     },
   )
 })

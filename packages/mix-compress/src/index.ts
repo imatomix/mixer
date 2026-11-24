@@ -42,7 +42,7 @@ export function compress<S extends State = State, E = unknown>(
   const minBytes = options.minBytes ?? DEFAULT_MIN_BYTES
   if (!Number.isInteger(minBytes) || minBytes < 0) {
     throw new RangeError(
-      `compress minBytes must be a whole number of bytes, 0 or more: ${minBytes}`,
+      `mix-compress: minBytes must be an integer of 0 or more: ${minBytes}`,
     )
   }
   const allowCredentialed = options.allowCredentialed ?? false

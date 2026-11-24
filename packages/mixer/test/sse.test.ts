@@ -96,7 +96,12 @@ describe('sse', () => {
     })
     expect(await readAll(await call(app))).toBe('')
     expect(errors).toHaveLength(8)
-    for (const error of errors) expect(error).toBeInstanceOf(TypeError)
+    // retry out of range is a RangeError; the rest are values of the wrong kind
+    const retries = errors.slice(4, 7)
+    for (const error of retries) expect(error).toBeInstanceOf(RangeError)
+    for (const error of [...errors.slice(0, 4), ...errors.slice(7)]) {
+      expect(error).toBeInstanceOf(TypeError)
+    }
   })
 
   it('rejects a heartbeat that is not a positive number of milliseconds', () => {

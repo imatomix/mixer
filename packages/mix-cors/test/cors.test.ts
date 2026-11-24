@@ -288,6 +288,8 @@ describe('configuration validation', () => {
     expect(() => cors()).toThrow(/origin/)
     // @ts-expect-error origin is required
     expect(() => cors({})).toThrow(/origin/)
+    // @ts-expect-error origin is required
+    expect(() => cors({})).toThrow(TypeError)
     expect(() => cors({ origin: '*' })).not.toThrow()
   })
 
@@ -295,9 +297,11 @@ describe('configuration validation', () => {
     expect(() => cors({ origin: '*', credentials: true })).toThrow(
       /credentials/,
     )
+    expect(() => cors({ origin: '*', credentials: true })).toThrow(TypeError)
   })
 
   it.each([-1, 1.5, Number.NaN])('rejects an invalid maxAge (%s)', (maxAge) => {
     expect(() => cors({ origin: '*', maxAge })).toThrow(/maxAge/)
+    expect(() => cors({ origin: '*', maxAge })).toThrow(RangeError)
   })
 })

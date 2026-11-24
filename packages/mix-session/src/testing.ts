@@ -109,7 +109,8 @@ export async function checkSessionStore(
 }
 
 function expect(condition: boolean, rule: string): void {
-  if (!condition) throw new Error(`session store check failed: ${rule}`)
+  if (!condition)
+    throw new Error(`mix-session: session store check failed: ${rule}`)
 }
 
 /** Structural equality: object key order is not part of the store contract (JSON columns may reorder keys) */

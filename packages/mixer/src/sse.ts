@@ -43,7 +43,7 @@ export function sse<S extends State, E>(
   const heartbeat = options.heartbeat ?? DEFAULT_HEARTBEAT
   if (heartbeat !== false && !(Number.isFinite(heartbeat) && heartbeat > 0)) {
     throw new RangeError(
-      `sse heartbeat must be a positive number of milliseconds or false: ${heartbeat}`,
+      `mixer: sse() heartbeat must be a positive number (milliseconds), or false: ${heartbeat}`,
     )
   }
 
@@ -90,7 +90,8 @@ export function sse<S extends State, E>(
   const stream: SseStream = {
     async send(message) {
       const chunk = encoder.encode(format(message))
-      if (closed) throw signal.reason ?? new Error('The event stream is closed')
+      if (closed)
+        throw signal.reason ?? new Error('mixer: the event stream is closed')
       controller.enqueue(chunk)
       armHeartbeat()
       // A queued chunk means the client has not asked for more yet
@@ -161,8 +162,8 @@ function format(message: SseMessage): string {
   }
   if (message.retry !== undefined) {
     if (!Number.isInteger(message.retry) || message.retry < 0) {
-      throw new TypeError(
-        `sse retry must be a whole number of milliseconds, 0 or more: ${message.retry}`,
+      throw new RangeError(
+        `mixer: sse retry must be an integer of 0 or more (milliseconds): ${message.retry}`,
       )
     }
     text += `retry: ${message.retry}\n`
@@ -170,7 +171,7 @@ function format(message: SseMessage): string {
   if (message.data !== undefined) {
     if (typeof message.data !== 'string') {
       throw new TypeError(
-        'sse data must be a string; use JSON.stringify for other values',
+        'mixer: sse data must be a string; use JSON.stringify for other values',
       )
     }
     for (const line of message.data.split(LINE_BREAK)) text += `data: ${line}\n`
@@ -181,7 +182,7 @@ function format(message: SseMessage): string {
 function field(name: string, value: string, forbidden: RegExp): string {
   if (typeof value !== 'string' || forbidden.test(value)) {
     throw new TypeError(
-      `sse ${name} must be a string without line breaks${name === 'id' ? ' or NUL' : ''}`,
+      `mixer: sse ${name} must be a string without line breaks${name === 'id' ? ' or NUL' : ''}`,
     )
   }
   return value

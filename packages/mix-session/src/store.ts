@@ -45,7 +45,7 @@ export class MemoryStore implements SessionStore {
   constructor(options: MemoryStoreOptions = {}) {
     const maxEntries = options.maxEntries ?? 10_000
     if (!Number.isInteger(maxEntries) || maxEntries < 1) {
-      throw new Error(
+      throw new RangeError(
         `mix-session: maxEntries must be an integer of 1 or more: ${maxEntries}`,
       )
     }
