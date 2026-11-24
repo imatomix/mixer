@@ -1,6 +1,6 @@
 // Checks the Markdown documentation: relative links and their anchors resolve, links to this repository on
 // GitHub (blob/tree/main) resolve to files and anchors in the working tree, and every page that has a Japanese
-// twin (`x.md` and `x.ja.md`) keeps the same headings and the same code apart from comments.
+// twin (`x.md` and `x.ja.md`) keeps the same headings and the same code: only comments may be translated.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 
@@ -27,48 +27,16 @@ function prose(text) {
   return text.replace(/^```[\s\S]*?^```/gm, '')
 }
 
-const STRING = /(['"`])(?:(?!\1)[^\\\n]|\\.)*\1/g
-
-/**
- * Each code block without comments, split into its shape (strings replaced by a placeholder) and its strings, so
- * that translated strings can be told apart from changed code
- */
+/** Each code block without comments, which are the only part of the code a translation may change */
 function codeBlocks(text) {
   return [...text.matchAll(/^```([^\n]*)\n([\s\S]*?)^```/gm)].map(
-    ([, info, code]) => {
-      const bare = withoutComments(
-        code,
-        /^(sh|bash|shell)\b/.test(info) ? '#' : '//',
-      )
+    ([, info, code]) =>
+      withoutComments(code, /^(sh|bash|shell)\b/.test(info) ? '#' : '//')
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim() !== '')
-        .join('\n')
-      return {
-        shape: bare.replace(STRING, "''"),
-        strings: bare.match(STRING) ?? [],
-      }
-    },
+        .join('\n'),
   )
-}
-
-/**
- * Two versions of the same code match when their shape is the same and each string is the same, or is a
- * translation (has non-ASCII text on either side). Values like paths and headers are ASCII, so they are compared
- */
-function sameCode(english, japanese) {
-  if (english.length !== japanese.length) return false
-  return english.every((block, index) => {
-    const other = japanese[index]
-    if (!other || block.shape !== other.shape) return false
-    if (block.strings.length !== other.strings.length) return false
-    return block.strings.every(
-      (value, n) =>
-        value === other.strings[n] ||
-        /\P{ASCII}/u.test(value) ||
-        /\P{ASCII}/u.test(other.strings[n] ?? ''),
-    )
-  })
 }
 
 /**
@@ -190,9 +158,11 @@ for (const file of files) {
   if (headingLevels(text).join() !== headingLevels(japanese).join()) {
     problems.push(`${file} and ${twin}: the headings differ in number or level`)
   }
-  if (!sameCode(codeBlocks(text), codeBlocks(japanese))) {
+  if (
+    codeBlocks(text).join('\n---\n') !== codeBlocks(japanese).join('\n---\n')
+  ) {
     problems.push(
-      `${file} and ${twin}: the code blocks differ apart from comments and translated strings`,
+      `${file} and ${twin}: the code differs; only comments may be translated`,
     )
   }
 }
