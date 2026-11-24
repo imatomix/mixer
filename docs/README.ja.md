@@ -20,10 +20,10 @@
 
 - ルート、ルートのまとまり、`405`: [mix-router](../packages/mix-router/README.ja.md)
 - アプリを丸ごと載せる（mixer でもほかのフレームワークでも）: [mount](../packages/mix-router/README.ja.md#mount)
-- ユーザーのサインインと、ルートの前での確認: [ルートの前で確認する](../packages/mixer/README.ja.md#ルートの前で確認する)
-- リクエストの本文を読んで検証する: [リクエストボディ](../packages/mixer/README.ja.md#リクエストボディ)
-- Server-Sent Events を送る: [Server-Sent Events](../packages/mixer/README.ja.md#server-sent-events)
-- 時間のかかる処理と、応答のあとの処理: [時間のかかる処理](../packages/mixer/README.ja.md#時間のかかる処理)・[ctx.waitUntil()](../packages/mixer/README.ja.md#ctxwaituntil)
+- ユーザーのサインインと、ルートの前での確認: [ルートの前で確認する](how-to/auth-and-guards.ja.md)
+- リクエストの本文を読んで検証する: [リクエストボディ](how-to/request-body.ja.md)
+- Server-Sent Events を送る: [Server-Sent Events](how-to/streaming-and-background-work.ja.md#server-sent-events)
+- 時間のかかる処理と、応答のあとの処理: [時間のかかる処理](how-to/streaming-and-background-work.ja.md#時間のかかる処理)・[ctx.waitUntil()](how-to/streaming-and-background-work.ja.md#ctxwaituntil)
 - セッション: [mix-session](../packages/mix-session/README.ja.md)・CSRF 対策: [mix-csrf](../packages/mix-csrf/README.ja.md)・セキュリティヘッダー: [mix-secure-headers](../packages/mix-secure-headers/README.ja.md)・CORS: [mix-cors](../packages/mix-cors/README.ja.md)
 - 静的ファイル: [mix-static](../packages/mix-static/README.ja.md)・リクエストのログ: [mix-logger](../packages/mix-logger/README.ja.md)・圧縮: [mix-compress](../packages/mix-compress/README.ja.md)
 

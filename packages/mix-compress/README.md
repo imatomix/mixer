@@ -60,7 +60,7 @@ Text, JSON, XML, JavaScript, SVG, and similar types, with a body. These are sent
 
 - `HEAD` requests, and `204`, `205`, `206`, and `304` responses, and responses with `Content-Range`
 - Responses that already have a `Content-Encoding`, such as mix-static's [precompressed files](https://github.com/imatomix/mixer/blob/main/packages/mix-static/README.md#precompressed-files)
-- `text/event-stream` (mixer's [`sse()`](https://github.com/imatomix/mixer/blob/main/packages/mixer/README.md#server-sent-events)), which must reach the client event by event
+- `text/event-stream` (mixer's [`sse()`](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md#server-sent-events)), which must reach the client event by event
 - Responses with an `ETag`, whose validator would no longer match the compressed body
 - Images, video, archives, and other types that do not shrink
 - A known length below `minBytes`. A `Response` the app builds, such as `Response.json()`, has no known length, so it is compressed whatever its size

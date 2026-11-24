@@ -214,52 +214,15 @@ IP アドレスは、プロキシの設定の誤り・NAT・VPN で正しくな�
 
 ### Server-Sent Events
 
-`sse()` はイベントのストリームで応答する。どの項目も安全に書き出す。`data` の各行はそれぞれ `data:` の行になるので、クライアントの文字列がイベントを終わらせて偽のイベントを始めることはない。改行を含む `event` や `id` は例外になる。
-
-```ts
-import { sse } from '@imatomix/mixer'
-
-get('/events', (ctx) =>
-  sse(ctx, async (stream, signal) => {
-    while (!signal.aborted) {
-      const update = await nextUpdate(signal)
-      await stream.send({ event: 'update', id: update.id, data: JSON.stringify(update) })
-    }
-  }),
-)
-```
-
-- `data` は文字列。ほかの値は `JSON.stringify` を使う。`retry` はクライアントが再接続するまでの待ち時間（ミリ秒）
-- クライアントが去ると `signal` が中断される。そのあとの `send` は失敗するので、`signal` を見ないループも終わる
-- `send` はクライアントが次を受け取れるようになったときに解決する。`send` を 1 つずつ await すれば、メモリで待つイベントは最大 1 件
-- 5 秒間何も送らなかったときはコメント行を送る。そのため、何も送らない接続を 10 秒で閉じる Bun やプロキシでも、接続が保たれる。`sse(ctx, producer, { heartbeat: 15_000 })` で間隔を変え、`heartbeat: false` で止める
-- 応答は `text/event-stream; charset=utf-8` で、`Cache-Control: no-store` を付ける。それより前に `ctx` に付けたヘッダーと Cookie は残る。nginx の後ろでは、ストリームをためこまないよう `X-Accel-Buffering: no` を付ける
-- 送り出す処理は、クライアントが本文を読み始めたときに始まる。そのため `HEAD` のリクエストでは動かない
-- 送り出す処理が動くときには応答はもう始まっているので、そこで投げた例外はエラーの応答にできない。phase `'stream'` で[報告](#エラーの報告)し、ストリームを終える。ブラウザの `EventSource` は、そのあと最後に受け取った `id` を `Last-Event-ID` に入れて再接続する
-- Cloudflare Workers では、互換日付 `2026-11-17` 以降か、`enable_request_signal` フラグを使う。それより前では、クライアントが去ったことが Worker に伝わらない。送り出す処理は次の `send` で止まるが、`signal` は中断されない
+`sse(ctx, async (stream, signal) => ...)` はイベントを安全に送る。定期的な送信と、クライアントが去ったときの停止を含む。[Server-Sent Events](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.ja.md#server-sent-events)を参照。
 
 ### 時間のかかる処理
 
-mixer には、ルート全体の時間の上限はない。JavaScript は実行中の処理を止められないので、先に応答しても処理は続き、クライアントに失敗と伝えたあとで書き込みが保存されることがある。代わりに外へ出す呼び出しそれぞれに上限を付け、処理そのものを止める。
-
-```ts
-get('/weather', async (ctx) => {
-  const res = await fetch(WEATHER_API, {
-    // クライアントが去るか 5 秒経つと止まる
-    signal: AbortSignal.any([ctx.request.signal, AbortSignal.timeout(5_000)]),
-  })
-  return Response.json(await res.json())
-})
-```
-
-- 止まった呼び出しは例外を投げ、ルートで捕まえなければ `500` になる
-- signal を受け取るほかのクライアント（データベースのドライバーなど）にも同じ signal を渡す
-- 止めても、すでに済んだ書き込みは取り消されない。必ず終わらせたい処理はルートの中で await し、`ctx.waitUntil()` に任せない。その処理が成功したかはクライアントに伝わらず、環境によっては途中で切られる
-- 送るのが遅いクライアントは、アダプター（[Node.js](https://github.com/imatomix/mixer/blob/main/docs/how-to/runtimes.ja.md#nodejs)、[Bun](https://github.com/imatomix/mixer/blob/main/docs/how-to/runtimes.ja.md#bun)）か環境が扱う
+mixer にはルート全体の時間の上限はない。外へ出す呼び出しそれぞれに上限を付け、処理そのものを止める。[時間のかかる処理](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.ja.md#時間のかかる処理)を参照。
 
 ### ctx.waitUntil()
 
-応答を待たせずに、応答のあとで処理を実行する。動き続けるサーバー（`serve()`、`Bun.serve`）では、プロセスが動き続けるので処理は最後まで実行され、失敗は[報告](#エラーの報告)される。応答のあとで止まりうる環境では、その環境の応答後の処理を登録する API を `app.fetch(request, env, { waitUntil })` のように第 3 引数で渡す。Cloudflare Workers では `export default app` がこれを代わりに行う。
+応答を待たせずに、応答のあとで処理を動かす。[ctx.waitUntil()](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.ja.md#ctxwaituntil)を参照。
 
 ### Cookie
 
@@ -284,112 +247,11 @@ ctx.cookies.delete('theme') // 設定時と同じ path / domain を渡す
 
 ### リクエストボディ
 
-ルートが受け取るボディの種類を明示する。それぞれの読み方は自分の Content-Type だけを受け付け、それ以外は何も読まずに `415` を返す。
-
-| メソッド | 受け付けるもの | 結果 |
-| --- | --- | --- |
-| `ctx.json()` | `application/json`、`application/*+json` | 解析した値。型は `unknown`（不正か空なら `400`） |
-| `ctx.form()` | `application/x-www-form-urlencoded`、`multipart/form-data` | `FormData`。`get(name)`・`getAll(name)` で文字列、アップロードは `File` が得られる（不正なら `400`） |
-| `ctx.text()` / `ctx.bytes()` | 何でも | 文字列 / `Uint8Array` |
-
-そのため JSON のルートが、ブラウザが別のサイトから事前の確認なしに送れるフォームや `text/plain` を解析することはない。ただの別サイトのフォームから JSON のルートに届かなくなるが、Cookie に頼るルートの CSRF 対策の代わりにはならない。そうしたルートには mix-csrf を使う。
-
-値はクライアントから来るので、使う前に確かめる。`ctx.json()` が `unknown` を返すのはそのため。
-
-```ts
-post('/todos', async (ctx) => {
-  const form = await ctx.form()
-  const title = form.get('title')
-  if (typeof title !== 'string' || title.length === 0 || title.length > 200) {
-    throw new HttpError(422, 'A title is between 1 and 200 characters')
-  }
-  // ...
-})
-```
-
-スキーマのライブラリを使うときは、`validateInput()` で確かめる。[Standard Schema](https://standardschema.dev) に対応したスキーマ（Zod 3.24 以降、Valibot、ArkType など）を受け取り、スキーマの出力を型付きで返す。
-
-```ts
-import { validateInput } from '@imatomix/mixer'
-import { z } from 'zod'
-
-const NewItem = z.strictObject({ title: z.string().min(1).max(200), count: z.number().int() })
-
-post('/api/items', async (ctx) => {
-  const item = await validateInput(NewItem, await ctx.json()) // { title: string; count: number }
-  // ...
-})
-```
-
-- 合わないデータには `422` と `{ "error": "Invalid request data" }` を返し、障害としては報告しない。JSON の書き方が壊れていれば今までどおり `400`、Content-Type が違えば `415`、上限を超えれば `413`
-- 何が違ったか（issues）は応答に載せない。そのメッセージにクライアントの値が入ることがあるため。見せたいときは `onError` で `error.issues` を読む：`if (error instanceof ValidationError) return Response.json({ issues: error.issues }, { status: 422 })`
-- issues を返す代わりに例外を投げるスキーマは不具合なので、`500` になり報告される
-- クライアントから来た値にだけ使う。設定や保存済みのデータが確認に通らないのはサーバー側の問題で、`422` ではない
-- 知らないキーはスキーマで拒むか取り除く（上の `z.strictObject`）。`__proto__` のようなキーがアプリの奥まで届かないようにするため
-- ほかの入力にも使える。フォームは `Object.fromEntries(await ctx.form())`（名前ごとに値は 1 つ。繰り返す項目は `getAll` を使う）、クエリは `Object.fromEntries(ctx.url.searchParams)`、ルートのパラメータはそのまま渡す
-
-ボディは求められたときだけ読み、どの読み方も何度呼んでも同じ内容を返す。本文は `bodyLimit`（既定 3 MB）の範囲で全部メモリに読み込む。とても大きなファイルを流しながら保存する使い方には向かない。
-
-あるルートだけ上限を変えるには、そのルートが本文を読むところで `bodyLimit` を渡す。ほかのルートにはアプリの上限が効いたままなので、アップロードのルートのために他のルートまで大きな本文を受け付けることはない。
-
-```ts
-post('/photos', async (ctx) => {
-  const form = await ctx.form({ bodyLimit: 50 * 1024 * 1024 }) // このルートだけ
-  // ...
-})
-post('/api/items', async (ctx) => {
-  const item = await ctx.json({ bodyLimit: 64 * 1024 }) // 小さくしてもよい
-  // ...
-})
-```
-
-4 つの読み方すべてが受け取る。本文は 1 回しか読まないので、あとから小さい `bodyLimit` で読むと読んだ本文をそれで確かめ直し、ある読み方で断られた本文を、あとから大きい上限で読み直すことはできない。前段のプロキシ・CDN・WAF でもリクエストの大きさを制限できるが、アプリの上限は前段の有無に関係なく効く。
+`ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` は `bodyLimit` の範囲で本文を読み、自分の Content-Type だけを受け付ける。`validateInput()` は Zod などのスキーマで確かめる。[リクエストボディを読んで確かめる](https://github.com/imatomix/mixer/blob/main/docs/how-to/request-body.ja.md#リクエストボディ)を参照。
 
 ### ルートの前で確認する
 
-いくつかのルートが先に確認を必要とするとき（サインインしたユーザー、そのユーザーが属する組織など）は、ガードで 1 回確認し、結果を `ctx.state` に入れる。ガードは [namespace](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.ja.md#namespace-の中のコンポーネント) の最初に書く。そうすると、どのルートにも合わないパスを含め、そのプレフィックスの下のすべてのリクエストで動く。ルートでは、値がなければ例外を投げる小さな `requireX(ctx)` 補助関数で取り出す。ガードを置き忘れたりルートより後ろに置いたりしても、`undefined` のまま進まずに大きく失敗する。
-
-誰がリクエストしたかで中身が変わる応答は、共有キャッシュに置かせてはいけない。ガードで `await next()` のあとに `Cache-Control` を付けると、エラーも含めてガードの下のすべての応答に届く。`private` は共有キャッシュに保存させず、`no-store` はどのキャッシュにも保存させない。mixer が自分で応答を private にするのは Cookie を付けるときだけで、mix-session はセッションのある応答に付ける。値を読むだけのガードでは、どちらも起きない。ガードが `next()` の前に返す応答（リダイレクトなど）がリクエストによって変わるなら、それにも別に付ける。
-
-例として、ユーザーのサインイン。mixer はパスワードの確認や ID プロバイダーとのやり取りをしない。それには認証ライブラリを使う。mixer は、そのまわりの部品（セッション、CSRF 対策、安全な Cookie、上のキャッシュの扱い）とガードを用意する。
-
-```ts
-import { HttpError, redirect } from '@imatomix/mixer'
-import { all, createRouter } from '@imatomix/mix-router'
-
-type User = { id: string; name: string }
-type State = { user?: User }
-const { get, namespace } = createRouter<State>()
-
-function requireUser(ctx: { state: State }): User {
-  if (!ctx.state.user) throw new HttpError(401)
-  return ctx.state.user
-}
-
-app.mix(
-  // Web の Request を受けて Response を返すライブラリは、ルートとしてつなげる（ここでは Better Auth）
-  all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
-  namespace('/app')(
-    async (ctx, next) => {
-      const result = await auth.api.getSession({ headers: ctx.request.headers })
-      if (!result) return redirect('/login', { status: 303 })
-      ctx.state.user = result.user
-      await next()
-      // 1 人のユーザー向けのページを共有キャッシュに置かせない
-      ctx.headers.set('Cache-Control', 'private, no-store')
-    },
-    get('/', (ctx) => `hello ${requireUser(ctx).name}`),
-  ),
-)
-```
-
-- `ctx.request` をライブラリに渡すルートより前で、リクエストの本文を読まない。本文は 1 回しか読めない
-- 自分のセッションの Cookie を持つライブラリなら、サインインのために mix-session はいらない。代わりに mix-session を使うなら、サインインしたときに `ctx.state.session.regenerate()` を呼ぶ
-- Node.js の `req`/`res` を前提に作られたライブラリ（Passport など）は、Web の `Request`/`Response` では動かない
-
-ほかの値も同じ形で扱える。このガードの後ろに 2 つ目のガードを置いて、サインインしたユーザーが属する組織を調べて `ctx.state.org` に入れ、ルートでは `requireOrg(ctx)` を呼ぶ。
-
-ルートがこの形で値を受け取る理由は [ADR 0002](https://github.com/imatomix/mixer/blob/main/docs/adr/0002-signed-in-user-in-routes.md) を参照。
+認証ライブラリから得たサインイン中のユーザーなどを、いくつかのルートの前で 1 回確認して `ctx.state` に入れ、ルートでは小さな `requireX(ctx)` 補助関数で取り出す。[ユーザーのサインインとルートの前での確認](https://github.com/imatomix/mixer/blob/main/docs/how-to/auth-and-guards.ja.md#ルートの前で確認する)を参照。
 
 ### basePath
 

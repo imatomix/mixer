@@ -35,7 +35,7 @@ await serve(app, {
 - `X-Forwarded-For` is read only for `trustedProxies` ([client IP address](../../packages/mixer/README.md#client-ip-address)); `X-Forwarded-Proto` and `X-Forwarded-Host` are not used
 - When a component does not read the request body (for example, after a `413`), the connection is closed instead of reading the rest
 - When the client goes away, `ctx.request.signal` is aborted and a streaming body is cancelled
-- A client that sends slowly is cut by Node's own limits: 60 seconds for the headers and 300 seconds for the whole request. They cover receiving only, not a slow handler or a streaming response ([slow work](../../packages/mixer/README.md#slow-work))
+- A client that sends slowly is cut by Node's own limits: 60 seconds for the headers and 300 seconds for the whole request. They cover receiving only, not a slow handler or a streaming response ([slow work](streaming-and-background-work.md#slow-work))
 - `server.close()` stops accepting connections, closes idle ones, and ends each remaining connection once its requests have been answered. After `timeout` (10 seconds by default; `server.close({ timeout: 30_000 })`) it cuts the rest, which aborts their `ctx.request.signal`. Call it on `SIGTERM` to deploy without dropping requests
 
 ## Bun
