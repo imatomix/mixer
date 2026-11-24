@@ -6,7 +6,7 @@ Check something once before a group of routes, such as a signed-in user, and han
 
 ## Guarding routes
 
-When a group of routes needs something checked first (a signed-in user, the organization the user belongs to), check it once in a guard and put the result on `ctx.state`. Write the guard first in a [namespace](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md#components-inside-a-namespace), so it runs for every request under the prefix, including paths that match no route. Routes take the value with a small `requireX(ctx)` helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on.
+When a group of routes needs something checked first (a signed-in user, the organization the user belongs to), check it once in a guard and put the result on `ctx.state`. Write the guard first in a [group](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.md#components-inside-a-group), so it runs for every request under the prefix, including paths that match no route. Routes take the value with a small `requireX(ctx)` helper that throws when it is missing, so a guard that was forgotten or placed after a route fails loudly instead of passing `undefined` on.
 
 A response that depends on who is asking must stay out of shared caches. Set `Cache-Control` in the guard after `await next()`, so it reaches every response under the guard, errors included: `private` keeps shared caches from storing it, and `no-store` keeps any cache from storing it. mixer marks a response private by itself only when it sets a cookie, and mix-session does it for responses with a session; a guard that only reads a value does neither. A response the guard returns before `next()`, such as a redirect, needs its own header if it depends on the request.
 
@@ -18,7 +18,7 @@ import { all, createRouter } from '@imatomix/mix-router'
 
 type User = { id: string; name: string }
 type State = { user?: User }
-const { get, namespace } = createRouter<State>()
+const { get, group } = createRouter<State>()
 
 function requireUser(ctx: { state: State }): User {
   if (!ctx.state.user) throw new HttpError(401)
@@ -28,7 +28,8 @@ function requireUser(ctx: { state: State }): User {
 app.mix(
   // A library that takes a Web Request and returns a Response mounts as a route (here, Better Auth)
   all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
-  namespace('/app')(
+  group(
+    '/app',
     async (ctx, next) => {
       const result = await auth.api.getSession({ headers: ctx.request.headers })
       if (!result) return redirect('/login', { status: 303 })

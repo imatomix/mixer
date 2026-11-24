@@ -6,7 +6,7 @@
 
 ## ルートの前で確認する
 
-いくつかのルートが先に確認を必要とするとき（サインインしたユーザー、そのユーザーが属する組織など）は、ガードで 1 回確認し、結果を `ctx.state` に入れる。ガードは [namespace](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.ja.md#namespace-の中のコンポーネント) の最初に書く。そうすると、どのルートにも合わないパスを含め、そのプレフィックスの下のすべてのリクエストで動く。ルートでは、値がなければ例外を投げる小さな `requireX(ctx)` 補助関数で取り出す。ガードを置き忘れたりルートより後ろに置いたりしても、`undefined` のまま進まずに大きく失敗する。
+いくつかのルートが先に確認を必要とするとき（サインインしたユーザー、そのユーザーが属する組織など）は、ガードで 1 回確認し、結果を `ctx.state` に入れる。ガードは [group](https://github.com/imatomix/mixer/blob/main/packages/mix-router/README.ja.md#group-の中のコンポーネント) の最初に書く。そうすると、どのルートにも合わないパスを含め、そのプレフィックスの下のすべてのリクエストで動く。ルートでは、値がなければ例外を投げる小さな `requireX(ctx)` 補助関数で取り出す。ガードを置き忘れたりルートより後ろに置いたりしても、`undefined` のまま進まずに大きく失敗する。
 
 誰がリクエストしたかで中身が変わる応答は、共有キャッシュに置かせてはいけない。ガードで `await next()` のあとに `Cache-Control` を付けると、エラーも含めてガードの下のすべての応答に届く。`private` は共有キャッシュに保存させず、`no-store` はどのキャッシュにも保存させない。mixer が自分で応答を private にするのは Cookie を付けるときだけで、mix-session はセッションのある応答に付ける。値を読むだけのガードでは、どちらも起きない。ガードが `next()` の前に返す応答（リダイレクトなど）がリクエストによって変わるなら、それにも別に付ける。
 
@@ -18,7 +18,7 @@ import { all, createRouter } from '@imatomix/mix-router'
 
 type User = { id: string; name: string }
 type State = { user?: User }
-const { get, namespace } = createRouter<State>()
+const { get, group } = createRouter<State>()
 
 function requireUser(ctx: { state: State }): User {
   if (!ctx.state.user) throw new HttpError(401)
@@ -28,7 +28,8 @@ function requireUser(ctx: { state: State }): User {
 app.mix(
   // Web の Request を受けて Response を返すライブラリは、ルートとしてつなげる（ここでは Better Auth）
   all('/api/auth/*', (ctx) => auth.handler(ctx.request)),
-  namespace('/app')(
+  group(
+    '/app',
     async (ctx, next) => {
       const result = await auth.api.getSession({ headers: ctx.request.headers })
       if (!result) return redirect('/login', { status: 303 })

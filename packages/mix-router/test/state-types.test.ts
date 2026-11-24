@@ -6,13 +6,16 @@ import { call } from './helpers.js'
 type AppState = { user?: string }
 
 it('createRouter creates routes with a typed State', async () => {
-  const { get, namespace } = createRouter<AppState>()
+  const { get, group } = createRouter<AppState>()
   const app = new Mixer<AppState>()
   app.mix(
     (ctx) => {
       ctx.state.user = 'imatomix'
     },
-    namespace('/api')(get('/me', (ctx) => ctx.state.user)),
+    group(
+      '/api',
+      get('/me', (ctx) => ctx.state.user),
+    ),
   )
   expect(app).toBeDefined()
 
@@ -20,7 +23,8 @@ it('createRouter creates routes with a typed State', async () => {
     (ctx) => {
       ctx.state.user = 'imatomix'
     },
-    namespace('/api')(
+    group(
+      '/api',
       get('/users/:id', (ctx, { id }) => `${ctx.state.user}:${id}`),
     ),
   )
@@ -30,9 +34,10 @@ it('createRouter creates routes with a typed State', async () => {
 type Env = { GREETING: string }
 
 it('createRouter types ctx.env with the second type argument', async () => {
-  const { get, namespace } = createRouter<AppState, Env>()
+  const { get, group } = createRouter<AppState, Env>()
   const app = new Mixer<AppState, Env>().mix(
-    namespace('/api')(
+    group(
+      '/api',
       get('/hello/:name', (ctx, { name }) => {
         expectTypeOf(ctx.env).toEqualTypeOf<Env>()
         return `${ctx.env.GREETING} ${name}`

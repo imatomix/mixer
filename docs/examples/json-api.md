@@ -2,12 +2,12 @@
 
 English | [日本語](json-api.ja.md)
 
-Create, list, and read posts, with the input checked by a [Zod](https://zod.dev/) schema. The routes of one resource are written without their prefix and mounted with `namespace`.
+Create, list, and read posts, with the input checked by a [Zod](https://zod.dev/) schema. The routes of one resource are written without their prefix and mounted with `group`.
 
 ```ts
 // examples/docs/src/json-api.ts
 
-import { get, namespace, post } from '@imatomix/mix-router'
+import { get, group, post } from '@imatomix/mix-router'
 import { HttpError, Mixer, validateInput } from '@imatomix/mixer'
 import { z } from 'zod'
 
@@ -49,7 +49,7 @@ export function createApp() {
     }),
   ]
 
-  return new Mixer().mix(namespace('/api/posts')(...postRoutes))
+  return new Mixer().mix(group('/api/posts', postRoutes))
 }
 ```
 

@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-11-24
 
+> `namespace(prefix)(...items)` in this record was renamed to `group(prefix, ...items)` in [ADR 0007](0007-group-routes.md).
+
 ## Context
 
 An app that signs users in checks the session once before the routes that need a user, and those routes then use the user. In the example app (`examples/todo`) the check is a component placed before the protected routes, and each route calls a small helper to get the user, because `ctx.state.user` is typed as possibly missing.

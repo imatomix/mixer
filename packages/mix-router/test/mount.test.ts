@@ -4,7 +4,7 @@ import {
   Mixer,
 } from '@imatomix/mixer'
 import { describe, expect, it } from 'vitest'
-import { get, methodNotAllowed, mount, namespace, post } from '../src/index.js'
+import { get, group, methodNotAllowed, mount, post } from '../src/index.js'
 import { call } from './helpers.js'
 
 function admin(basePath = '/admin') {
@@ -181,9 +181,9 @@ describe('mount', () => {
     expect(await second.text()).toBe('function handler /auth/sign-in')
   })
 
-  it('works inside a namespace, with the full path as basePath', async () => {
+  it('works inside a group, with the full path as basePath', async () => {
     const app = new Mixer().mix(
-      namespace('/v1')(mount('/admin', admin('/v1/admin'))),
+      group('/v1', mount('/admin', admin('/v1/admin'))),
     )
     expect(await (await call(app, '/v1/admin/users')).text()).toBe(
       'users via /users',

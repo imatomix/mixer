@@ -1,6 +1,6 @@
 // examples/docs/src/json-api.ts
 
-import { get, namespace, post } from '@imatomix/mix-router'
+import { get, group, post } from '@imatomix/mix-router'
 import { HttpError, Mixer, validateInput } from '@imatomix/mixer'
 import { z } from 'zod'
 
@@ -42,5 +42,5 @@ export function createApp() {
     }),
   ]
 
-  return new Mixer().mix(namespace('/api/posts')(...postRoutes))
+  return new Mixer().mix(group('/api/posts', postRoutes))
 }

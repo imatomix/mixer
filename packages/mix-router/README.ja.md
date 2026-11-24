@@ -116,57 +116,75 @@ app.mix(
 
 - `405` になるのは、パスが合うルートがあり、メソッドを受け付けるルートが 1 つもないときだけ。メソッドを受け付けたが何も返さなかったルート、`all()` のルート、間にあって応答したコンポーネントがあれば、いつもどおりの動きになる
 - `OPTIONS` には自分からは応答しない。`options()` のルートを書くか、preflight に応答する [mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) をルートより前に置く
-- **`405` と `Allow` は、そのパスが存在することをクライアントに伝える。** 認証などの確認をルートのハンドラの中だけで行っているなら、ルートより前に置く（たとえば [namespace](#namespace-の中のコンポーネント) の先頭のコンポーネントにする）。そうすれば、認証されていないリクエストは何かを明かす前に拒否される
+- **`405` と `Allow` は、そのパスが存在することをクライアントに伝える。** 認証などの確認をルートのハンドラの中だけで行っているなら、ルートより前に置く（たとえば [group](#group-の中のコンポーネント) の先頭のコンポーネントにする）。そうすれば、認証されていないリクエストは何かを明かす前に拒否される
 
-## namespace
+## group
 
-ルートの先頭に共通のパスを付ける。入れ子にもできる。
+ルートの先頭に共通のパスを付ける: `group(prefix, ...items)`。並べられるのは、ルート、コンポーネント、またはそれらの配列（1 つのファイルから export したルートなど）。入れ子にもできる。
 
 ```ts
-import { get, namespace } from '@imatomix/mix-router'
-
-const api = namespace('/api')
-const v1 = namespace('/v1')
+import { get, group } from '@imatomix/mix-router'
 
 app.mix(
-  api(
-    v1(get('/', () => 'API V1')), // GET /api/v1
+  group(
+    '/api',
+    group('/v1', get('/', () => 'API V1')), // GET /api/v1
     get('/health', () => 'ok'), // GET /api/health
   ),
 )
 ```
 
-namespace のパスに `:param` や `*` は使えない。
-ハンドラの params の型にその値が現れず、型と実際の値がずれてしまうため。
-
-### namespace の中のコンポーネント
-
-namespace には普通のコンポーネントも並べられる。プレフィックスの下へのすべてのリクエストで、ルートと並んだ順に実行されるので、認証を先頭に書けば、どのルートにも当たらないパスも含めて領域全体を守れる。
+1 つのリソースのルートは、ふつう前置きのパスを書かずに 1 つのファイルにまとめ、アプリを組み立てるところで前置きのパスを付ける。
 
 ```ts
-const admin = namespace('/admin')
+// routes/users.ts
+import { get, post } from '@imatomix/mix-router'
 
+export const userRoutes = [
+  get('/', listUsers),
+  post('/', createUser),
+]
+```
+
+```ts
+// app.ts
+import { group } from '@imatomix/mix-router'
+import { userRoutes } from './routes/users.js'
+
+app.mix(group('/users', userRoutes))
+```
+
+group のパスに `:param` や `*` は使えない。
+ハンドラの params の型にその値が現れず、型と実際の値がずれてしまうため。
+
+### group の中のコンポーネント
+
+group には普通のコンポーネントも並べられる。プレフィックスの下へのすべてのリクエストで、ルートと並んだ順に実行されるので、認証を先頭に書けば、どのルートにも当たらないパスも含めて領域全体を守れる。
+
+```ts
 app.mix(
-  admin(
+  group(
+    '/admin',
     requireAuth, // /admin、/admin/users、/admin/unknown などで実行される
-    get('/users', listUsers),
-    post('/users', createUser),
+    adminRoutes,
   ),
 )
 ```
 
 - プレフィックスはルートのパスと同じく、デコードしたうえで区切りごとに比べる（`/admin` は `/administrator` を含まない）
-- コンポーネントから見える `ctx.path` は、namespace からの相対ではなくパス全体
+- コンポーネントから見える `ctx.path` は、group からの相対ではなくパス全体
 - 順番は `mix()` と同じ意味を持つ。応答したルートより後ろに書いたコンポーネントは実行されない
-- namespace の中のコンポーネントは `await next()` で後ろを包める。`next()` は namespace の残りを実行し、そのあとに続くものを実行するので、アプリのその部分だけに効く
+- 配列は 1 段だけ、順番どおりに展開する。空の配列は何も足さない
+- group の中のコンポーネントは `await next()` で後ろを包める。`next()` は group の残りを実行し、そのあとに続くものを実行するので、アプリのその部分だけに効く
 
 ```ts
-api(
+group(
+  '/api',
   async (ctx, next) => {
     await next()
     if (ctx.error !== undefined) return Response.json({ error: 'Failed' }, { status: ctx.status })
   },
-  get('/users', listUsers),
+  apiRoutes,
 )
 ```
 
@@ -195,7 +213,7 @@ app.mix(
 
 気をつけること:
 
-- URL はそのまま渡すので、マウントしたアプリはクライアントが送った URL をそのまま見る。namespace の中では、`basePath` に namespace のパスも含める。`namespace('/v1')(mount('/admin', app))` なら `basePath: '/v1/admin'`。`basePath` が違うと `404` になる
+- URL はそのまま渡すので、マウントしたアプリはクライアントが送った URL をそのまま見る。group の中では、`basePath` に group のパスも含める。`group('/v1', mount('/admin', app))` なら `basePath: '/v1/admin'`。`basePath` が違うと `404` になる
 - マウントしたアプリは、自分の `404` も含めて、前置きのパスの下のすべてに答える。そのため、`mount` より後ろに mix したものは、それらのパスでは動かない。前に mix したものは、その応答を包む
 - `mount` より前でリクエストの本文を読まない。本文は 1 回しか読めず、読まれていた場合は、そのことを伝えるエラーでリクエストが失敗する
 - マウントしたアプリの中のエラーには、そのアプリの `onError` が答える。外側のアプリに見えるのは応答だけで、`ctx.error` ではない。`next()` のあとで処理を確定させる外側のコンポーネントは、`ctx.status` も確かめる
@@ -210,7 +228,7 @@ import { createRouter } from '@imatomix/mix-router'
 
 type AppState = { user?: string }
 
-const { get, post, namespace } = createRouter<AppState>()
+const { get, post, group } = createRouter<AppState>()
 
 const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined

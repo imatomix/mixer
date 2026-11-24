@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-11-24
 
+> `namespace(prefix)(...items)` in this record was renamed to `group(prefix, ...items)` in [ADR 0007](0007-group-routes.md).
+
 ## Context
 
 `namespace(prefix)` groups routes and components of one app under a prefix. Some parts of an app are whole apps instead: a mixer app with its own `onError` or `bodyLimit`, an app written with another framework, or one that is distributed as a package. The only way to put one in was to call it from a route, `all('/admin/*', (ctx) => admin.fetch(ctx.request))`, which quietly loses three things:

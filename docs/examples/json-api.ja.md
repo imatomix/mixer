@@ -2,12 +2,12 @@
 
 [English](json-api.md) | 日本語
 
-投稿を作る・一覧する・読む API。入力は [Zod](https://zod.dev/) のスキーマで確かめる。1 つのリソースのルートは前置きのパスを書かずに書き、`namespace` で載せる。
+投稿を作る・一覧する・読む API。入力は [Zod](https://zod.dev/) のスキーマで確かめる。1 つのリソースのルートは前置きのパスを書かずに書き、`group` で載せる。
 
 ```ts
 // examples/docs/src/json-api.ts
 
-import { get, namespace, post } from '@imatomix/mix-router'
+import { get, group, post } from '@imatomix/mix-router'
 import { HttpError, Mixer, validateInput } from '@imatomix/mixer'
 import { z } from 'zod'
 
@@ -49,7 +49,7 @@ export function createApp() {
     }),
   ]
 
-  return new Mixer().mix(namespace('/api/posts')(...postRoutes))
+  return new Mixer().mix(group('/api/posts', postRoutes))
 }
 ```
 

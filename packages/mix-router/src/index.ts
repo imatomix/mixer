@@ -34,7 +34,7 @@ type Dispatch<S extends State, E> = (
   next: Next,
 ) => Promise<unknown>
 
-/** A route that can be passed to `mix()` as a mixer Component and nested in a namespace */
+/** A route that can be passed to `mix()` as a mixer Component and nested in a group */
 export interface Route<S extends State = State, E = unknown> {
   (ctx: Context<S, E>, next: Next): Promise<unknown>
   readonly [dispatch]: Dispatch<S, E>
@@ -75,7 +75,7 @@ function createMatcher<Path extends string, S extends State, E>(
   handlers: RouteHandler<Params<Path>, S, E>[],
   methods: ReadonlySet<string> | 'any',
 ): Route<S, E> {
-  // Cache the compiled pattern per namespace prefix instead of compiling it on every request
+  // Cache the compiled pattern per group prefix instead of compiling it on every request
   const patterns = new Map<string, Pattern>()
   compilePattern(path)
 
@@ -184,25 +184,36 @@ export const del = methodRoute('DELETE')
 export const head = methodRoute('HEAD')
 export const options = methodRoute('OPTIONS')
 
-export function namespace(prefix: string) {
-  const scope = prefixScope('namespace', prefix)
+/** What a group takes: routes and components, or arrays of them, such as the routes exported from one file */
+export type GroupItem<S extends State = State, E = unknown> =
+  | Route<S, E>
+  | Component<S, E>
+  | readonly (Route<S, E> | Component<S, E>)[]
 
-  return <S extends State = State, E = unknown>(
-    ...items: (Route<S, E> | Component<S, E>)[]
-  ): Route<S, E> =>
-    createRoute(async (ctx, outerPrefix, next) => {
-      const prefix = scope.under(ctx, outerPrefix)
-      // Nothing inside can match a path outside the prefix
-      if (prefix === undefined) return undefined
-      // The items run as one group, so next() inside wraps the rest of the namespace and what follows it
-      const group = items.map(
-        (item): Component<S, E> =>
-          isRoute(item)
-            ? (inner, innerNext) => item[dispatch](inner, prefix, innerNext)
-            : item,
-      )
-      return compose(...group)(ctx, next)
-    })
+/**
+ * Puts routes and components under a prefix, like a router mounted at a path elsewhere:
+ * `group('/todos', todoRoutes)`. The items run in order as one group, so next() inside wraps the rest of the
+ * group and what follows it, and a component first in the group guards every path under the prefix
+ */
+export function group<S extends State = State, E = unknown>(
+  prefix: string,
+  ...items: readonly GroupItem<S, E>[]
+): Route<S, E> {
+  const scope = prefixScope('group', prefix)
+  const flat = items.flat()
+
+  return createRoute(async (ctx, outerPrefix, next) => {
+    const full = scope.under(ctx, outerPrefix)
+    // Nothing inside can match a path outside the prefix
+    if (full === undefined) return undefined
+    const members = flat.map(
+      (item): Component<S, E> =>
+        isRoute(item)
+          ? (inner, innerNext) => item[dispatch](inner, full, innerNext)
+          : item,
+    )
+    return compose(...members)(ctx, next)
+  })
 }
 
 /** An app that answers a Web Request: an object with fetch, such as a Hono app, or a fetch function */
@@ -261,9 +272,9 @@ export function mount<S extends State = State, E = unknown>(
 
 /**
  * Matches a prefix and everything below it, compared like route paths (decoded, segment by segment), under the
- * prefixes of enclosing namespaces
+ * prefixes of enclosing groups
  */
-function prefixScope(kind: 'namespace' | 'mount', prefix: string) {
+function prefixScope(kind: 'group' | 'mount', prefix: string) {
   // Prefix parameters would not appear in the handlers' params type, so they are forbidden to keep types and runtime values in sync
   if (hasDynamicSegment(prefix)) {
     throw new TypeError(
@@ -322,9 +333,7 @@ export interface Router<S extends State, E = unknown> {
     path: Path,
     ...handlers: RouteHandler<Params<Path>, S, E>[]
   ) => Route<S, E>
-  namespace: (
-    prefix: string,
-  ) => (...items: (Route<S, E> | Component<S, E>)[]) => Route<S, E>
+  group: (prefix: string, ...items: readonly GroupItem<S, E>[]) => Route<S, E>
   // biome-ignore lint/suspicious/noExplicitAny: a mounted mixer app has its own State and Env types
   mount: (prefix: string, app: Mixer<any, any> | FetchHandler) => Route<S, E>
 }
@@ -347,7 +356,7 @@ export function createRouter<S extends State = State, E = unknown>(): Router<
     options,
     all,
     route,
-    namespace,
+    group,
     mount,
   }
 }

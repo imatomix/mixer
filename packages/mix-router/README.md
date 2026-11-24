@@ -116,57 +116,75 @@ app.mix(
 
 - It answers `405` only when a route's path matched and no route takes the method. A route that takes the method but returns nothing, an `all()` route, or a component in between that answers keeps the usual behavior
 - `OPTIONS` is not answered by itself: add an `options()` route, or put [mix-cors](https://github.com/imatomix/mixer/tree/main/packages/mix-cors) before the routes to answer preflights
-- **`405` and `Allow` tell the client that a path exists.** If a check such as authentication lives only inside route handlers, put it before the routes instead (for example, as the first component of a [namespace](#components-inside-a-namespace)), so that unauthenticated requests are rejected before anything is revealed
+- **`405` and `Allow` tell the client that a path exists.** If a check such as authentication lives only inside route handlers, put it before the routes instead (for example, as the first component of a [group](#components-inside-a-group)), so that unauthenticated requests are rejected before anything is revealed
 
-## namespace
+## group
 
-Adds a common prefix to routes. Namespaces can be nested.
+Puts routes under a common prefix: `group(prefix, ...items)`. An item is a route, a component, or an array of them, such as the routes exported from one file. Groups can be nested.
 
 ```ts
-import { get, namespace } from '@imatomix/mix-router'
-
-const api = namespace('/api')
-const v1 = namespace('/v1')
+import { get, group } from '@imatomix/mix-router'
 
 app.mix(
-  api(
-    v1(get('/', () => 'API V1')), // GET /api/v1
+  group(
+    '/api',
+    group('/v1', get('/', () => 'API V1')), // GET /api/v1
     get('/health', () => 'ok'), // GET /api/health
   ),
 )
 ```
 
-`:param` and `*` cannot be used in a namespace path,
-because those values would not appear in the handlers' params type, and the types would disagree with the actual values.
-
-### Components inside a namespace
-
-A namespace also takes plain components. They run for every request under the prefix, in order with the routes, so an auth check written first protects the whole area, including paths that match no route.
+Routes of one resource usually live in their own file without their prefix, and the app gives them one where it is put together:
 
 ```ts
-const admin = namespace('/admin')
+// routes/users.ts
+import { get, post } from '@imatomix/mix-router'
 
+export const userRoutes = [
+  get('/', listUsers),
+  post('/', createUser),
+]
+```
+
+```ts
+// app.ts
+import { group } from '@imatomix/mix-router'
+import { userRoutes } from './routes/users.js'
+
+app.mix(group('/users', userRoutes))
+```
+
+`:param` and `*` cannot be used in a group prefix,
+because those values would not appear in the handlers' params type, and the types would disagree with the actual values.
+
+### Components inside a group
+
+A group also takes plain components. They run for every request under the prefix, in order with the routes, so an auth check written first protects the whole area, including paths that match no route.
+
+```ts
 app.mix(
-  admin(
+  group(
+    '/admin',
     requireAuth, // runs for /admin, /admin/users, /admin/unknown, ...
-    get('/users', listUsers),
-    post('/users', createUser),
+    adminRoutes,
   ),
 )
 ```
 
 - The prefix is compared like route paths: after decoding, segment by segment (`/admin` does not cover `/administrator`)
-- Components see the full `ctx.path`, not one relative to the namespace
+- Components see the full `ctx.path`, not one relative to the group
 - Order matters as in `mix()`: a component written after a route that answers does not run
-- A component inside a namespace can wrap the rest with `await next()`, which runs the rest of the namespace and then what follows it, so it covers only that part of the app:
+- Arrays are flattened one level, in order; an empty array adds nothing
+- A component inside a group can wrap the rest with `await next()`, which runs the rest of the group and then what follows it, so it covers only that part of the app:
 
 ```ts
-api(
+group(
+  '/api',
   async (ctx, next) => {
     await next()
     if (ctx.error !== undefined) return Response.json({ error: 'Failed' }, { status: ctx.status })
   },
-  get('/users', listUsers),
+  apiRoutes,
 )
 ```
 
@@ -195,7 +213,7 @@ Calling the app yourself from a route would lose these, which `mount` passes on:
 
 What to keep in mind:
 
-- The URL is passed as it is, so the mounted app sees the same URL the client sent. Inside a namespace, its `basePath` includes the namespace: `namespace('/v1')(mount('/admin', app))` needs `basePath: '/v1/admin'`. A wrong `basePath` answers `404`
+- The URL is passed as it is, so the mounted app sees the same URL the client sent. Inside a group, its `basePath` includes the group's prefix: `group('/v1', mount('/admin', app))` needs `basePath: '/v1/admin'`. A wrong `basePath` answers `404`
 - The mounted app answers everything under the prefix, its own `404` included, so what is mixed in after `mount` does not run for those paths. What is mixed in before it wraps its responses
 - Do not read the request body before `mount`: a body can be read only once, and a read body fails the request with an error saying so
 - An error inside the mounted app is answered by its own `onError`. The outer app sees the response, not `ctx.error`, so an outer component that commits work after `next()` should also check `ctx.status`
@@ -210,7 +228,7 @@ import { createRouter } from '@imatomix/mix-router'
 
 type AppState = { user?: string }
 
-const { get, post, namespace } = createRouter<AppState>()
+const { get, post, group } = createRouter<AppState>()
 
 const app = new Mixer<AppState>()
 app.mix(get('/me', (ctx) => ctx.state.user)) // ctx.state.user: string | undefined

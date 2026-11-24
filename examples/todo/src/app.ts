@@ -6,7 +6,7 @@ import { type Component, HttpError, Mixer } from '@imatomix/mixer'
 import { requireSignIn } from './auth.ts'
 import type { TodoRepository, Users } from './data.ts'
 import { errorPage } from './pages.ts'
-import { type AppState, namespace, type SessionData } from './router.ts'
+import { type AppState, group, type SessionData } from './router.ts'
 import { authRoutes } from './routes/auth.ts'
 import { homeRoutes } from './routes/home.ts'
 import { todoRoutes } from './routes/todos.ts'
@@ -57,6 +57,6 @@ export function createApp(options: AppOptions): Mixer<AppState> {
     // Components run in order, so everything below needs a signed-in user
     requireSignIn,
     ...homeRoutes(options.todos),
-    namespace('/todos')(...todoRoutes(options.todos)),
+    group('/todos', todoRoutes(options.todos)),
   )
 }
