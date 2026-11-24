@@ -170,6 +170,37 @@ api(
 )
 ```
 
+## mount
+
+Hands a whole app the prefix and everything below it, whatever the method: another mixer app with its own `onError` or `bodyLimit`, or an app built with another framework. Give a mixer app the full path it is mounted at as its `basePath`.
+
+```ts
+import { Mixer } from '@imatomix/mixer'
+import { mount } from '@imatomix/mix-router'
+
+const admin = new Mixer({ basePath: '/admin' }).mix(/* ... */)
+
+app.mix(
+  mount('/admin', admin), // a mixer app
+  mount('/legacy', honoApp), // an object with fetch, such as a Hono app with basePath('/legacy')
+  mount('/api/auth', auth.handler), // a fetch function
+)
+```
+
+Calling the app yourself from a route would lose these, which `mount` passes on:
+
+- `ctx.env`, such as the Workers bindings
+- `waitUntil`, so the mounted app's background work is not cut off on Workers (its failures are reported by the outer app too)
+- the client's address. A mixer app gets the direct peer and applies its own `trustedProxies`, as if it were served directly
+
+What to keep in mind:
+
+- The URL is passed as it is, so the mounted app sees the same URL the client sent. Inside a namespace, its `basePath` includes the namespace: `namespace('/v1')(mount('/admin', app))` needs `basePath: '/v1/admin'`. A wrong `basePath` answers `404`
+- The mounted app answers everything under the prefix, its own `404` included, so what is mixed in after `mount` does not run for those paths. What is mixed in before it wraps its responses
+- Do not read the request body before `mount`: a body can be read only once, and a read body fails the request with an error saying so
+- An error inside the mounted app is answered by its own `onError`. The outer app sees the response, not `ctx.error`, so an outer component that commits work after `next()` should also check `ctx.status`
+- A mixer app is recognised with `instanceof Mixer`, so mount apps built with the same copy of `@imatomix/mixer`
+
 ## Custom State and Env
 
 `createRouter<State>()` returns a set of route functions with a typed `ctx.state`.

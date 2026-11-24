@@ -2,7 +2,9 @@ import {
   type Component,
   type Context,
   compose,
+  type ExecutionContextLike,
   HttpError,
+  Mixer,
   type Next,
   type State,
 } from '@imatomix/mixer'
@@ -183,26 +185,15 @@ export const head = methodRoute('HEAD')
 export const options = methodRoute('OPTIONS')
 
 export function namespace(prefix: string) {
-  // Prefix parameters would not appear in the handlers' params type, so they are forbidden to keep types and runtime values in sync
-  if (hasDynamicSegment(prefix)) {
-    throw new Error(
-      `:param and * cannot be used in a namespace path: ${prefix}`,
-    )
-  }
-  const normalized = splitPath(prefix)
-    .map((segment) => `/${segment}`)
-    .join('')
-
-  // Matches the prefix itself and everything below it, compared like route paths (decoded, segment by segment)
-  const scopes = new Map<string, Pattern>()
+  const scope = prefixScope('namespace', prefix)
 
   return <S extends State = State, E = unknown>(
     ...items: (Route<S, E> | Component<S, E>)[]
   ): Route<S, E> =>
     createRoute(async (ctx, outerPrefix, next) => {
-      const prefix = outerPrefix + normalized
+      const prefix = scope.under(ctx, outerPrefix)
       // Nothing inside can match a path outside the prefix
-      if (!isUnder(ctx, prefix)) return undefined
+      if (prefix === undefined) return undefined
       // The items run as one group, so next() inside wraps the rest of the namespace and what follows it
       const group = items.map(
         (item): Component<S, E> =>
@@ -212,18 +203,94 @@ export function namespace(prefix: string) {
       )
       return compose(...group)(ctx, next)
     })
+}
 
-  function isUnder<S extends State, E>(
-    ctx: Context<S, E>,
-    prefix: string,
-  ): boolean {
-    let scope = scopes.get(prefix)
-    if (!scope) {
-      scope = compilePattern(`${prefix}/*`)
-      scopes.set(prefix, scope)
+/** An app that answers a Web Request: an object with fetch, such as a Hono app, or a fetch function */
+export type FetchHandler =
+  | {
+      fetch(
+        request: Request,
+        env: unknown,
+        executionContext: ExecutionContextLike,
+      ): Response | Promise<Response>
     }
-    const segments = requestSegments(ctx)
-    return segments !== undefined && matchPattern(scope, segments) !== undefined
+  | ((
+      request: Request,
+      env: unknown,
+      executionContext: ExecutionContextLike,
+    ) => Response | Promise<Response>)
+
+/**
+ * Hands every request under the prefix, whatever its method, to a whole app: another mixer app (give it the full
+ * mount path as basePath) or any fetch handler. The URL is passed as it is, with ctx.env, waitUntil, and the
+ * client's address, which a plain call from a route would lose
+ */
+export function mount<S extends State = State, E = unknown>(
+  prefix: string,
+  // biome-ignore lint/suspicious/noExplicitAny: a mounted mixer app has its own State and Env types
+  app: Mixer<any, any> | FetchHandler,
+): Route<S, E> {
+  const scope = prefixScope('mount', prefix)
+
+  return createRoute(async (ctx, outerPrefix) => {
+    if (scope.under(ctx, outerPrefix) === undefined) return undefined
+    methodRecord(ctx).taken = true
+    if (ctx.request.bodyUsed) {
+      throw new Error(
+        `mount: the request body was already read before ${ctx.method} ${ctx.url.pathname} reached the mounted app; read it only inside the mounted app`,
+      )
+    }
+    const executionContext: ExecutionContextLike = {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    }
+    if (app instanceof Mixer) {
+      return app.handle(ctx.request, {
+        env: ctx.env,
+        executionContext,
+        // The peer, not ctx.ip, so the mounted app applies its own trustedProxies; ctx.ip only when a platform
+        // resolved the client without a peer address
+        remoteAddress: ctx.remoteAddress,
+        clientIp: ctx.remoteAddress === undefined ? ctx.ip : undefined,
+      })
+    }
+    return typeof app === 'function'
+      ? app(ctx.request, ctx.env, executionContext)
+      : app.fetch(ctx.request, ctx.env, executionContext)
+  })
+}
+
+/**
+ * Matches a prefix and everything below it, compared like route paths (decoded, segment by segment), under the
+ * prefixes of enclosing namespaces
+ */
+function prefixScope(kind: 'namespace' | 'mount', prefix: string) {
+  // Prefix parameters would not appear in the handlers' params type, so they are forbidden to keep types and runtime values in sync
+  if (hasDynamicSegment(prefix)) {
+    throw new Error(`:param and * cannot be used in a ${kind} path: ${prefix}`)
+  }
+  const normalized = splitPath(prefix)
+    .map((segment) => `/${segment}`)
+    .join('')
+  const scopes = new Map<string, Pattern>()
+
+  return {
+    /** The full prefix when the request is under it */
+    under<S extends State, E>(
+      ctx: Context<S, E>,
+      outerPrefix: string,
+    ): string | undefined {
+      const full = outerPrefix + normalized
+      let scope = scopes.get(full)
+      if (!scope) {
+        scope = compilePattern(`${full}/*`)
+        scopes.set(full, scope)
+      }
+      const segments = requestSegments(ctx)
+      return segments !== undefined &&
+        matchPattern(scope, segments) !== undefined
+        ? full
+        : undefined
+    },
   }
 }
 
@@ -256,6 +323,8 @@ export interface Router<S extends State, E = unknown> {
   namespace: (
     prefix: string,
   ) => (...items: (Route<S, E> | Component<S, E>)[]) => Route<S, E>
+  // biome-ignore lint/suspicious/noExplicitAny: a mounted mixer app has its own State and Env types
+  mount: (prefix: string, app: Mixer<any, any> | FetchHandler) => Route<S, E>
 }
 
 /**
@@ -266,5 +335,17 @@ export function createRouter<S extends State = State, E = unknown>(): Router<
   S,
   E
 > {
-  return { get, post, put, patch, del, head, options, all, route, namespace }
+  return {
+    get,
+    post,
+    put,
+    patch,
+    del,
+    head,
+    options,
+    all,
+    route,
+    namespace,
+    mount,
+  }
 }

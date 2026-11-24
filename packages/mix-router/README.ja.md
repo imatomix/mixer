@@ -170,6 +170,37 @@ api(
 )
 ```
 
+## mount
+
+前置きのパスとその下のすべてを、メソッドにかかわらず、アプリ丸ごとに渡す。渡せるのは、独自の `onError` や `bodyLimit` を持つ別の mixer アプリや、ほかのフレームワークで作ったアプリ。mixer アプリには、マウントする場所の絶対パスを `basePath` として渡す。
+
+```ts
+import { Mixer } from '@imatomix/mixer'
+import { mount } from '@imatomix/mix-router'
+
+const admin = new Mixer({ basePath: '/admin' }).mix(/* ... */)
+
+app.mix(
+  mount('/admin', admin), // mixer アプリ
+  mount('/legacy', honoApp), // fetch を持つオブジェクト（basePath('/legacy') の Hono アプリなど）
+  mount('/api/auth', auth.handler), // fetch 関数
+)
+```
+
+ルートから自分でアプリを呼ぶと次のものが失われるが、`mount` はこれらを引き継ぐ。
+
+- `ctx.env`（Workers のバインディングなど）
+- `waitUntil`。Workers で、マウントしたアプリの応答後の処理が途中で切られない（その失敗は外側のアプリでも報告される）
+- クライアントのアドレス。mixer アプリには直接の接続相手を渡すので、直接公開したときと同じく、そのアプリの `trustedProxies` で判断される
+
+気をつけること:
+
+- URL はそのまま渡すので、マウントしたアプリはクライアントが送った URL をそのまま見る。namespace の中では、`basePath` に namespace のパスも含める。`namespace('/v1')(mount('/admin', app))` なら `basePath: '/v1/admin'`。`basePath` が違うと `404` になる
+- マウントしたアプリは、自分の `404` も含めて、前置きのパスの下のすべてに答える。そのため、`mount` より後ろに mix したものは、それらのパスでは動かない。前に mix したものは、その応答を包む
+- `mount` より前でリクエストの本文を読まない。本文は 1 回しか読めず、読まれていた場合は、そのことを伝えるエラーでリクエストが失敗する
+- マウントしたアプリの中のエラーには、そのアプリの `onError` が答える。外側のアプリに見えるのは応答だけで、`ctx.error` ではない。`next()` のあとで処理を確定させる外側のコンポーネントは、`ctx.status` も確かめる
+- mixer アプリかどうかは `instanceof Mixer` で見分ける。同じ `@imatomix/mixer` から作ったアプリをマウントする
+
 ## 独自の State と Env を使う
 
 `createRouter<State>()` で、`ctx.state` に型が付いたルート関数一式を作れる。
