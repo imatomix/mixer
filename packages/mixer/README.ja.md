@@ -203,6 +203,7 @@ await serve(app, {
 - `X-Forwarded-For` は `trustedProxies` のときだけ読む（[クライアントの IP アドレス](#クライアントの-ip-アドレス)）。`X-Forwarded-Proto` と `X-Forwarded-Host` は使わない
 - コンポーネントがリクエストボディを読まなかったとき（`413` のあとなど）は、残りを読まずに接続を閉じる
 - クライアントが切断すると `ctx.request.signal` が中断され、ストリーミング中の本文も止まる
+- 送るのが遅いクライアントは、Node 自身の上限で切られる。ヘッダーは 60 秒、リクエスト全体は 300 秒。効くのは受信の間だけで、遅いハンドラーやストリームで返す応答には効かない（[時間のかかる処理](#時間のかかる処理)）
 - `server.close()` は新しい接続の受け付けを止め、待機中の接続を閉じ、接続ごとに、処理中のリクエストに応答し終えたら閉じる。`timeout`（既定 10 秒。`server.close({ timeout: 30_000 })`）を過ぎたら残りを切り、その `ctx.request.signal` を中断する。`SIGTERM` を受けたときに呼べば、リクエストを落とさずに入れ替えられる
 
 ### Bun
@@ -215,7 +216,7 @@ const server = await serve(app, { port: 3000 })
 await server.close()
 ```
 
-Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。ハンドラーが例外を投げたり Promise が失敗したりした場合は、開発モードでもサーバー側にエラーを記録し、本文のない 500 応答を返す。
+Node.js アダプタと同様、既定では `127.0.0.1` で待ち受け、知らない Host 名は 400 で拒否する。オプションは `hostname`・`port`（既定は `0`、空いているポート）・`allowedHosts` のみで、意味は上と同じ。`server.requestIP(request)` を `app.handle()` に渡して `ctx.ip` に使い、Bun のサーバーを `ctx.env` に入れない。`server.close()` は処理中のリクエストが終わるまで待つ。終了のタイムアウト指定はない。ハンドラーが例外を投げたり Promise が失敗したりした場合は、開発モードでもサーバー側にエラーを記録し、本文のない 500 応答を返す。Bun は、何も送らない時間が 10 秒続いた接続を閉じる（既定の `idleTimeout`）。応答するまでにそれより長くかかるハンドラーや、それだけ止まるストリームは切られる。
 
 ### Cloudflare Workers
 
@@ -242,6 +243,7 @@ export default {
 
 - `ctx.env` には Worker のバインディングが入り、`ctx.waitUntil()` は Worker の `ctx.waitUntil` に渡される。mix-router を使うときは、`createRouter<State, Env>()` にもバインディングの型を渡す
 - PR ごとに、workerd の互換日付 `2026-07-30`、Node 互換を切った状態（`no_nodejs_compat`、`no_nodejs_compat_v2`）で動作を確かめ、`@cloudflare/workers-types` で型も確かめている。mixer に `nodejs_compat` は要らない
+- クライアントが切断したときに `ctx.request.signal` が中断されるのは、互換日付 `2026-11-17` 以降か、それより前で `enable_request_signal` フラグを付けたときだけ
 - `bodyLimit` が効くのは `ctx.json()`・`ctx.form()`・`ctx.text()`・`ctx.bytes()` で読んだときだけで、`ctx.request` を直接読むと効かない。`ctx.waitUntil()` に渡した処理には Workers の時間の上限がかかる
 
 | パッケージ | Workers での扱い |
@@ -365,6 +367,25 @@ app.mix(
 規則が扱わないことが 2 つある。`next()` は受け取ったコンポーネントの中だけで使う（別のリクエストから呼ぶと、元のリクエストのコンポーネントが動く）。例外を投げたコンポーネントは、自分が付けるはずだったものを失う。エラーの応答はその外側で作られるため。mix-cors の `origin` や mix-logger の `requestId` のように、モジュールが呼ぶ関数は例外を投げないようにする。
 
 `compose(...components)` は、並びを 1 つのまとまりとして同じ規則で実行する。中の `next()` は、まとまりの残りを実行し、そのあとに続くものを実行する。mix-router の `namespace` はこれで作られているので、namespace の中のコンポーネントはアプリのその部分だけを包む。`/api` の下だけ JSON のエラーページにする、など。
+
+### 時間のかかる処理
+
+mixer には、ルート全体の時間の上限はない。JavaScript は実行中の処理を止められないので、先に応答しても処理は続き、クライアントに失敗と伝えたあとで書き込みが保存されることがある。代わりに外へ出す呼び出しそれぞれに上限を付け、処理そのものを止める。
+
+```ts
+get('/weather', async (ctx) => {
+  const res = await fetch(WEATHER_API, {
+    // クライアントが去るか 5 秒経つと止まる
+    signal: AbortSignal.any([ctx.request.signal, AbortSignal.timeout(5_000)]),
+  })
+  return Response.json(await res.json())
+})
+```
+
+- 止まった呼び出しは例外を投げ、ルートで捕まえなければ `500` になる
+- signal を受け取るほかのクライアント（データベースのドライバーなど）にも同じ signal を渡す
+- 止めても、すでに済んだ書き込みは取り消されない。必ず終わらせたい処理はルートの中で await し、`ctx.waitUntil()` に任せない。その処理が成功したかはクライアントに伝わらず、環境によっては途中で切られる
+- 送るのが遅いクライアントは、アダプター（[Node.js](#nodejs)、[Bun](#bun)）か環境が扱う
 
 ### ctx.waitUntil()
 
