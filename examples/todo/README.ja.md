@@ -10,7 +10,7 @@ mixer とそのモジュールで作った、サーバーで HTML を返す小�
 pnpm --filter @imatomix/example-todo start      # Node.js。http://localhost:3000 で demo / demo でログイン
 pnpm --filter @imatomix/example-todo start:bun  # Bun
 pnpm --filter @imatomix/example-todo test       # app.fetch を通したテスト
-pnpm --filter @imatomix/example-todo check:bun      # Bun.serve でブラウザの流れを確かめる
+pnpm --filter @imatomix/example-todo check:bun      # @imatomix/mixer/bun を通して、Bun でブラウザの流れを確かめる
 pnpm --filter @imatomix/example-todo check:workers  # Node.js 互換なしの workerd でブラウザの流れを確かめる
 ```
 

@@ -10,7 +10,7 @@
 ## インストール
 
 ```sh
-npm install @imatomix/mixer @imatomix/mix-csrf
+npm install @imatomix/mixer @imatomix/mix-csrf @imatomix/mix-router
 ```
 
 ## 使い方
