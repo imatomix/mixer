@@ -708,3 +708,31 @@ describe('public surface of Session', () => {
     expect(names).toEqual([])
   })
 })
+
+describe('with next(): a failing save after onError', () => {
+  it('turns a store failure after an error into an error response and reports it', async () => {
+    class BrokenStore extends MemoryStore {
+      override async set(): Promise<void> {
+        throw new Error('store down')
+      }
+    }
+    const reports: string[] = []
+    const { Mixer } = await import('@imatomix/mixer')
+    const target = new Mixer({ onError: () => ({ handled: true }) }).mix(
+      (ctx) => {
+        ctx.onErrorReport(({ error }) => {
+          reports.push((error as Error).message)
+        })
+      },
+      session({ store: new BrokenStore() }),
+      (ctx) => {
+        ;(ctx.state as State).session.set('v', 1)
+        throw new Error('handler failed')
+      },
+    )
+    const res = await call(target)
+    expect(res.headers.getSetCookie()).toEqual([])
+    expect(reports).toEqual(['handler failed', 'store down'])
+    expect(await res.json()).toEqual({ handled: true })
+  })
+})

@@ -77,7 +77,7 @@ export function session<D extends SessionData = SessionData>(
     return Math.min(ttl, left)
   }
 
-  return async (ctx) => {
+  return async (ctx, next) => {
     const loadedId = readSessionId(ctx, name)
     const record = loadedId ? toRecord(await store.get(loadedId)) : undefined
     // An expired session is treated as missing, and removed when the response is sent
@@ -90,18 +90,15 @@ export function session<D extends SessionData = SessionData>(
     )
     ;(ctx.state as SessionState<D>).session = session
 
+    await next()
+    // Saved after everything else ran, on whatever response it produced, errors included
+    await save(ctx, session, live?.createdAt ?? Date.now(), expiredId)
     if (cacheControl !== false) {
-      ctx.onResponseHeaders((headers) => {
-        const setsCookie = headers
-          .getSetCookie()
-          .some((line) => line.startsWith(`${name}=`))
-        if (live || setsCookie) headers.set('Cache-Control', cacheControl)
-      })
+      const setsCookie = ctx.headers
+        .getSetCookie()
+        .some((line) => line.startsWith(`${name}=`))
+      if (live || setsCookie) ctx.headers.set('Cache-Control', cacheControl)
     }
-    ctx.onBeforeSend(() =>
-      save(ctx, session, live?.createdAt ?? Date.now(), expiredId),
-    )
-    return undefined
   }
 
   async function save(
