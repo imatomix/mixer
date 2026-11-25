@@ -19,7 +19,8 @@
     "@imatomix/mix-secure-headers": "workspace:*",
     "@imatomix/mix-session": "workspace:*",
     "@imatomix/mix-static": "workspace:*",
-    "@imatomix/mixer": "workspace:*"
+    "@imatomix/mixer": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
