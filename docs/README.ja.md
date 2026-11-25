@@ -8,9 +8,9 @@
 
 - [すぐ始める](../packages/mixer/README.ja.md#すぐ始める): mixer を入れて、最初のリクエストに答える
 - [おすすめの組み合わせ](../README.ja.md#おすすめの組み合わせ): ブラウザ向けのアプリと JSON API で組み合わせるモジュール
-- [例のアプリ](../examples/todo): サインイン・セッション・CSRF 対策・セキュリティヘッダーを使った ToDo アプリ。Node.js・Bun・Cloudflare Workers で動く
+- [作例のアプリ](../examples/todo): サインイン・セッション・CSRF 対策・セキュリティヘッダーを使った ToDo アプリ。Node.js・Bun・Cloudflare Workers で動く
 
-## 例
+## 作例
 
 - [JSON API](examples/json-api.ja.md): Zod で入力を確かめて、作る・一覧する・読む
 - [Server-Sent Events でメッセージをリアルタイムに届ける](examples/live-messages.ja.md): 開いているブラウザすべてに、再接続にも対応して送る
