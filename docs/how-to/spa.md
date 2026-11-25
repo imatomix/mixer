@@ -71,7 +71,7 @@ export default defineConfig({
 
 ## A frontend on another origin
 
-When the frontend is served elsewhere (a CDN or a hosting service) and mixer serves only the API, the origins differ: add [mix-cors](../../packages/mix-cors) with the frontend's origin, and with cookies, `credentials: true` on both sides and the frontend's origin in `csrf({ trustedOrigins })`. One origin, as above, avoids all of that.
+When the frontend is served elsewhere (a CDN or a hosting service) and mixer serves only the API, the origins differ: add [mix-cors](../../packages/mix-cors) with the frontend's origin. With cookies, also set `credentials: true` in mix-cors, call `fetch(url, { credentials: 'include' })` in the frontend, and list the frontend's origin in `csrf({ trustedOrigins })`. If the frontend is on another site rather than another subdomain, browsers send the session cookie only with `SameSite=None` (mix-session's `cookie: { sameSite: 'None' }`). One origin, as above, avoids all of that.
 
 ## On Cloudflare Workers
 

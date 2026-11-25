@@ -71,7 +71,7 @@ export default defineConfig({
 
 ## 別のオリジンのフロント
 
-フロントをほかの場所（CDN やホスティングサービス）で配り、mixer は API だけを配るときは、オリジンが分かれる。フロントのオリジンを指定した [mix-cors](../../packages/mix-cors) を足し、Cookie を使うなら両方で `credentials: true` にして、`csrf({ trustedOrigins })` にフロントのオリジンを入れる。上のようにオリジンを 1 つにすれば、これらはすべて要らない。
+フロントをほかの場所（CDN やホスティングサービス）で配り、mixer は API だけを配るときは、オリジンが分かれる。フロントのオリジンを指定した [mix-cors](../../packages/mix-cors) を足す。Cookie を使うなら、さらに mix-cors で `credentials: true` にし、フロントでは `fetch(url, { credentials: 'include' })` で呼び、`csrf({ trustedOrigins })` にフロントのオリジンを入れる。フロントがサブドメインではなく別のサイトにあるなら、ブラウザがセッションの Cookie を送るのは `SameSite=None` のときだけ（mix-session の `cookie: { sameSite: 'None' }`）。上のようにオリジンを 1 つにすれば、これらはすべて要らない。
 
 ## Cloudflare Workers では
 
