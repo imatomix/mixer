@@ -77,4 +77,14 @@ export default defineConfig({
 
 ビルドの出力は mix-static ではなく Workers Static Assets で配る。`not_found_handling = "single-page-application"` で画面に `index.html` を返し、`run_worker_first = ["/api/*"]` で API のリクエストを先に mixer へ回す。Cloudflare の [single-page application](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/) の案内を参照。
 
+このとき、画面とファイルへのリクエストには mixer を通さずに Cloudflare が答えるので、`secureHeaders()` は動かない。ビルドの出力に [`_headers`](https://developers.cloudflare.com/workers/static-assets/headers/) ファイルを置いて、同じヘッダーを付ける（Vite は `public/_headers` を `dist/` に写す）。
+
+```text
+/*
+  Content-Security-Policy: default-src 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+```
+
 コードとテストは [examples/docs](../../examples/docs) にある。関連: [アプリを動かす](runtimes.ja.md)、[mix-static](../../packages/mix-static/README.ja.md)、[mix-csrf](../../packages/mix-csrf/README.ja.md)
