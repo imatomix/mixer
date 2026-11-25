@@ -82,7 +82,7 @@ await serve(app, { port: 3000 })
 ```
 
 - Read forms with `ctx.form()` and check every value; answer a POST with `redirect(path, { status: 303 })`
-- mixer does not render HTML: escape everything you put into a page, or use a template library that does
+- mixer does not render HTML. Use a template engine that escapes by default, such as [Eta](https://eta.js.org/) or [Handlebars](https://handlebarsjs.com/), or React and other JSX renderers. Escaping keeps text and quoted attributes safe, but not a URL a user chose (`javascript:`), an unquoted attribute, or a value inside `<script>`, `<style>`, or an event handler: check those values yourself. With a React frontend served as files, see [Single-page apps](docs/how-to/spa.md)
 - [examples/todo](examples/todo) is a complete app built this way, with tests, for Node.js, Bun, and Workers
 
 ### A JSON API

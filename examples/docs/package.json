@@ -9,7 +9,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@imatomix/mix-csrf": "workspace:*",
     "@imatomix/mix-router": "workspace:*",
+    "@imatomix/mix-secure-headers": "workspace:*",
+    "@imatomix/mix-static": "workspace:*",
     "@imatomix/mixer": "workspace:*"
   },
   "devDependencies": {

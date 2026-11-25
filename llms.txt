@@ -22,6 +22,7 @@ Things that differ from other frameworks:
 - [Signing users in and guarding routes](https://github.com/imatomix/mixer/blob/main/docs/how-to/auth-and-guards.md): a guard before a group of routes, and mounting an authentication library
 - [Reading and validating the request body](https://github.com/imatomix/mixer/blob/main/docs/how-to/request-body.md): `ctx.json()`, `ctx.form()`, `validateInput()`, and `bodyLimit`
 - [Streaming and background work](https://github.com/imatomix/mixer/blob/main/docs/how-to/streaming-and-background-work.md): `sse()`, slow work, and `ctx.waitUntil()`
+- [Single-page apps](https://github.com/imatomix/mixer/blob/main/docs/how-to/spa.md): the API and a built React frontend from one app, with the page fallback after files
 - [Testing your app](https://github.com/imatomix/mixer/blob/main/docs/how-to/testing.md): `app.fetch`, sessions across requests, the environment, and `waitUntil`
 
 ## Reference

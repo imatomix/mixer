@@ -82,7 +82,7 @@ await serve(app, { port: 3000 })
 ```
 
 - フォームは `ctx.form()` で読み、値はすべて確かめる。POST には `redirect(path, { status: 303 })` で答える
-- mixer は HTML を作らない。ページに入れるものはすべてエスケープするか、エスケープしてくれるテンプレートのライブラリを使う
+- mixer は HTML を作らない。[Eta](https://eta.js.org/) や [Handlebars](https://handlebarsjs.com/) のように既定でエスケープするテンプレートエンジンか、React などの JSX のレンダラーを使う。エスケープで守れるのは本文と引用符で囲んだ属性だけで、利用者が選んだ URL（`javascript:`）、引用符のない属性、`<script>`・`<style>`・イベント属性の中の値は守れない。それらの値は自分で確かめる。React のフロントをファイルとして配るときは[SPA と組み合わせる](docs/how-to/spa.ja.md)を参照
 - [examples/todo](examples/todo) は、この形で作った完全なアプリ。テスト付きで、Node.js・Bun・Workers で動く
 
 ### JSON の API
