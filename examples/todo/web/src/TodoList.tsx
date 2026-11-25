@@ -10,6 +10,8 @@ interface Props {
 
 export function TodoList({ user, onSignOut }: Props) {
   const [todos, setTodos] = useState<Todo[]>([])
+  // Changes wait for the first list, so a late list never overwrites them
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
 
   /** Runs a call to the API and shows its error, with the request ID to quote */
@@ -29,7 +31,10 @@ export function TodoList({ user, onSignOut }: Props) {
   }
 
   useEffect(() => {
-    void attempt(async () => setTodos(await api.todos()))
+    void attempt(async () => {
+      setTodos(await api.todos())
+      setLoaded(true)
+    })
   }, [])
 
   async function add(event: FormEvent<HTMLFormElement>) {
@@ -73,7 +78,8 @@ export function TodoList({ user, onSignOut }: Props) {
       </p>
       <h2>Todos</h2>
       {error && <p className="error">{error}</p>}
-      <form onSubmit={add}>
+      {!loaded && !error && <p>Loading…</p>}
+      <form onSubmit={add} hidden={!loaded}>
         <input
           name="title"
           maxLength={TITLE_LENGTH}
@@ -82,7 +88,7 @@ export function TodoList({ user, onSignOut }: Props) {
         />
         <button type="submit">Add</button>
       </form>
-      <ul>
+      <ul hidden={!loaded}>
         {todos.map((todo) => (
           <li key={todo.id} className={todo.done ? 'done' : undefined}>
             <button type="button" onClick={() => toggle(todo)}>
