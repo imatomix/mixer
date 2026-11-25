@@ -10,7 +10,7 @@ interface Props {
 
 export function TodoList({ user, onSignOut }: Props) {
   const [todos, setTodos] = useState<Todo[]>([])
-  // Changes wait for the first list, so a late list never overwrites them
+  // Changes wait for the first list, so the list never overwrites them
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
 
@@ -31,10 +31,16 @@ export function TodoList({ user, onSignOut }: Props) {
   }
 
   useEffect(() => {
+    let ignore = false
     void attempt(async () => {
-      setTodos(await api.todos())
+      const list = await api.todos()
+      if (ignore) return
+      setTodos(list)
       setLoaded(true)
     })
+    return () => {
+      ignore = true
+    }
   }, [])
 
   async function add(event: FormEvent<HTMLFormElement>) {

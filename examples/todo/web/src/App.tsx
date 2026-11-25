@@ -10,13 +10,21 @@ export function App() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    // An answer from an earlier run of this effect must not undo a sign-in made since
+    let ignore = false
     api.me().then(
-      ({ user }) => setUser(user),
+      ({ user }) => {
+        if (!ignore) setUser(user)
+      },
       (caught) => {
+        if (ignore) return
         if (caught instanceof ApiError && caught.status === 401) setUser(null)
         else setError('Could not reach the server')
       },
     )
+    return () => {
+      ignore = true
+    }
   }, [])
 
   return (
