@@ -12,12 +12,15 @@ pnpm --filter @imatomix/example-todo start:bun  # Bun
 pnpm --filter @imatomix/example-todo test       # app.fetch を通したテスト
 pnpm --filter @imatomix/example-todo check:bun      # @imatomix/mixer/bun を通して、Bun でブラウザの流れを確かめる
 pnpm --filter @imatomix/example-todo check:workers  # Node.js 互換なしの workerd でブラウザの流れを確かめる
+pnpm --filter @imatomix/example-todo dev:web    # React のフロントを http://localhost:5173 で。API は start で起動したアプリ
+pnpm --filter @imatomix/example-todo build:web  # フロントを web/dist にビルドする
 ```
 
 ## 示していること
 
 - 役割ごとに 1 ファイル: `src/app.ts` は部品を組み立てるだけ。ルートはリソースごとに `src/routes/` に置く（サインインと Todo。Todo は `GET /todos` の一覧とその操作で、`group('/todos', ...)` で載せる。`/` は一覧へリダイレクトする）。アプリの State の型とルートの関数は `src/router.ts`、サインインの確認は `src/auth.ts`、画面は `src/pages.ts`
 - 同じオリジンのフロントのための、`/api` 以下の JSON の API: サインインとサインアウトの `POST /api/session` と `DELETE /api/session`、`GET /api/me`、`GET`・`POST /api/todos` と `PATCH`・`DELETE /api/todos/:id`。入力は `validateInput()` と Zod で確かめ、知らない API のパスは JSON の `404`、エラーはリクエスト ID 付きの JSON で答える
+- JSON の API を使う、`web/` の React のフロント（Vite。ルーターや状態管理のライブラリは使わない）: `web/src/api.ts` は相対 URL の `/api` を呼ぶので、セッションの Cookie が毎回付く。エラーはリクエスト ID 付きで表示する。開発中は Vite が `/api` を `start` で起動したアプリへ渡す。ビルドしたフロントはまだアプリから配信しておらず、`start` で見えるのはサーバーで返す画面のまま
 - コンポーネントの順番: `logger()`、CSP 付きの `secureHeaders()`、静的ファイル（キャッシュさせるため `session()` より前）、`csrf()`、`session()`（ログイン中のページをキャッシュに残さない）、ログインのルート、1 か所のログイン確認、それが必要なルート
 - `session.regenerate()` でのログイン、`session.destroy()` を呼ぶ POST でのログアウト、すべての POST のあとの `303` リダイレクト
 - コンポーネントは順に動くので、1 か所のログイン確認がそのあとのすべてのルートに効く。ログインしていない人が存在しないパスを開いたときもログインページに送る

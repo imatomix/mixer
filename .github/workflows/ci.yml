@@ -45,6 +45,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm --filter @imatomix/example-todo build:web
 
   verify-pack:
     name: verify-pack

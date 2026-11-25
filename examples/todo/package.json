@@ -9,8 +9,10 @@
     "start:bun": "pnpm --workspace-root build && bun src/bun.ts",
     "check:bun": "pnpm --workspace-root build && bun scripts/check-bun.ts",
     "check:workers": "pnpm --workspace-root build && node scripts/check-workers.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web",
+    "test": "vitest run",
+    "dev:web": "vite web",
+    "build:web": "vite build web"
   },
   "dependencies": {
     "@imatomix/mix-csrf": "workspace:*",
@@ -24,7 +26,13 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   }
 }
