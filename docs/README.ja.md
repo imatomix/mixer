@@ -13,6 +13,7 @@
 ## 例
 
 - [JSON API](examples/json-api.ja.md): Zod で入力を確かめて、作る・一覧する・読む
+- [Server-Sent Events でメッセージをリアルタイムに届ける](examples/live-messages.ja.md): 開いているブラウザすべてに、再接続にも対応して送る
 - [Webhook を受け取る](examples/webhook.ja.md): 署名されたリクエストを、何かを信用する前に確かめる
 
 ## アプリを動かす

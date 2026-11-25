@@ -34,6 +34,7 @@ Things that differ from other frameworks:
 ## Examples
 
 - [A JSON API](https://github.com/imatomix/mixer/blob/main/docs/examples/json-api.md): create, list, and read with input checked by Zod
+- [Live messages with Server-Sent Events](https://github.com/imatomix/mixer/blob/main/docs/examples/live-messages.md): sse() to every open browser, with Last-Event-ID and cleanup on disconnect
 - [Receiving a webhook](https://github.com/imatomix/mixer/blob/main/docs/examples/webhook.md): a signed request checked before anything is trusted
 - [Example app](https://github.com/imatomix/mixer/tree/main/examples/todo): a todo app with sign-in, sessions, CSRF protection, and security headers
 
