@@ -14,30 +14,38 @@ export function TodoList({ user, onSignOut }: Props) {
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
 
-  /** Runs a call to the API and shows its error, with the request ID to quote */
+  /** Shows an error from the API with the request ID to quote, or signs out when the session has ended */
+  function report(caught: unknown) {
+    if (caught instanceof ApiError && caught.status === 401) return onSignOut()
+    setError(
+      caught instanceof ApiError
+        ? `${caught.message}${caught.requestId ? ` (ID: ${caught.requestId})` : ''}`
+        : 'Something went wrong',
+    )
+  }
+
   async function attempt(call: () => Promise<void>) {
     try {
       setError('')
       await call()
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 401)
-        return onSignOut()
-      setError(
-        caught instanceof ApiError
-          ? `${caught.message}${caught.requestId ? ` (ID: ${caught.requestId})` : ''}`
-          : 'Something went wrong',
-      )
+      report(caught)
     }
   }
 
   useEffect(() => {
+    // An answer from an earlier run of this effect must not change the screen
     let ignore = false
-    void attempt(async () => {
-      const list = await api.todos()
-      if (ignore) return
-      setTodos(list)
-      setLoaded(true)
-    })
+    api.todos().then(
+      (list) => {
+        if (ignore) return
+        setTodos(list)
+        setLoaded(true)
+      },
+      (caught) => {
+        if (!ignore) report(caught)
+      },
+    )
     return () => {
       ignore = true
     }
