@@ -17,6 +17,7 @@ pnpm --filter @imatomix/example-todo check:workers  # the browser flow on worker
 ## What it shows
 
 - One file per role: `src/app.ts` only puts the parts together; routes live in `src/routes/` per resource (sign-in, and the todos: the list at `GET /todos` and its actions, mounted with `group('/todos', ...)`; `/` redirects to the list), the app's state type and its route functions in `src/router.ts`, the sign-in check in `src/auth.ts`, and the pages in `src/pages.ts`
+- A JSON API under `/api` for a frontend on the same origin: `POST /api/session` and `DELETE /api/session` to sign in and out, `GET /api/me`, and `GET`/`POST /api/todos` with `PATCH`/`DELETE /api/todos/:id`. Input is checked with Zod through `validateInput()`, an unknown API path is a JSON `404`, and errors answer JSON with the request ID
 - The order of components: `logger()`, `secureHeaders()` with a CSP, static files (before `session()`, so they stay cacheable), `csrf()`, `session()` (which keeps every signed-in page out of caches), the sign-in routes, one sign-in check, then the routes that need it
 - Signing in with `session.regenerate()`, signing out with a POST that calls `session.destroy()`, and `303` redirects after every POST
 - One sign-in check for every route after it, because components run in order. It also sends signed-out visitors of unknown paths to the login page

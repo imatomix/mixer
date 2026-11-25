@@ -17,6 +17,7 @@ pnpm --filter @imatomix/example-todo check:workers  # Node.js 互換なしの wo
 ## 示していること
 
 - 役割ごとに 1 ファイル: `src/app.ts` は部品を組み立てるだけ。ルートはリソースごとに `src/routes/` に置く（サインインと Todo。Todo は `GET /todos` の一覧とその操作で、`group('/todos', ...)` で載せる。`/` は一覧へリダイレクトする）。アプリの State の型とルートの関数は `src/router.ts`、サインインの確認は `src/auth.ts`、画面は `src/pages.ts`
+- 同じオリジンのフロントのための、`/api` 以下の JSON の API: サインインとサインアウトの `POST /api/session` と `DELETE /api/session`、`GET /api/me`、`GET`・`POST /api/todos` と `PATCH`・`DELETE /api/todos/:id`。入力は `validateInput()` と Zod で確かめ、知らない API のパスは JSON の `404`、エラーはリクエスト ID 付きの JSON で答える
 - コンポーネントの順番: `logger()`、CSP 付きの `secureHeaders()`、静的ファイル（キャッシュさせるため `session()` より前）、`csrf()`、`session()`（ログイン中のページをキャッシュに残さない）、ログインのルート、1 か所のログイン確認、それが必要なルート
 - `session.regenerate()` でのログイン、`session.destroy()` を呼ぶ POST でのログアウト、すべての POST のあとの `303` リダイレクト
 - コンポーネントは順に動くので、1 か所のログイン確認がそのあとのすべてのルートに効く。ログインしていない人が存在しないパスを開いたときもログインページに送る
