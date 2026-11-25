@@ -77,4 +77,14 @@ When the frontend is served elsewhere (a CDN or a hosting service) and mixer ser
 
 Serve the build output with Workers Static Assets instead of mix-static: set `not_found_handling = "single-page-application"` so pages get `index.html`, and `run_worker_first = ["/api/*"]` so API requests reach mixer first. See Cloudflare's [single-page application](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/) guide.
 
+Pages and files are then answered by Cloudflare without reaching mixer, so `secureHeaders()` does not run for them. Give them the same headers with a [`_headers`](https://developers.cloudflare.com/workers/static-assets/headers/) file in the build output (Vite copies `public/_headers` into `dist/`):
+
+```text
+/*
+  Content-Security-Policy: default-src 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+```
+
 The code and its tests are in [examples/docs](../../examples/docs). See also: [Running your app](runtimes.md), [mix-static](../../packages/mix-static), [mix-csrf](../../packages/mix-csrf).
