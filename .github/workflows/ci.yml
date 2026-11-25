@@ -76,6 +76,8 @@ jobs:
           bun-version: 1.4.4
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify:pack:bun
+      # The example app's browser flow, served by mixer's Bun adapter
+      - run: pnpm --filter @imatomix/example-todo check:bun
 
   workers:
     name: workers
@@ -91,3 +93,5 @@ jobs:
       # Runs on workerd with Node.js compatibility turned off; the compatibility date is pinned in
       # scripts/workers-smoke/run.mjs. Update it deliberately, together with the READMEs.
       - run: pnpm verify:pack:workers
+      # The example app's browser flow, as a Worker on workerd
+      - run: pnpm --filter @imatomix/example-todo check:workers
