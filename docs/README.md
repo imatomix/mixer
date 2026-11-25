@@ -13,6 +13,7 @@ Where to find what, by what you want to do.
 ## Examples
 
 - [A JSON API](examples/json-api.md): create, list, and read with input checked by Zod
+- [Live messages with Server-Sent Events](examples/live-messages.md): each message sent to every open browser, with reconnection
 - [Receiving a webhook](examples/webhook.md): a signed request, checked before anything is trusted
 
 ## Run your app
