@@ -1,99 +1,29 @@
-import { type FormEvent, useEffect, useState } from 'react'
-import { ApiError, api, type Todo, type User } from './api.ts'
+import type { FormEvent } from 'react'
+import { Failure } from './Failure.tsx'
+import { useTodos } from './hooks/useTodos.ts'
+import { TodoItem } from './TodoItem.tsx'
 
+// The API's limit (TITLE_LENGTH in src/data.ts), so the browser stops a longer title before sending it
 const TITLE_LENGTH = 200
 
-interface Props {
-  user: User
-  onSignOut: () => void
-}
+export function TodoList({ onSessionEnd }: { onSessionEnd: () => void }) {
+  const { todos, error, retry, add, toggle, remove } = useTodos(onSessionEnd)
 
-export function TodoList({ user, onSignOut }: Props) {
-  const [todos, setTodos] = useState<Todo[]>([])
-  // Changes wait for the first list, so the list never overwrites them
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState('')
-
-  /** Shows an error from the API with the request ID to quote, or signs out when the session has ended */
-  function report(caught: unknown) {
-    if (caught instanceof ApiError && caught.status === 401) return onSignOut()
-    setError(
-      caught instanceof ApiError
-        ? `${caught.message}${caught.requestId ? ` (ID: ${caught.requestId})` : ''}`
-        : 'Something went wrong',
-    )
-  }
-
-  async function attempt(call: () => Promise<void>) {
-    try {
-      setError('')
-      await call()
-    } catch (caught) {
-      report(caught)
-    }
-  }
-
-  useEffect(() => {
-    // An answer from an earlier run of this effect must not change the screen
-    let ignore = false
-    api.todos().then(
-      (list) => {
-        if (ignore) return
-        setTodos(list)
-        setLoaded(true)
-      },
-      (caught) => {
-        if (!ignore) report(caught)
-      },
-    )
-    return () => {
-      ignore = true
-    }
-  }, [])
-
-  async function add(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = event.currentTarget
-    const title = String(new FormData(form).get('title'))
-    await attempt(async () => {
-      const todo = await api.addTodo(title)
-      setTodos((list) => [...list, todo])
-      form.reset()
-    })
+    if (await add(String(new FormData(form).get('title')))) form.reset()
   }
 
-  const toggle = (todo: Todo) =>
-    attempt(async () => {
-      const changed = await api.setDone(todo.id, !todo.done)
-      setTodos((list) =>
-        list.map((item) => (item.id === todo.id ? changed : item)),
-      )
-    })
-
-  const remove = (todo: Todo) =>
-    attempt(async () => {
-      await api.removeTodo(todo.id)
-      setTodos((list) => list.filter((item) => item.id !== todo.id))
-    })
-
-  const signOut = () =>
-    attempt(async () => {
-      await api.signOut()
-      onSignOut()
-    })
+  if (todos === undefined) {
+    return error ? <Failure message={error} onRetry={retry} /> : <p>Loading…</p>
+  }
 
   return (
     <section>
-      <p className="user">
-        {user.name}{' '}
-        <button type="button" onClick={signOut}>
-          Sign out
-        </button>
-      </p>
       <h2>Todos</h2>
       {error && <p className="error">{error}</p>}
-      {!loaded && !error && <p>Loading…</p>}
-      <form onSubmit={add} hidden={!loaded}>
+      <form onSubmit={submit}>
         <input
           name="title"
           maxLength={TITLE_LENGTH}
@@ -102,17 +32,14 @@ export function TodoList({ user, onSignOut }: Props) {
         />
         <button type="submit">Add</button>
       </form>
-      <ul hidden={!loaded}>
+      <ul>
         {todos.map((todo) => (
-          <li key={todo.id} className={todo.done ? 'done' : undefined}>
-            <button type="button" onClick={() => toggle(todo)}>
-              {todo.done ? 'Undo' : 'Done'}
-            </button>
-            <span>{todo.title}</span>
-            <button type="button" onClick={() => remove(todo)}>
-              Delete
-            </button>
-          </li>
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            onToggle={toggle}
+            onRemove={remove}
+          />
         ))}
       </ul>
     </section>
