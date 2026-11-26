@@ -35,6 +35,7 @@ export function useSession() {
       setUser((await api.signIn(name, password)).user)
     },
     signOut: async () => {
+      setError('')
       try {
         await api.signOut()
         setUser(null)
