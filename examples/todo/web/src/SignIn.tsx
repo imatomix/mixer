@@ -1,22 +1,21 @@
 import { type FormEvent, useState } from 'react'
-import { ApiError, api, type User } from './api.ts'
+import { errorMessage } from './api.ts'
 
-export function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
+interface Props {
+  onSignIn: (name: string, password: string) => Promise<void>
+}
+
+export function SignIn({ onSignIn }: Props) {
   const [error, setError] = useState('')
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    setError('')
     try {
-      const { user } = await api.signIn(
-        String(form.get('name')),
-        String(form.get('password')),
-      )
-      onSignIn(user)
+      await onSignIn(String(form.get('name')), String(form.get('password')))
     } catch (caught) {
-      setError(
-        caught instanceof ApiError ? caught.message : 'Something went wrong',
-      )
+      setError(errorMessage(caught))
     }
   }
 

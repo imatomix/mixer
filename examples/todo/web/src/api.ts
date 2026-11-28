@@ -9,9 +9,10 @@ export interface Todo {
   done: boolean
 }
 
-/** An answer from the API that is not a success, with the request ID to quote when reporting it */
+/** An answer from the API that is not a success */
 export class ApiError extends Error {
   readonly status: number
+  /** The ID the server logged the request under, for the user to quote when reporting a failure */
   readonly requestId: string | undefined
 
   constructor(status: number, message: string, requestId?: string) {
@@ -19,6 +20,21 @@ export class ApiError extends Error {
     this.status = status
     this.requestId = requestId
   }
+}
+
+/** The text to show for an error from `api` */
+export function errorMessage(error: unknown): string {
+  // fetch() throws a TypeError when it gets no answer at all
+  if (!(error instanceof ApiError)) return 'Could not reach the server'
+  if (error.status >= 500 && error.requestId) {
+    return `${error.message} (ID: ${error.requestId})`
+  }
+  return error.message
+}
+
+/** True when the session has ended, so the app should show the sign-in form */
+export function isSignedOut(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401
 }
 
 async function request<T>(
@@ -32,10 +48,20 @@ async function request<T>(
     init.body = JSON.stringify(body)
   }
   const res = await fetch(`/api${path}`, init)
+  if (!res.ok) throw await toApiError(res)
   if (res.status === 204) return undefined as T
-  const data = await res.json()
-  if (!res.ok) throw new ApiError(res.status, data.error, data.requestId)
-  return data as T
+  return (await res.json()) as T
+}
+
+/** Reads the API's `{ error, requestId }`, or keeps what it can when a proxy answered with a page */
+async function toApiError(res: Response): Promise<ApiError> {
+  const isJson = res.headers.get('content-type')?.startsWith('application/json')
+  const data = isJson ? await res.json().catch(() => undefined) : undefined
+  return new ApiError(
+    res.status,
+    data?.error ?? `The server answered ${res.status}`,
+    data?.requestId ?? res.headers.get('x-request-id') ?? undefined,
+  )
 }
 
 export const api = {
