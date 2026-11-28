@@ -20,7 +20,7 @@ pnpm --filter @imatomix/example-todo build:web  # フロントを web/dist に�
 
 - 役割ごとに 1 ファイル: `src/app.ts` は部品を組み立てるだけ。ルートはリソースごとに `src/routes/` に置く（サインインと Todo。Todo は `GET /todos` の一覧とその操作で、`group('/todos', ...)` で載せる。`/` は一覧へリダイレクトする）。アプリの State の型とルートの関数は `src/router.ts`、サインインの確認は `src/auth.ts`、画面は `src/pages.ts`
 - 同じオリジンのフロントのための、`/api` 以下の JSON の API: サインインとサインアウトの `POST /api/session` と `DELETE /api/session`、`GET /api/me`、`GET`・`POST /api/todos` と `PATCH`・`DELETE /api/todos/:id`。入力は `validateInput()` と Zod で確かめ、知らない API のパスは JSON の `404`、エラーはリクエスト ID 付きの JSON で答える
-- JSON の API を使う、`web/` の React のフロント（Vite。ルーターや状態管理のライブラリは使わない）。`web/src/api.ts` は相対 URL の `/api` を呼ぶので、セッションの Cookie が毎回付く。失敗はプロキシが返したページも含めてすべて 1 つの `ApiError` にし、サーバー側の失敗はリクエスト ID 付きで表示する。`web/src/hooks/` のフックがデータを読み込み、読み込めなければ再試行を出し、遅れて届いた応答は無視する。コンポーネントは描画だけをする。開発中は Vite が `/api` を `start` で起動したアプリへ渡す。ビルドしたフロントはまだアプリから配信しておらず、`start` で見えるのはサーバーで返す画面のまま
+- JSON の API を使う、`web/` の React のフロント（Vite。ルーターや状態管理のライブラリは使わない）。`web/src/api.ts` は相対 URL の `/api` を呼ぶので、セッションの Cookie が毎回付く。失敗はプロキシが返したページも含めてすべて 1 つの `ApiError` にし、サーバー側の失敗はリクエスト ID 付きで表示する。`web/src/hooks/` のフックがデータの読み込みと API 経由の更新を担当する。読み込みに失敗したときは再試行できるようにし、古くなった応答は無視する。コンポーネントは画面を描画し、追加フォームの送信や、Todo の追加に成功したあとのフォームのリセットなど、画面上の操作を扱う。開発中は Vite が `/api` を `start` で起動したアプリへ渡す。ビルドしたフロントはまだアプリから配信しておらず、`start` で見えるのはサーバーで返す画面のまま
 - コンポーネントの順番: `logger()`、CSP 付きの `secureHeaders()`、静的ファイル（キャッシュさせるため `session()` より前）、`csrf()`、`session()`（ログイン中のページをキャッシュに残さない）、ログインのルート、1 か所のログイン確認、それが必要なルート
 - `session.regenerate()` でのログイン、`session.destroy()` を呼ぶ POST でのログアウト、すべての POST のあとの `303` リダイレクト
 - コンポーネントは順に動くので、1 か所のログイン確認がそのあとのすべてのルートに効く。ログインしていない人が存在しないパスを開いたときもログインページに送る
